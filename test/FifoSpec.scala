@@ -130,6 +130,8 @@ class CircularPointerFifo(val width: Int, val depth: Int, fixed: Boolean = false
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FifoSpec extends FlatSpec {
+  // Driver.execute(Array("--compiler", "mverilog"), () => new CircularPointerFifo(32, 32))
+
   def elaborate(gen: () => RawModule): ir.Circuit = chisel3.aop.Aspect.getFirrtl(Driver.elaborate(gen))
 
   def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
