@@ -6,69 +6,51 @@ import chisel3.hacks.elaborateInContextOfModule
 import scala.collection.mutable
 import org.scalatest._
 
-//class Method(val name: String, val inputs: Seq[Data], val outputs: Seq[Data]) {
-//  val hasInput  = input.elements.nonEmpty
-//  val hasOutput = output.elements.nonEmpty
-//}
-
-trait Method {
+trait MethodGenerator {
   def generate(): Unit
 }
 
-case class EmptyMethod(impl: () => Unit) extends Method {
+case class EmptyMethodGenerator(impl: () => Unit) extends MethodGenerator {
   override def generate(): Unit = impl()
 }
-case class IMethod[I <: Data](inputType: I, impl: I => Unit) extends Method {
+case class IMethodGenerator[I <: Data](inputType: I, impl: I => Unit) extends MethodGenerator {
   override def generate(): Unit = impl(Wire(Input(inputType)).suggestName("inputs"))
 }
-case class OMethod[O <: Data](outputType: O, impl: O => Unit) extends Method {
+case class OMethodGenerator[O <: Data](outputType: O, impl: O => Unit) extends MethodGenerator {
   override def generate(): Unit = impl(Wire(Output(outputType)).suggestName("outputs"))
 }
-case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, impl: (I, O) => Unit) extends Method {
+case class IOMethodGenerator[I <: Data, O <: Data](inputType: I, outputType: O, impl: (I, O) => Unit) extends MethodGenerator {
   override def generate(): Unit = impl(Wire(Input(inputType)).suggestName("inputs"), Wire(Output(outputType)).suggestName("outputs"))
 }
 
-trait MethodParent { def addMethod(m: Method): Unit }
+trait MethodParent { def addMethod(m: MethodGenerator): Unit }
 case class EmptyMethodBuilder(p: MethodParent, guard: Option[() => Bool] = None) {
   def out[O <: Data](outputType: O): OMethodBuilder[O] = OMethodBuilder(p, outputType, guard)
   def when(cond: => Bool): EmptyMethodBuilder = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
-  def apply(impl: => Unit): Unit = p.addMethod(EmptyMethod(() => impl))
+  def apply(impl: => Unit): Unit = p.addMethod(EmptyMethodGenerator(() => impl))
 }
 case class OMethodBuilder[O <: Data](p: MethodParent, outputType: O, guard: Option[() => Bool] = None) {
   def when(cond: => Bool): OMethodBuilder[O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
-  def apply(impl: O => Unit): Unit = p.addMethod(OMethod(outputType, impl))
+  def apply(impl: O => Unit): Unit = p.addMethod(OMethodGenerator(outputType, impl))
 }
 case class IMethodBuilder[I <: Data](p: MethodParent, inputType: I, guard: Option[() => Bool] = None) {
   def out[O <: Data](outputType: O): IOMethodBuilder[I, O] = IOMethodBuilder(p, inputType, outputType, guard)
   def when(cond: => Bool): IMethodBuilder[I] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
-  def apply(impl: I => Unit): Unit = p.addMethod(IMethod(inputType, impl))
+  def apply(impl: I => Unit): Unit = p.addMethod(IMethodGenerator(inputType, impl))
 }
 case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, inputType: I, outputType: O, guard: Option[() => Bool] = None) {
   def when(cond: => Bool): IOMethodBuilder[I,O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
-  def apply(impl: (I, O) => Unit): Unit = p.addMethod(IOMethod(inputType, outputType, impl))
+  def apply(impl: (I, O) => Unit): Unit = p.addMethod(IOMethodGenerator(inputType, outputType, impl))
 }
-
-
 
 class UntimedModule extends MultiIOModule with MethodParent {
-//  def fun(inputs: => Unit) = ???
-//  def fun(inputs: => Unit)(outputs: => Unit) = ???
-//
-//  def method(name: String)(foo: => Unit) = ???
-
-  override def addMethod(m: Method): Unit = methods.append(m)
-  val methods = mutable.ArrayBuffer[Method]()
-
+  override def addMethod(m: MethodGenerator): Unit = methods.append(m)
+  val methods = mutable.ArrayBuffer[MethodGenerator]()
   def fun = EmptyMethodBuilder(this)
   def fun[I <: Data](inputs: I) = IMethodBuilder(this, inputs)
-    // foo foo should not be evaluated until the module is closed ...
-    //foos.append(() => foo)
-  //}
-  //def fun[I <: Bundle, O <: Bundle](foo: (I, O) => Unit) = ???
-
 }
 
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class UntimedFifo[G <: Data](val depth: Int, dataType: G) extends UntimedModule {
   require(depth > 0)
@@ -98,7 +80,7 @@ class UntimedFifo[G <: Data](val depth: Int, dataType: G) extends UntimedModule 
   val idle = fun()
 }
 
-
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FifoSpec extends FlatSpec {
   def elaborate(gen: () => RawModule): ir.Circuit = chisel3.aop.Aspect.getFirrtl(Driver.elaborate(gen))
