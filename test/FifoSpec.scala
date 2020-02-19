@@ -78,6 +78,13 @@ class UntimedModule extends MultiIOModule with MethodParent {
   //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
+class Binding {
+  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: => Unit) = ???
+  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: O => Unit) = ???
+  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: I => Unit) = ???
+  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (I,O) => Unit) = ???
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class UntimedFifo[G <: Data](val depth: Int, dataType: G) extends UntimedModule {
@@ -145,22 +152,42 @@ class CircularPointerFifo(val width: Int, val depth: Int, fixed: Boolean = false
   io.data_out := entries.read(rdPtr)
 }
 
-class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) {
-  spec.push.protocol(impl.io) { in =>
+class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Binding {
+
+  // alternative which might be nicer as it would allow us to keep all of spec constant
+  protocol(spec.push)(impl.io) { in =>
     // TODO
   }
 
-  spec.pop.protocol(impl.io) { out =>
+  protocol(spec.pop)(impl.io) { out =>
     // TODO
   }
 
-  spec.push_pop.protocol(impl.io) { (in, out) =>
+  protocol(spec.push_pop)(impl.io) { (in, out) =>
     // TODO
   }
 
-  spec.idle.protocol(impl.io) {
+  protocol(spec.idle)(impl.io) {
     // TODO
   }
+
+
+  // protocol defined on {N,I,O,IO}Method
+//  spec.push.protocol(impl.io) { in =>
+//    // TODO
+//  }
+//
+//  spec.pop.protocol(impl.io) { out =>
+//    // TODO
+//  }
+//
+//  spec.push_pop.protocol(impl.io) { (in, out) =>
+//    // TODO
+//  }
+//
+//  spec.idle.protocol(impl.io) {
+//    // TODO
+//  }
 }
 
 
