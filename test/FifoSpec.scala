@@ -1,8 +1,7 @@
-package chisel3.untimed // HACK in order to be able to access internal chisel methods!
-
 import chisel3._
 import chisel3.util._
 import firrtl.ir
+import chisel3.hacks.elaborateInContextOfModule
 
 import scala.collection.mutable
 import org.scalatest._
@@ -112,7 +111,7 @@ class FifoSpec extends FlatSpec {
   }
 
   val methods = m.get.methods.map { meth =>
-    val c = elaborate(() => withClockAndReset(m.get.clock, m.get.reset) { new ModuleAspect(m.get) { meth.generate() } })
+    val c: ir.Circuit = elaborateInContextOfModule(m.get, meth.generate)
     c.modules.head.asInstanceOf[ir.Module].body
   }
 
