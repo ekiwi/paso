@@ -89,6 +89,10 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   }
 
   def invariances(gen: IM => Unit) = ???
+
+  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Vec(m.length.toInt, m.t)
+
+  def mapping(gen: (IM, SM) => Unit) = ???
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -179,6 +183,12 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
   protocol(spec.idle)(impl.io) { dut =>
     dut.pop.poke(false.B)
     dut.push.poke(false.B)
+  }
+
+  mapping { (impl, spec) =>
+    spec.count <> impl.cnt
+    spec.read <> impl.rdPtr
+    spec.mem <> impl.entries
   }
 
   invariances { dut =>
