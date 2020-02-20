@@ -96,26 +96,26 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
 class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedModule {
   require(depth > 0)
   require(isPow2(depth))
-  val mem = Mem(depth, dataType)
+  val mem = Reg(Vec(depth, dataType))
   val count = Reg(UInt((log2Ceil(depth) + 1).W))
   val read = Reg(UInt(log2Ceil(depth).W))
   val full = count === depth.U
   val empty = count === 0.U
 
   val push = fun("push").in(dataType).when(!full) { in =>
-    mem.write(read + count, in)
+    mem(read + count) := in
     count := count + 1.U
   }
 
   val pop = fun("pop").out(dataType).when(!empty) { out =>
-    out := mem.read(read)
+    out := mem(read)
     count := count - 1.U
     read := read + 1.U
   }
 
   val push_pop = fun("push_pop").in(dataType).out(dataType).when(!empty) { (in, out) =>
-    mem.write(read + count, in)
-    out := mem.read(read)
+    mem(read + count) :=  in
+    out := mem(read)
     read := read + 1.U
   }
 
