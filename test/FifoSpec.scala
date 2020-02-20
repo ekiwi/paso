@@ -83,6 +83,10 @@ class Binding {
   def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: O => Unit) = ???
   def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: I => Unit) = ???
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (I,O) => Unit) = ???
+
+  implicit class testableData[T <: Data](x: T) {
+    def poke(value: T) = println(s"$x <- $value")
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -168,7 +172,8 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
   }
 
   protocol(spec.idle)(impl.io) {
-    // TODO
+    impl.io.pop.poke(false.B)
+    impl.io.push.poke(false.B)
   }
 
 
