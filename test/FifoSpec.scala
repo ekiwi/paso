@@ -10,19 +10,10 @@ import org.scalatest._
 case class MethodGenerator(name: String, guard: Option[() => Bool], body: MethodBody)
 
 // TODO: rename to something more sensible
-case class NMethod(gen: MethodGenerator){
-  def protocol[IO <: Data](io: IO)(gen: => Unit) = ???
-}
-case class IMethod[I <: Data](inputType: I, gen: MethodGenerator){
-  def protocol[IO <: Data](io: IO)(gen: I => Unit) = ???
-}
-case class OMethod[O <: Data](outputType: O, gen: MethodGenerator){
-  def protocol[IO <: Data](io: IO)(gen: O => Unit) = ???
-}
-case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator){
-  def protocol[IO <: Data](io: IO)(gen: (I, O) => Unit) = ???
-}
-
+case class NMethod(gen: MethodGenerator)
+case class IMethod[I <: Data](inputType: I, gen: MethodGenerator)
+case class OMethod[O <: Data](outputType: O, gen: MethodGenerator)
+case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator)
 
 trait MethodBody { def generate(): Unit }
 case class NMethodBody(impl: () => Unit) extends MethodBody {
@@ -203,23 +194,6 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
       assert(dut.cnt === dut.depth.U + dut.wrPtr - dut.rdPtr)
     }
   }
-
-  // protocol defined on {N,I,O,IO}Method
-//  spec.push.protocol(impl.io) { in =>
-//    // TODO
-//  }
-//
-//  spec.pop.protocol(impl.io) { out =>
-//    // TODO
-//  }
-//
-//  spec.push_pop.protocol(impl.io) { (in, out) =>
-//    // TODO
-//  }
-//
-//  spec.idle.protocol(impl.io) {
-//    // TODO
-//  }
 }
 
 
