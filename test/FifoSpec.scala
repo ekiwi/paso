@@ -78,20 +78,22 @@ class UntimedModule extends MultiIOModule with MethodParent {
   //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
-class Binding {
-  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: => Unit) = ???
-  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: O => Unit) = ???
-  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: I => Unit) = ???
-  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (I,O) => Unit) = ???
+class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
+  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: IO => Unit) = ???
+  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (IO, O) => Unit) = ???
+  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (IO, I) => Unit) = ???
+  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit) = ???
 
   implicit class testableData[T <: Data](x: T) {
     def poke(value: T) = println(s"$x <- $value")
   }
+
+  def invariances(gen: IM => Unit) = ???
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class UntimedFifo[G <: Data](val depth: Int, dataType: G) extends UntimedModule {
+class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedModule {
   require(depth > 0)
   require(isPow2(depth))
   val mem = Mem(depth, dataType)
@@ -156,26 +158,41 @@ class CircularPointerFifo(val width: Int, val depth: Int, fixed: Boolean = false
   io.data_out := entries.read(rdPtr)
 }
 
-class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Binding {
+class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Binding(impl, spec) {
+  // TODO: instantiate spec based on impl parametrization
+  require(impl.width == spec.dataType.getWidth)
+  require(impl.depth == spec.depth)
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
-  protocol(spec.push)(impl.io) { in =>
+  protocol(spec.push)(impl.io) { (dut, in) =>
     // TODO
   }
 
-  protocol(spec.pop)(impl.io) { out =>
+  protocol(spec.pop)(impl.io) { (dut, out) =>
     // TODO
   }
 
-  protocol(spec.push_pop)(impl.io) { (in, out) =>
+  protocol(spec.push_pop)(impl.io) { (dut, in, out) =>
     // TODO
   }
 
-  protocol(spec.idle)(impl.io) {
-    impl.io.pop.poke(false.B)
-    impl.io.push.poke(false.B)
+  protocol(spec.idle)(impl.io) { dut =>
+    dut.pop.poke(false.B)
+    dut.push.poke(false.B)
   }
 
+  invariances { dut =>
+    assert(dut.cnt <= dut.depth.U)
+    assert(dut.rdPtr < dut.depth.U)
+    assert(dut.wrPtr < dut.depth.U)
+    when(dut.cnt === 0.U) {
+      assert(dut.wrPtr === dut.rdPtr)
+    } .elsewhen(dut.wrPtr > dut.rdPtr) {
+      assert(dut.cnt === dut.wrPtr - dut.rdPtr)
+    } .otherwise {
+      assert(dut.cnt === dut.depth.U + dut.wrPtr - dut.rdPtr)
+    }
+  }
 
   // protocol defined on {N,I,O,IO}Method
 //  spec.push.protocol(impl.io) { in =>
