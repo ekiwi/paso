@@ -77,13 +77,16 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
 
   implicit class testableData[T <: Data](x: T) {
     def poke(value: T) = println(s"$x <- $value")
+    def expect(value: T) = println(s"$x == $value ?")
   }
 
   def invariances(gen: IM => Unit) = ???
 
-  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Vec(m.length.toInt, m.t)
+  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Vec(m.length.toInt, m.t).suggestName(m.pathName)
 
   def mapping(gen: (IM, SM) => Unit) = ???
+
+  def step(): Unit =  println(s"STEP")
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -124,20 +127,34 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
   protocol(spec.push)(impl.io) { (dut, in) =>
-    // TODO
+    dut.pop.poke(false.B)
+    dut.push.poke(true.B)
+    dut.data_in.poke(in)
+    dut.full.expect(false.B)
+    step()
   }
 
   protocol(spec.pop)(impl.io) { (dut, out) =>
-    // TODO
+    dut.pop.poke(true.B)
+    dut.push.poke(false.B)
+    dut.data_out.expect(out)
+    dut.empty.expect(false.B)
+    step()
   }
 
   protocol(spec.push_pop)(impl.io) { (dut, in, out) =>
-    // TODO
+    dut.pop.poke(true.B)
+    dut.push.poke(true.B)
+    dut.data_in.poke(in)
+    dut.data_out.expect(out)
+    dut.empty.expect(false.B)
+    step()
   }
 
   protocol(spec.idle)(impl.io) { dut =>
     dut.pop.poke(false.B)
     dut.push.poke(false.B)
+    step()
   }
 
   mapping { (impl, spec) =>
