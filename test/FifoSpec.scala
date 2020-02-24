@@ -1,4 +1,5 @@
 import chisel3._
+import chisel3.experimental.IO
 import chisel3.util._
 import firrtl.ir
 import chisel3.hacks.elaborateInContextOfModule
@@ -69,26 +70,34 @@ class UntimedModule extends MultiIOModule with MethodParent {
   //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
-trait Protocol { def generate(): Unit }
+trait Protocol {
+  def methodName: String
+  def generate(): Unit
+}
 case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol {
+  override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(Wire(Input(ioType)).suggestName("io"))
+    impl(IO(Output(ioType)).suggestName("io"))
   }
 }
 case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol {
+  override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(Wire(Input(ioType)).suggestName("io"), Wire(Output(meth.inputType)).suggestName("inputs"))
+    impl(IO(Output(ioType)).suggestName("io"), IO(Output(meth.inputType)).suggestName("inputs"))
+    //impl(Input(ioType).suggestName("io"), Output(meth.inputType).suggestName("inputs"))
   }
 }
 case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol {
+  override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(Wire(Input(ioType)).suggestName("io"), Wire(Input(meth.outputType)).suggestName("outputs"))
+    impl(IO(Output(ioType)).suggestName("io"), IO(Input(meth.outputType)).suggestName("outputs"))
   }
 }
 case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol {
+  override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(Wire(Input(ioType)).suggestName("io"), Wire(Output(meth.inputType)).suggestName("inputs"),
-      Wire(Input(meth.outputType)).suggestName("outputs"))
+    impl(IO(Output(ioType)).suggestName("io"), IO(Output(meth.inputType)).suggestName("inputs"),
+      IO(Input(meth.outputType)).suggestName("outputs"))
   }
 }
 
@@ -103,9 +112,21 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit): Unit =
     protos.append(IOProtocol(chiselTypeOf(io), meth, gen))
 
-  implicit class testableData[T <: Data](x: T) {
-    def poke(value: T) = println(s"$x <- $value")
-    def expect(value: T) = println(s"$x == $value ?")
+  // replace default chisel assert
+  def assert(cond: => Bool): Unit = {
+    val w = Wire(Bool()).suggestName("assert")
+    w := cond
+  }
+
+
+  // TODO: support more than just UInt
+  implicit class testableData[T <: UInt](x: T) {
+    def poke(value: T): Unit = {
+      x := value
+    }
+    def expect(value: T): Unit = {
+      assert(x === value)
+    }
   }
 
   val invs = new mutable.ArrayBuffer[IM => Unit]()
@@ -117,7 +138,10 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
   def mapping(gen: (IM, SM) => Unit): Unit = maps.append(gen)
 
-  def step(): Unit =  println(s"STEP")
+  def step(): Unit = {
+    val w = Wire(Bool()).suggestName("step")
+    w := DontCare
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -247,15 +271,21 @@ class FifoSpec extends FlatSpec {
   println("Implementation:")
   println(impl_fir.serialize)
 
+  println()
   println("Binding...")
   val binding = new SpecBinding(impl.get, m.get)
 
   // try to elaborate thing in the binding
   def elaborate_protocol(p: Protocol) = {
-    p.generate()
+    elaborate(() => new MultiIOModule() { p.generate() }).modules.head.asInstanceOf[ir.Module].body
   }
 
-  binding.protos.foreach{ p => elaborate_protocol(p) }
+  binding.protos.foreach{ p =>
+    println(s"Protocol for: ${p.methodName}")
+    val ff = elaborate_protocol(p)
+    println(ff.serialize)
+    println()
+  }
 
 
 }

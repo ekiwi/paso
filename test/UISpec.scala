@@ -1,5 +1,7 @@
 // See LICENSE for license details.
 
+package old
+
 import org.scalatest.{FlatSpec, FreeSpec, Matchers}
 import chisel3._
 
