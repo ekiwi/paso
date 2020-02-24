@@ -71,28 +71,37 @@ class UntimedModule extends MultiIOModule with MethodParent {
 
 trait Protocol { def generate(): Unit }
 case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol {
-  override def generate(): Unit = println("TODO: NProtocol")
+  override def generate(): Unit = {
+    impl(Wire(Input(ioType)).suggestName("io"))
+  }
 }
 case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol {
-  override def generate(): Unit = println("TODO: IProtocol")
+  override def generate(): Unit = {
+    impl(Wire(Input(ioType)).suggestName("io"), Wire(Output(meth.inputType)).suggestName("inputs"))
+  }
 }
 case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol {
-  override def generate(): Unit = println("TODO: OProtocol")
+  override def generate(): Unit = {
+    impl(Wire(Input(ioType)).suggestName("io"), Wire(Input(meth.outputType)).suggestName("outputs"))
+  }
 }
 case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol {
-  override def generate(): Unit = println("TODO: IOProtocol")
+  override def generate(): Unit = {
+    impl(Wire(Input(ioType)).suggestName("io"), Wire(Output(meth.inputType)).suggestName("inputs"),
+      Wire(Input(meth.outputType)).suggestName("outputs"))
+  }
 }
 
 class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val protos = new mutable.ArrayBuffer[Protocol]()
   def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: IO => Unit): Unit =
-    protos.append(NProtocol(io, meth, gen))
+    protos.append(NProtocol(chiselTypeOf(io), meth, gen))
   def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (IO, O) => Unit): Unit =
-    protos.append(OProtocol(io, meth, gen))
+    protos.append(OProtocol(chiselTypeOf(io), meth, gen))
   def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (IO, I) => Unit): Unit =
-    protos.append(IProtocol(io, meth, gen))
+    protos.append(IProtocol(chiselTypeOf(io), meth, gen))
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit): Unit =
-    protos.append(IOProtocol(io, meth, gen))
+    protos.append(IOProtocol(chiselTypeOf(io), meth, gen))
 
   implicit class testableData[T <: Data](x: T) {
     def poke(value: T) = println(s"$x <- $value")
@@ -240,6 +249,13 @@ class FifoSpec extends FlatSpec {
 
   println("Binding...")
   val binding = new SpecBinding(impl.get, m.get)
+
+  // try to elaborate thing in the binding
+  def elaborate_protocol(p: Protocol) = {
+    p.generate()
+  }
+
+  binding.protos.foreach{ p => elaborate_protocol(p) }
 
 
 }
