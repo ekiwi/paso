@@ -69,22 +69,44 @@ class UntimedModule extends MultiIOModule with MethodParent {
   //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
+trait Protocol { def generate(): Unit }
+case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol {
+  override def generate(): Unit = println("TODO: NProtocol")
+}
+case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol {
+  override def generate(): Unit = println("TODO: IProtocol")
+}
+case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol {
+  override def generate(): Unit = println("TODO: OProtocol")
+}
+case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol {
+  override def generate(): Unit = println("TODO: IOProtocol")
+}
+
 class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
-  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: IO => Unit) = ???
-  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (IO, O) => Unit) = ???
-  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (IO, I) => Unit) = ???
-  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit) = ???
+  val protos = new mutable.ArrayBuffer[Protocol]()
+  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: IO => Unit): Unit =
+    protos.append(NProtocol(io, meth, gen))
+  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (IO, O) => Unit): Unit =
+    protos.append(OProtocol(io, meth, gen))
+  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (IO, I) => Unit): Unit =
+    protos.append(IProtocol(io, meth, gen))
+  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit): Unit =
+    protos.append(IOProtocol(io, meth, gen))
 
   implicit class testableData[T <: Data](x: T) {
     def poke(value: T) = println(s"$x <- $value")
     def expect(value: T) = println(s"$x == $value ?")
   }
 
-  def invariances(gen: IM => Unit) = ???
+  val invs = new mutable.ArrayBuffer[IM => Unit]()
+  def invariances(gen: IM => Unit): Unit = invs.append(gen)
 
   implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Vec(m.length.toInt, m.t).suggestName(m.pathName)
 
-  def mapping(gen: (IM, SM) => Unit) = ???
+
+  val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
+  def mapping(gen: (IM, SM) => Unit): Unit = maps.append(gen)
 
   def step(): Unit =  println(s"STEP")
 }
@@ -181,6 +203,9 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FifoSpec extends FlatSpec {
+  val depth = 8
+  val width = 8
+
   // Driver.execute(Array("--compiler", "mverilog"), () => new CircularPointerFifo(32, 32))
 
   def elaborate(gen: () => RawModule): ir.Circuit = chisel3.aop.Aspect.getFirrtl(Driver.elaborate(gen))
@@ -188,9 +213,9 @@ class FifoSpec extends FlatSpec {
   def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
     elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
 
-  var m: Option[UntimedModule] = None
+  var m: Option[UntimedFifo[UInt]] = None
   val main = elaborate { () =>
-    m = Some(new UntimedFifo(depth = 8, dataType = UInt(8.W)))
+    m = Some(new UntimedFifo(depth = depth, dataType = UInt(width.W)))
     m.get
   }
 
@@ -206,4 +231,15 @@ class FifoSpec extends FlatSpec {
     guard.foreach{g => println(s"guard: ${g.serialize}")}
     println(body.serialize)
     println()}
+
+  var impl: Option[CircularPointerFifo] = None
+  val impl_fir = elaborate{() => impl = Some(new CircularPointerFifo(depth = depth, width = width) ); impl.get}
+
+  println("Implementation:")
+  println(impl_fir.serialize)
+
+  println("Binding...")
+  val binding = new SpecBinding(impl.get, m.get)
+
+
 }
