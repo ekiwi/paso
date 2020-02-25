@@ -132,7 +132,7 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val invs = new mutable.ArrayBuffer[IM => Unit]()
   def invariances(gen: IM => Unit): Unit = invs.append(gen)
 
-  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Vec(m.length.toInt, m.t).suggestName(m.pathName)
+  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Wire(Vec(m.length.toInt, m.t)).suggestName(m.pathName)
 
 
   val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
@@ -141,6 +141,21 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   def step(): Unit = {
     val w = Wire(Bool()).suggestName("step")
     w := DontCare
+  }
+
+  def map[T <: Data](a: T, b: T) = {
+    val lhs = WireInit(a).suggestName("lhs")
+    val rhs = WireInit(b).suggestName("rhs")
+  }
+  def map[T <: Data](a: Vec[T], b: Mem[T]) = {
+    require(a.length == b.length)
+    val lhs = WireInit(a).suggestName("lhs")
+    val rhs = WireInit(memToVec(b)).suggestName("rhs")
+  }
+  def map[T <: Data](a: Mem[T], b: Vec[T]) = {
+    require(a.length == b.length)
+    val lhs = WireInit(memToVec(a)).suggestName("lhs")
+    val rhs = WireInit(b).suggestName("rhs")
   }
 }
 
@@ -213,9 +228,9 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
   }
 
   mapping { (impl, spec) =>
-    spec.count <> impl.cnt
-    spec.read <> impl.rdPtr
-    spec.mem <> impl.entries
+    map(spec.count, impl.cnt)
+    map(spec.read, impl.rdPtr)
+    map(spec.mem, impl.entries)
   }
 
   invariances { dut =>
@@ -241,20 +256,20 @@ class FifoSpec extends FlatSpec {
 
   // Driver.execute(Array("--compiler", "mverilog"), () => new CircularPointerFifo(32, 32))
 
-  def elaborate(gen: () => RawModule): ir.Circuit = chisel3.aop.Aspect.getFirrtl(Driver.elaborate(gen))
+  def elaborate(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
 
   def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
     elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
 
-  var m: Option[UntimedFifo[UInt]] = None
+  var spec: Option[UntimedFifo[UInt]] = None
   val main = elaborate { () =>
-    m = Some(new UntimedFifo(depth = depth, dataType = UInt(width.W)))
-    m.get
+    spec = Some(new UntimedFifo(depth = depth, dataType = UInt(width.W)))
+    spec.get
   }
 
-  val methods = m.get.methods.map { meth =>
-    val body = elaborateBody(m.get, meth.body.generate)
-    val guard =  meth.guard.map(g => elaborateBody(m.get, () => { val guard = g() }))
+  val methods = spec.get.methods.map { meth =>
+    val body = elaborateBody(spec.get, meth.body.generate)
+    val guard =  meth.guard.map(g => elaborateBody(spec.get, () => { val guard = g() }))
     (meth.name, guard, body)
   }
 
@@ -273,7 +288,7 @@ class FifoSpec extends FlatSpec {
 
   println()
   println("Binding...")
-  val binding = new SpecBinding(impl.get, m.get)
+  val binding = new SpecBinding(impl.get, spec.get)
 
   // try to elaborate thing in the binding
   def elaborate_protocol(p: Protocol) = {
@@ -284,6 +299,15 @@ class FifoSpec extends FlatSpec {
     println(s"Protocol for: ${p.methodName}")
     val ff = elaborate_protocol(p)
     println(ff.serialize)
+    println()
+  }
+
+  println("Mapping:")
+  binding.maps.foreach { m =>
+    val gen = {() => m(impl.get, spec.get)}
+    val mod = elaborateInContextOfModule(impl.get, spec.get, "map", gen)
+    val f = mod.modules.head.asInstanceOf[ir.Module].body
+    println(f.serialize)
     println()
   }
 
