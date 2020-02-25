@@ -4,7 +4,8 @@
 
 package paso
 import chisel3._
-import chisel3.experimental.IO
+import chisel3.experimental.{ChiselAnnotation, IO, RunFirrtlTransform, annotate}
+import firrtl.annotations.{Annotation, Named}
 
 import scala.collection.mutable
 
@@ -152,4 +153,12 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
       x.zip(y).map{ case (a, b) => a === b}.reduceLeft[Bool]{ case (a,b) => a && b }
     }
   }
+}
+
+case class PasoSpecAnnotation(target: Named, )
+
+trait UntimedSpec extends RawModule {
+  annotate(new ChiselAnnotation with RunFirrtlTransform {
+    override def toFirrtl: Annotation =
+  })
 }
