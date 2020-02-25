@@ -132,7 +132,9 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val invs = new mutable.ArrayBuffer[IM => Unit]()
   def invariances(gen: IM => Unit): Unit = invs.append(gen)
 
-  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = Wire(Vec(m.length.toInt, m.t)).suggestName(m.pathName)
+  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = {
+    Wire(Vec(m.length.toInt, m.t)).suggestName(m.pathName.replace('.', '_'))
+  }
 
 
   val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
@@ -143,19 +145,12 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     w := DontCare
   }
 
-  def map[T <: Data](a: T, b: T) = {
-    val lhs = WireInit(a).suggestName("lhs")
-    val rhs = WireInit(b).suggestName("rhs")
-  }
-  def map[T <: Data](a: Vec[T], b: Mem[T]) = {
-    require(a.length == b.length)
-    val lhs = WireInit(a).suggestName("lhs")
-    val rhs = WireInit(memToVec(b)).suggestName("rhs")
-  }
-  def map[T <: Data](a: Mem[T], b: Vec[T]) = {
-    require(a.length == b.length)
-    val lhs = WireInit(memToVec(a)).suggestName("lhs")
-    val rhs = WireInit(b).suggestName("rhs")
+  implicit class comparableVec[T <: UInt](x: Vec[T]) {
+    def ===(y: Vec[T]): Bool = {
+      require(x.length > 0)
+      require(x.length == y.length)
+      x.zip(y).map{ case (a, b) => a === b}.reduceLeft[Bool]{ case (a,b) => a && b }
+    }
   }
 }
 
@@ -228,9 +223,9 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
   }
 
   mapping { (impl, spec) =>
-    map(spec.count, impl.cnt)
-    map(spec.read, impl.rdPtr)
-    map(spec.mem, impl.entries)
+    assert(spec.count === impl.cnt)
+    assert(spec.read === impl.rdPtr)
+    assert(spec.mem === impl.entries)
   }
 
   invariances { dut =>
