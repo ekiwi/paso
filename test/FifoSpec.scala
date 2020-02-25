@@ -311,5 +311,13 @@ class FifoSpec extends FlatSpec {
     println()
   }
 
+  println("Invariances:")
+  binding.invs.foreach { ii =>
+    val gen = {() => ii(impl.get)}
+    val mod = elaborateInContextOfModule(impl.get, gen)
+    val f = mod.modules.head.asInstanceOf[ir.Module].body
+    println(f.serialize)
+    println()
+  }
 
 }
