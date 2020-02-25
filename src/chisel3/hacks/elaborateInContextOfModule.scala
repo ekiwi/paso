@@ -33,5 +33,6 @@ abstract class ModuleDoubleAspect private[chisel3] (m0: RawModule, m1: RawModule
   Builder.addAspect(m1, this)
   override def circuitName: String = m0.toTarget.circuit
   override def desiredName: String = name
+  // TODO: make sure namespaces don't overlap and merge them to form a common namespace
   override val _namespace = m0._namespace
 }
