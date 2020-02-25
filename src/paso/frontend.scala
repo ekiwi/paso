@@ -4,8 +4,7 @@
 
 package paso
 import chisel3._
-import chisel3.experimental.{ChiselAnnotation, IO, RunFirrtlTransform, annotate}
-import firrtl.annotations.{Annotation, Named}
+import chisel3.experimental.IO
 
 import scala.collection.mutable
 
@@ -155,10 +154,17 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   }
 }
 
-case class PasoSpecAnnotation(target: Named, )
-
-trait UntimedSpec extends RawModule {
-  annotate(new ChiselAnnotation with RunFirrtlTransform {
-    override def toFirrtl: Annotation =
-  })
-}
+// TODO: inject spec finding through annotation
+//case class PasoSpecAnnotation[M <: RawModule](target: ModuleTarget, spec: M => BindingBase)
+//    extends SingleTargetAnnotation[ModuleTarget] {
+//  override def duplicate(n: ModuleTarget): Annotation = this.copy(target = n)
+//}
+//
+//// unfortunately only dotty (Scaly 3) supports trait parameters
+//trait HasSpec extends RawModule {
+//  val spec: BindingBase
+//  annotate(new ChiselAnnotation with RunFirrtlTransform {
+//    override def toFirrtl: Annotation = PasoSpecAnnotation(this.toNamed, spec)
+//    override def transformClass = classOf[]
+//  })
+//}

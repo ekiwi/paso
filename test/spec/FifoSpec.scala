@@ -38,7 +38,7 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
     read := read + 1.U
   }
 
-  val idle = fun("idle")() // TODO: closing brackets are unfortunatelly required for method to be registered for now :(
+  val idle = fun("idle")() // TODO: closing brackets are unfortunately required for method to be registered for now :(
 }
 
 class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Binding(impl, spec) {
@@ -105,70 +105,9 @@ class FifoSpec extends FlatSpec {
   val depth = 8
   val width = 8
 
-  // Driver.execute(Array("--compiler", "mverilog"), () => new CircularPointerFifo(32, 32))
-
-  def elaborate(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
-
-  def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
-    elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
-
-  var spec: Option[UntimedFifo[UInt]] = None
-  val main = elaborate { () =>
-    spec = Some(new UntimedFifo(depth = depth, dataType = UInt(width.W)))
-    spec.get
-  }
-
-  val methods = spec.get.methods.map { meth =>
-    val body = elaborateBody(spec.get, meth.body.generate)
-    val guard =  meth.guard.map(g => elaborateBody(spec.get, () => { val guard = g() }))
-    (meth.name, guard, body)
-  }
-
-  println(main.serialize)
-  methods.foreach{ case (name, guard, body) =>
-    println(s"Method $name")
-    guard.foreach{g => println(s"guard: ${g.serialize}")}
-    println(body.serialize)
-    println()}
-
-  var impl: Option[CircularPointerFifo] = None
-  val impl_fir = elaborate{() => impl = Some(new CircularPointerFifo(depth = depth, width = width) ); impl.get}
-
-  println("Implementation:")
-  println(impl_fir.serialize)
-
-  println()
-  println("Binding...")
-  val binding = new SpecBinding(impl.get, spec.get)
-
-  // try to elaborate thing in the binding
-  def elaborate_protocol(p: Protocol) = {
-    elaborate(() => new MultiIOModule() { p.generate() }).modules.head.asInstanceOf[ir.Module].body
-  }
-
-  binding.protos.foreach{ p =>
-    println(s"Protocol for: ${p.methodName}")
-    val ff = elaborate_protocol(p)
-    println(ff.serialize)
-    println()
-  }
-
-  println("Mapping:")
-  binding.maps.foreach { m =>
-    val gen = {() => m(impl.get, spec.get)}
-    val mod = elaborateInContextOfModule(impl.get, spec.get, "map", gen)
-    val f = mod.modules.head.asInstanceOf[ir.Module].body
-    println(f.serialize)
-    println()
-  }
-
-  println("Invariances:")
-  binding.invs.foreach { ii =>
-    val gen = {() => ii(impl.get)}
-    val mod = elaborateInContextOfModule(impl.get, gen)
-    val f = mod.modules.head.asInstanceOf[ir.Module].body
-    println(f.serialize)
-    println()
-  }
-
+  verify[CircularPointerFifo, UntimedFifo[UInt]](
+    new CircularPointerFifo(depth = depth, width = width),
+    new UntimedFifo(depth = depth, dataType = UInt(width.W)),
+    (impl, spec) => new SpecBinding(impl, spec)
+  )
 }
