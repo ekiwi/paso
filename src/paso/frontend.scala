@@ -4,7 +4,8 @@
 
 package paso
 import chisel3._
-import chisel3.experimental.IO
+import chisel3.experimental.{ChiselAnnotation, IO, annotate}
+import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 
 import scala.collection.mutable
 
@@ -116,6 +117,7 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   def assert(cond: => Bool): Unit = {
     val w = Wire(Bool()).suggestName("assert")
     w := cond
+    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
   }
 
 
@@ -142,7 +144,7 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
 
   def step(): Unit = {
     val w = Wire(Bool()).suggestName("step")
-    w := DontCare
+    annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
   }
 
   implicit class comparableVec[T <: UInt](x: Vec[T]) {
@@ -153,6 +155,15 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     }
   }
 }
+
+case class AssertAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
 
 // TODO: inject spec finding through annotation
 //case class PasoSpecAnnotation[M <: RawModule](target: ModuleTarget, spec: M => BindingBase)
