@@ -39,7 +39,6 @@
 package uclid
 package smt
 
-import lang.{Expr => langExpr}
 import scala.collection.mutable.{Set => MutableSet}
 import scala.collection.mutable.{Map => MutableMap}
 
@@ -408,8 +407,4 @@ object Context
   def foldOverExprs[T](init : T, f : ((T, Expr) => T), es : List[Expr]) : T = {
     es.foldLeft(init)((acc, e) => foldOverExpr(acc, f, e))
   }
-}
-
-abstract trait SynthesisContext {
-  def synthesizeInvariant(initExpr : Expr, initHavocs : List[(String, Type)], nextExpr: Expr, nextHavocs : List[(String, Type)], properties : List[smt.Expr], axioms : List[smt.Expr], ctx : lang.Scope, logic : String) : Option[langExpr]
 }
