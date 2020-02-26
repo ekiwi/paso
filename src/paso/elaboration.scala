@@ -77,7 +77,3 @@ object verify {
 
   }
 }
-
-
-// Internal Data Structures
-case class UntimedModel(name: String, state: Map[String, ???])
