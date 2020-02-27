@@ -6,15 +6,25 @@ package paso
 
 import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
-import firrtl.{ChirrtlForm, CircuitState, HighFirrtlCompiler, ir}
+import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlCompiler, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
+
+class CustomFirrtlCompiler extends Compiler {
+  val emitter = new HighFirrtlEmitter
+  def transforms: Seq[Transform] =
+    CompilerUtils.getLoweringTransforms(ChirrtlForm, HighForm) ++
+        Seq(new IRToWorkingIR, new ResolveAndCheck, new firrtl.transforms.DedupModules)
+}
 
 object verify {
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
     def toFirrtl(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
-    val highFirrtlCompiler = new HighFirrtlCompiler
-    def toHighFirrtl(c: ir.Circuit): ir.Circuit =
-      highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, Seq(), None), Seq()).circuit
+    val highFirrtlCompiler = new CustomFirrtlCompiler
+    def toHighFirrtl(c: ir.Circuit): ir.Circuit = {
+      val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, Seq(), None), Seq())
+      val st_no_bundles = passes.LowerTypes.execute(st)
+      st_no_bundles.circuit
+    }
 
     def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
       elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body

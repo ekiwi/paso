@@ -73,6 +73,10 @@ class FirrtlInterpreter extends SmtHelpers {
   // most important to customize
   def onReference(r: ir.Reference): smt.Expr = refs(r.name)
   def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
+  def onSubAccess(array: smt.Expr, index: ir.Expression): smt.Expr = {
+    val indexWidth = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
+    select(array, onExpr(index, indexWidth))
+  }
   def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
   def defWire(name: String, tpe: ir.Type): Unit = {
     require(!refs.contains(name))
@@ -98,17 +102,15 @@ class FirrtlInterpreter extends SmtHelpers {
   }
 
   def onExpr(e: ir.Expression): smt.Expr = e match {
-    case r: ir.Reference =>
-      onReference(r)
-    case r: ir.SubField =>
-      onSubfield(r)
-    case ir.SubIndex(expr, value, _) =>
-      select(onExpr(expr), value)
+    case r: ir.Reference => onReference(r)
+    case firrtl.WRef(name, tpe, _, _) => onReference(ir.Reference(name, tpe))
+    case r: ir.SubField => onSubfield(r)
+    case firrtl.WSubField(expr, name, tpe, _) => onSubfield(ir.SubField(expr, name, tpe))
+    case ir.SubIndex(expr, value, _) => select(onExpr(expr), value)
+    case firrtl.WSubIndex(expr, value, tpe, _) => select(onExpr(expr), value)
     // TODO: handle out of bounds accesses gracefully
-    case ir.SubAccess(expr, index, tpe) =>
-      val array = onExpr(expr)
-      val indexWidth = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
-      select(onExpr(expr), onExpr(index, indexWidth))
+    case ir.SubAccess(expr, index, tpe) => onSubAccess(onExpr(expr), index)
+    case firrtl.WSubAccess(expr, index, tpe, _) => onSubAccess(onExpr(expr), index)
     case ir.Mux(cond, tval, fval, _) =>
       val args = onExpr(tval, fval)
       ite(onExpr(cond, 1), args._1, args._2)
@@ -136,8 +138,11 @@ class FirrtlInterpreter extends SmtHelpers {
 
   private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
     case ir.Reference(name, tpe) => onConnect(name, onExpr(rhs, getWidth(tpe)))
+    case firrtl.WRef(name, tpe, _, _) => onConnect(name, onExpr(rhs, getWidth(tpe)))
     case sub : ir.SubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
     case sub : ir.SubIndex => onConnect(sub.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubIndex => onConnect(sub.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
     case other => throw new NotImplementedError(s"TODO: connect to $other")
   }
 
@@ -175,10 +180,10 @@ class FirrtlInterpreter extends SmtHelpers {
   def onPort(p: ir.Port): Unit = {
     if(isBundleType(p)) {
       val typ = p.tpe.asInstanceOf[ir.BundleType]
-      // TODO: support nested bundles
       typ.fields.foreach { ff =>
         println(s"TODO: $p $ff")
       }
+      throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
       if(isInput(p)) {
         refs(p.name) = smt.Symbol(p.name, onType(p.tpe))
