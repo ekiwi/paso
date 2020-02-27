@@ -1,8 +1,8 @@
 package paso
 
 import firrtl.ir
-import firrtl.ir.{SubField, SubIndex}
 import uclid.smt
+import scala.collection.mutable
 
 trait SmtHelpers {
   def app(op: smt.Operator, exprs: smt.Expr*) = smt.OperatorApplication(op, exprs.toList)
@@ -27,8 +27,12 @@ trait SmtHelpers {
   def ite(cond: smt.Expr, tru: smt.Expr, fals: smt.Expr): smt.Expr = app(smt.ITEOp, cond, tru, fals)
 }
 
+object FirrtlInterpreter {
+  def run(stmt: ir.Statement): Unit = new FirrtlInterpreter().onStmt(stmt)
+}
 
 class FirrtlInterpreter extends SmtHelpers {
+  val refs = mutable.HashMap[String, smt.Expr]()
 
   def getWidth(t: smt.Type): Int = t match {
     case smt.BitVectorType(w) => w
@@ -51,9 +55,18 @@ class FirrtlInterpreter extends SmtHelpers {
   def onType(t: ir.Type): smt.Type = ???
 
   // most important to customize
-  def onReference(r: ir.Reference): smt.Expr = smt.Symbol(r.name, onType(r.tpe))
-  def onSubfield(r: SubField): smt.Expr = smt.Symbol(r.serialize, onType(r.tpe))
+  def onReference(r: ir.Reference): smt.Expr = refs(r.name)
+  def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
   def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
+  def defWire(name: String, tpe: ir.Type): Unit = {
+    require(!refs.contains(name))
+    refs(name) = smt.Symbol(name, onType(tpe))
+  }
+  def defNode(name: String, value: smt.Expr): Unit = {
+    require(!refs.contains(name))
+    refs(name) = value
+  }
+  def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = ???
 
   // extends expression to width
   def onExpr(e: ir.Expression, width: Int): smt.Expr =
@@ -92,13 +105,50 @@ class FirrtlInterpreter extends SmtHelpers {
       smt.BitVectorLit(value, getWidth(width))
     case ir.DoPrim(op, args, consts, tpe) =>
       throw new NotImplementedError(s"TODO: DoPrim($op, $args, $consts, $tpe)")
-
-
-
     case _ : ir.FixedLiteral =>
       throw new NotImplementedError("TODO: fixed point support")
+    case other =>
+      throw new NotImplementedError(s"TODO: implement $other")
+  }
 
+  def onConnect(lhs: String, rhs: smt.Expr): Unit = {
+    println(s"$lhs := $rhs")
+  }
+  def onConnect(lhs: String, index: Int, rhs: smt.Expr): Unit = {
+    println(s"$lhs[$index] := $rhs")
+  }
 
+  private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
+    case ir.Reference(name, tpe) => onConnect(name, onExpr(rhs, getWidth(tpe)))
+    case sub : ir.SubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : ir.SubIndex => onConnect(sub.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
+    case other => throw new NotImplementedError(s"TODO: connect to $other")
+  }
+
+  def onStmt(s: ir.Statement): Unit = s match {
+    case ir.DefWire(_, name, tpe) =>
+      defWire(name, tpe)
+    case _ : ir.DefRegister =>
+      throw new NotImplementedError("TODO: handle registers")
+    case _ : ir.DefInstance =>
+      throw new NotImplementedError("TODO: handle instances")
+    case _: ir.DefMemory =>
+      throw new NotImplementedError("TODO: handle memories")
+    case ir.DefNode(_, name, value) =>
+      defNode(name, onExpr(value))
+    case ir.Conditionally(_, cond, tru, fals) =>
+      onWhen(onExpr(cond), tru, fals)
+    case ir.Block(stmts) =>
+      stmts.foreach(onStmt)
+    case _ : ir.PartialConnect =>
+      throw new RuntimeException("Partial connects are not supported!")
+    case ir.Connect(_, loc, expr) =>
+      onConnect(loc, expr)
+    case ir.IsInvalid(_, expr) =>
+      refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
+    case ir.EmptyStmt =>
+    case other =>
+      throw new RuntimeException(s"Unsupported statement: $other")
   }
 
 }

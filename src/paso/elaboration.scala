@@ -53,6 +53,7 @@ object verify {
     binding.protos.foreach{ p =>
       println(s"Protocol for: ${p.methodName}")
       val ff = elaborate_protocol(p)
+      // FirrtlInterpreter.run(ff)
       println(ff.serialize)
       println()
     }
