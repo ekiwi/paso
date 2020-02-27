@@ -78,26 +78,26 @@ trait Protocol {
 case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol {
   override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(IO(Output(ioType)).suggestName("io"))
+    impl(IO(Flipped(ioType)).suggestName("io"))
   }
 }
 case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol {
   override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(IO(Output(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"))
+    impl(IO(Flipped(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"))
     //impl(Input(ioType).suggestName("io"), Output(meth.inputType).suggestName("inputs"))
   }
 }
 case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol {
   override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(IO(Output(ioType)).suggestName("io"), IO(Output(meth.outputType)).suggestName("outputs"))
+    impl(IO(Flipped(ioType)).suggestName("io"), IO(Output(meth.outputType)).suggestName("outputs"))
   }
 }
 case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol {
   override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(IO(Output(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"),
+    impl(IO(Flipped(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"),
       IO(Output(meth.outputType)).suggestName("outputs"))
   }
 }
