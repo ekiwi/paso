@@ -16,7 +16,7 @@ trait ExpressionSemantics {
 }
 
 object BitUtils {
-  def makeMaskBig(w: Int): BigInt = ???
+  def makeMaskBig(w: Int): BigInt = (BigInt(1) << w) - BigInt(1)
 }
 
 trait TypeHelpers {

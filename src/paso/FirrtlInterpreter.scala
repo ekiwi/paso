@@ -8,6 +8,11 @@ import uclid.smt
 import scala.collection.mutable
 
 trait SmtHelpers {
+  def as_bv(e: smt.Expr): smt.Expr = e.typ match {
+    case smt.BoolType => ite(e, smt.BitVectorLit(1,1), smt.BitVectorLit(0,1))
+    case smt.BitVectorType(_) => e
+    case other => throw new RuntimeException(s"$other cannot be converted to a bitvector")
+  }
   def app(op: smt.Operator, exprs: smt.Expr*) = smt.OperatorApplication(op, exprs.toList)
   def select(array: smt.Expr, index: smt.Expr) = smt.ArraySelectOperation(array, List(index))
   def select(array: smt.Expr, index: BigInt) = {
@@ -19,14 +24,14 @@ trait SmtHelpers {
   }
   def store(array: smt.Expr, index: smt.Expr, value: smt.Expr) = smt.ArrayStoreOperation(array, List(index), value)
   def ext(expr: smt.Expr, width: Int, op: (Int, Int) => smt.Operator) = {
-    require(expr.typ.isBitVector)
-    val w = expr.typ.asInstanceOf[smt.BitVectorType].width
+    val bv_expr = as_bv(expr)
+    val w = bv_expr.typ.asInstanceOf[smt.BitVectorType].width
     val e = width - w
     require(e >= 0)
-    if(e == 0) expr else app(op(w, e), expr)
+    if(e == 0) expr else app(op(w, e), bv_expr)
   }
-  def zext(expr: smt.Expr, width: Int) = ext(expr, width, (w, e) => smt.BVZeroExtOp(w, e))
-  def sext(expr: smt.Expr, width: Int) = ext(expr, width, (w, e) => smt.BVSignExtOp(w, e))
+  def zext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVZeroExtOp(w, e))
+  def sext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVSignExtOp(w, e))
   def ite(cond: smt.Expr, tru: smt.Expr, fals: smt.Expr): smt.Expr = app(smt.ITEOp, cond, tru, fals)
 }
 
@@ -101,6 +106,11 @@ class FirrtlInterpreter extends SmtHelpers {
     else (zext(s1, width), zext(s2, width))
   }
 
+  private def onLiteral(value: BigInt, width: Int): smt.Expr = {
+    require(width > 0, "Zero width wires are not supported")
+    if(width == 1) smt.BooleanLit(value != 0) else smt.BitVectorLit(value, width)
+  }
+
   def onExpr(e: ir.Expression): smt.Expr = e match {
     case r: ir.Reference => onReference(r)
     case firrtl.WRef(name, tpe, _, _) => onReference(ir.Reference(name, tpe))
@@ -117,10 +127,12 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.ValidIf(cond, value, tpe) =>
       val sv = onExpr(value)
       ite(onExpr(cond, 1), sv, getInvalid(getWidth(sv.typ)))
-    case ir.UIntLiteral(value, width) =>
-      smt.BitVectorLit(value, getWidth(width))
-    case ir.SIntLiteral(value, width) =>
-      smt.BitVectorLit(value, getWidth(width))
+    case ir.UIntLiteral(value, width) => onLiteral(value, getWidth(width))
+    case ir.SIntLiteral(value, width) => onLiteral(value, getWidth(width))
+    case ir.DoPrim(op, Seq(a, b), Seq(), tpe) =>
+      BinOpCompiler.compile(op, a.tpe, b.tpe, tpe)._2(onExpr(a), onExpr(b))
+    case ir.DoPrim(op, Seq(a), consts, tpe) =>
+      UnOpCompiler.compile(op, a.tpe, tpe, consts)._2(onExpr(a))
     case ir.DoPrim(op, args, consts, tpe) =>
       throw new NotImplementedError(s"TODO: DoPrim($op, $args, $consts, $tpe)")
     case _ : ir.FixedLiteral =>
