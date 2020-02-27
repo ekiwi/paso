@@ -6,18 +6,21 @@ package paso
 
 import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
-import firrtl.ir
+import firrtl.{ChirrtlForm, CircuitState, HighFirrtlCompiler, ir}
 
 object verify {
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
-    def elaborate(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
+    def toFirrtl(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
+    val highFirrtlCompiler = new HighFirrtlCompiler
+    def toHighFirrtl(c: ir.Circuit): ir.Circuit =
+      highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, Seq(), None), Seq()).circuit
 
     def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
       elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
 
     var sp: Option[SM] = None
-    val main = elaborate { () =>
+    val main = toFirrtl { () =>
       sp = Some(spec)
       sp.get
     }
@@ -36,7 +39,7 @@ object verify {
       println()}
 
     var ip: Option[IM] = None
-    val impl_fir = elaborate{() => ip = Some(impl); ip.get}
+    val impl_fir = toFirrtl{() => ip = Some(impl); ip.get}
 
     println("Implementation:")
     println(impl_fir.serialize)
@@ -45,15 +48,11 @@ object verify {
     println("Binding...")
     val binding = bind(ip.get, sp.get)
 
-    // try to elaborate thing in the binding
-    def elaborate_protocol(p: Protocol) = {
-      elaborate(() => new MultiIOModule() { p.generate() }).modules.head.asInstanceOf[ir.Module].body
-    }
-
     binding.protos.foreach{ p =>
       println(s"Protocol for: ${p.methodName}")
-      val ff = elaborate_protocol(p)
-      // FirrtlInterpreter.run(ff)
+      val raw_firrtl = toFirrtl(() => new MultiIOModule() { p.generate() })
+      val ff = toHighFirrtl(raw_firrtl)
+      FirrtlInterpreter.run(ff.modules.head.asInstanceOf[ir.Module])
       println(ff.serialize)
       println()
     }

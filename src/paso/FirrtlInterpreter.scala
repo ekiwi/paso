@@ -1,7 +1,10 @@
 package paso
 
+import chisel3.util.log2Ceil
 import firrtl.ir
+import firrtl.ir.BundleType
 import uclid.smt
+
 import scala.collection.mutable
 
 trait SmtHelpers {
@@ -29,6 +32,7 @@ trait SmtHelpers {
 
 object FirrtlInterpreter {
   def run(stmt: ir.Statement): Unit = new FirrtlInterpreter().onStmt(stmt)
+  def run(m: ir.Module): Unit = new FirrtlInterpreter().onModule(m)
 }
 
 class FirrtlInterpreter extends SmtHelpers {
@@ -52,7 +56,19 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.SIntType(_) => true
     case _ => false
   }
-  def onType(t: ir.Type): smt.Type = ???
+  private def getBitVecType(width: BigInt): smt.Type = {
+    require(width > 0, "Zero width wires are not supported")
+    if(width == 1) smt.BoolType else smt.BitVectorType(width.toInt)
+  }
+
+  def onType(t: ir.Type): smt.Type = t match {
+    case ir.UIntType(ir.IntWidth(w)) => getBitVecType(w)
+    case ir.SIntType(ir.IntWidth(w)) => getBitVecType(w)
+    case ir.ResetType => smt.BoolType
+    case ir.ClockType => smt.BoolType
+    case ir.VectorType(tpe, size) => smt.ArrayType(List(getBitVecType(log2Ceil(size))), onType(tpe))
+    case other => throw new NotImplementedError(s"TODO: implement conversion for $other")
+  }
 
   // most important to customize
   def onReference(r: ir.Reference): smt.Expr = refs(r.name)
@@ -151,4 +167,27 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new RuntimeException(s"Unsupported statement: $other")
   }
 
+  private def isInput(p: ir.Port) = p.direction match {
+    case ir.Input => true case ir.Output => false
+  }
+  private def isBundleType(p: ir.Port) = p.tpe.isInstanceOf[ir.BundleType]
+
+  def onPort(p: ir.Port): Unit = {
+    if(isBundleType(p)) {
+      val typ = p.tpe.asInstanceOf[ir.BundleType]
+      // TODO: support nested bundles
+      typ.fields.foreach { ff =>
+        println(s"TODO: $p $ff")
+      }
+    } else {
+      if(isInput(p)) {
+        refs(p.name) = smt.Symbol(p.name, onType(p.tpe))
+      } else { /* ignoring outputs */}
+    }
+  }
+
+  def onModule(m: ir.Module): Unit = {
+    m.ports.foreach(onPort)
+    onStmt(m.body)
+  }
 }
