@@ -197,9 +197,7 @@ class FirrtlInterpreter extends SmtHelpers {
       }
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
-      if(isInput(p)) {
-        refs(p.name) = smt.Symbol(p.name, onType(p.tpe))
-      } else { /* ignoring outputs */}
+      refs(p.name) = smt.Symbol(p.name, onType(p.tpe))
     }
   }
 
