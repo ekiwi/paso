@@ -48,6 +48,9 @@ class FirrtlInterpreter extends SmtHelpers {
   val refs = mutable.HashMap[String, smt.Expr]()
   val inputs = mutable.HashMap[String, smt.Type]()
   val outputs = mutable.HashMap[String, smt.Type]()
+  val regs = mutable.HashMap[String, smt.Type]()
+  val mems = mutable.HashMap[String, smt.Type]()
+  val wires = mutable.HashMap[String, smt.Type]()
 
   def isInput(name: String): Boolean = inputs.contains(name)
   def isInput(sym: smt.Symbol): Boolean = inputs.get(sym.id).exists(_ == sym.typ)
@@ -97,10 +100,15 @@ class FirrtlInterpreter extends SmtHelpers {
     select(array, onExpr(index, indexWidth))
   }
   def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
-  def defWire(name: String, tpe: ir.Type): Unit = {
+  private def defX(name: String, tpe: smt.Type, registry: mutable.HashMap[String, smt.Type]): Unit = {
     require(!refs.contains(name))
-    refs(name) = smt.Symbol(name, onType(tpe))
+    refs(name) = smt.Symbol(name, tpe)
+    registry(name) = tpe
   }
+  def defWire(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), wires)
+  def defReg(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), regs)
+  def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
+    defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
   def defNode(name: String, value: smt.Expr): Unit = {
     require(!refs.contains(name))
     refs(name) = value
@@ -178,14 +186,11 @@ class FirrtlInterpreter extends SmtHelpers {
   }
 
   def onStmt(s: ir.Statement): Unit = s match {
-    case ir.DefWire(_, name, tpe) =>
-      defWire(name, tpe)
-    case _ : ir.DefRegister =>
-      throw new NotImplementedError("TODO: handle registers")
+    case ir.DefWire(_, name, tpe) => defWire(name, tpe)
+    case ir.DefRegister(_, name, tpe, _, _, _) => defReg(name, tpe)
     case _ : ir.DefInstance =>
       throw new NotImplementedError("TODO: handle instances")
-    case _: ir.DefMemory =>
-      throw new NotImplementedError("TODO: handle memories")
+    case ir.DefMemory(_, name, tpe, depth, _,  _, _,_,_,_) => defMem(name, tpe, depth)
     case ir.DefNode(_, name, value) =>
       defNode(name, onExpr(value))
     case ir.Conditionally(_, cond, tru, fals) =>
