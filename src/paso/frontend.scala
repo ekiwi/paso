@@ -127,7 +127,9 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
       x := value
     }
     def expect(value: T): Unit = {
-      assert(x === value)
+      val w = Wire(Bool()).suggestName("expect")
+      w := x === value
+      annotate(new ChiselAnnotation { override def toFirrtl = ExpectAnnotation(w.toTarget) })
     }
   }
 
@@ -157,6 +159,10 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
 }
 
 case class AssertAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ExpectAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 

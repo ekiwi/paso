@@ -14,15 +14,20 @@ trait SmtHelpers {
     case other => throw new RuntimeException(s"$other cannot be converted to a bitvector")
   }
   def app(op: smt.Operator, exprs: smt.Expr*) = smt.OperatorApplication(op, exprs.toList)
-  def select(array: smt.Expr, index: smt.Expr) = smt.ArraySelectOperation(array, List(index))
-  def select(array: smt.Expr, index: BigInt) = {
+  def arrayIndexBits(array: smt.Expr): Int = {
     require(array.typ.isArray)
     require(array.typ.asInstanceOf[smt.ArrayType].inTypes.length == 1)
     require(array.typ.asInstanceOf[smt.ArrayType].inTypes.head.isBitVector)
-    val width = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
-    smt.ArraySelectOperation(array, List(smt.BitVectorLit(index, width)))
+    array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
+  }
+  def select(array: smt.Expr, index: smt.Expr) = smt.ArraySelectOperation(array, List(index))
+  def select(array: smt.Expr, index: BigInt) = {
+    smt.ArraySelectOperation(array, List(smt.BitVectorLit(index, arrayIndexBits(array))))
   }
   def store(array: smt.Expr, index: smt.Expr, value: smt.Expr) = smt.ArrayStoreOperation(array, List(index), value)
+  def store(array: smt.Expr, index: BigInt, value: smt.Expr) = {
+    smt.ArrayStoreOperation(array, List(smt.BitVectorLit(index, arrayIndexBits(array))), value)
+  }
   def ext(expr: smt.Expr, width: Int, op: (Int, Int) => smt.Operator) = {
     val bv_expr = as_bv(expr)
     val w = bv_expr.typ.asInstanceOf[smt.BitVectorType].width
@@ -42,6 +47,16 @@ object FirrtlInterpreter {
 
 class FirrtlInterpreter extends SmtHelpers {
   val refs = mutable.HashMap[String, smt.Expr]()
+  val inputs = mutable.HashMap[String, smt.Type]()
+  val outputs = mutable.HashMap[String, smt.Type]()
+
+  def isInput(name: String): Boolean = inputs.contains(name)
+  def isInput(sym: smt.Symbol): Boolean = inputs.get(sym.id).exists(_ == sym.typ)
+  def isInput(e: smt.Expr): Boolean = e match { case s: smt.Symbol => isInput(s) case _ => false }
+  def isOutput(name: String): Boolean = outputs.contains(name)
+  def isOutput(sym: smt.Symbol): Boolean = outputs.get(sym.id).exists(_ == sym.typ)
+  def isOutput(e: smt.Expr): Boolean = e match { case s: smt.Symbol => isOutput(s) case _ => false }
+  def isIO(name: String): Boolean = isInput(name) || isOutput(name)
 
   def getWidth(t: smt.Type): Int = t match {
     case smt.BitVectorType(w) => w
@@ -142,10 +157,15 @@ class FirrtlInterpreter extends SmtHelpers {
   }
 
   def onConnect(lhs: String, rhs: smt.Expr): Unit = {
-    println(s"$lhs := $rhs")
+    if(!isIO(lhs)) {
+      refs(lhs) = rhs
+    }
   }
   def onConnect(lhs: String, index: Int, rhs: smt.Expr): Unit = {
     println(s"$lhs[$index] := $rhs")
+    if(!isIO(lhs)) {
+      refs(lhs) = store(refs(lhs), index, rhs)
+    }
   }
 
   private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
@@ -197,7 +217,9 @@ class FirrtlInterpreter extends SmtHelpers {
       }
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
-      refs(p.name) = smt.Symbol(p.name, onType(p.tpe))
+      val tpe = onType(p.tpe)
+      refs(p.name) = smt.Symbol(p.name, tpe)
+      if(isInput(p)) inputs(p.name) = tpe else outputs(p.name) = tpe
     }
   }
 

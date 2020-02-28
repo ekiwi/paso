@@ -6,8 +6,12 @@ package paso
 
 import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
+import firrtl.annotations.Annotation
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlCompiler, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
+import firrtl.ir
+import uclid.smt
 
+/** essentially a HighFirrtlCompiler + ToWorkingIR */
 class CustomFirrtlCompiler extends Compiler {
   val emitter = new HighFirrtlEmitter
   def transforms: Seq[Transform] =
@@ -15,10 +19,46 @@ class CustomFirrtlCompiler extends Compiler {
         Seq(new IRToWorkingIR, new ResolveAndCheck, new firrtl.transforms.DedupModules)
 }
 
+object FirrtlProtocolInterpreter {
+  def run(circuit: ir.Circuit, annos: Seq[Annotation]): Unit = new FirrtlProtocolInterpreter(circuit, annos, new ProtocolInterpreter).run()
+}
+
+/** protocols built on a custom extension of firrtl */
+class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends FirrtlInterpreter {
+  require(circuit.modules.length == 1)
+  require(circuit.modules.head.isInstanceOf[ir.Module])
+  val mod = circuit.modules.head.asInstanceOf[ir.Module]
+  val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
+  val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
+
+  def run(): Unit = onModule(mod)
+
+  override def defWire(name: String, tpe: ir.Type): Unit = {
+    if(steps.contains(name)) { interpreter.onStep() }
+    super.defWire(name, tpe)
+  }
+
+  override def onConnect(name: String, expr: smt.Expr): Unit = {
+    if(expects.contains(name)) expr match {
+      case smt.OperatorApplication(smt.EqualityOp, List(lhs, rhs)) =>
+        assert(isInput(lhs))
+        interpreter.onExpect(lhs, rhs)
+      case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
+    } else if(isInput(smt.Symbol(name, expr.typ))) {
+      interpreter.onSet(smt.Symbol(name, expr.typ), expr)
+    }
+    super.onConnect(name, expr)
+  }
+}
+
 object verify {
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
-    def toFirrtl(gen: () => RawModule): ir.Circuit = Driver.toFirrtl(Driver.elaborate(gen))
+    def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
+      val chiselCircuit = Driver.elaborate(gen)
+      val annos = chiselCircuit.annotations.map(_.toFirrtl)
+      (Driver.toFirrtl(chiselCircuit), annos)
+    }
     val highFirrtlCompiler = new CustomFirrtlCompiler
     def toHighFirrtl(c: ir.Circuit): ir.Circuit = {
       val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, Seq(), None), Seq())
@@ -30,7 +70,7 @@ object verify {
       elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
 
     var sp: Option[SM] = None
-    val main = toFirrtl { () =>
+    val (main, _) = toFirrtl { () =>
       sp = Some(spec)
       sp.get
     }
@@ -52,7 +92,7 @@ object verify {
     val impl_fir = toFirrtl{() => ip = Some(impl); ip.get}
 
     println("Implementation:")
-    println(impl_fir.serialize)
+    println(impl_fir._1.serialize)
 
     println()
     println("Binding...")
@@ -60,11 +100,11 @@ object verify {
 
     binding.protos.foreach{ p =>
       println(s"Protocol for: ${p.methodName}")
-      val raw_firrtl = toFirrtl(() => new MultiIOModule() { p.generate() })
+      val (raw_firrtl, annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
       val ff = toHighFirrtl(raw_firrtl)
-      FirrtlInterpreter.run(ff.modules.head.asInstanceOf[ir.Module])
-      println(ff.serialize)
-      println()
+      FirrtlProtocolInterpreter.run(ff, annos)
+      //println(ff.serialize)
+      //println()
     }
 
     println("Mapping:")
