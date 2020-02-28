@@ -54,6 +54,9 @@ class ProtocolInterpreter {
       case smt.BitVectorLit(value, width) =>
         println("Constant Mapping")
         true
+      case smt.BooleanLit(value) =>
+        println("Constant Mapping")
+        true
       case other => throw new RuntimeException(s"Unexpected rhs expression: $other")
     }
 

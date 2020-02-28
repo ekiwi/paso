@@ -20,7 +20,12 @@ class CustomFirrtlCompiler extends Compiler {
 }
 
 object FirrtlProtocolInterpreter {
-  def run(circuit: ir.Circuit, annos: Seq[Annotation]): Unit = new FirrtlProtocolInterpreter(circuit, annos, new ProtocolInterpreter).run()
+  def run(circuit: ir.Circuit, annos: Seq[Annotation]): Unit ={
+    val int = new ProtocolInterpreter
+    new FirrtlProtocolInterpreter(circuit, annos, int).run()
+    val graph = int.getGraph
+    println(graph)
+  }
 }
 
 /** protocols built on a custom extension of firrtl */
@@ -44,8 +49,8 @@ class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], int
         assert(isInput(lhs))
         interpreter.onExpect(lhs, rhs)
       case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
-    } else if(isInput(smt.Symbol(name, expr.typ))) {
-      interpreter.onSet(smt.Symbol(name, expr.typ), expr)
+    } else if(name.startsWith("io_") && isOutput(name)) {
+      interpreter.onSet(smt.Symbol(name, outputs(name)), expr)
     }
     super.onConnect(name, expr)
   }
