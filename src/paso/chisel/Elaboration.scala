@@ -116,6 +116,7 @@ object Elaboration {
     println("Mapping:")
     binding.maps.foreach { m =>
       val gen = {() => m(ip.get, sp.get)}
+      println()
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
       val f = mod.modules.head.asInstanceOf[ir.Module].body
       println(f.serialize)

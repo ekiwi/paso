@@ -23,14 +23,25 @@ object elaborateInContextOfModule {
         case x: RawModule => gen()
       }
     }))
-    val pp = prefixNames(chiselIR)
-    Aspect.getFirrtl(chiselIR)
+    val pp = prefixNames(Set(ctx0.name, ctx1.name)).run(chiselIR)
+    Aspect.getFirrtl(pp)
   }
 }
 
-object prefixNames {
+/** Replace nodes with absolute references if the element parent is part of {prefixes} */
+case class prefixNames(prefixes: Set[String]) {
+  case class FakeId(name: String) extends chisel3.internal.HasId {
+    override def toNamed = ???
+    override def toTarget = ???
+    override def toAbsoluteTarget = ???
+    override def getRef: Arg = Ref(name)
+  }
+
   private def onNode(node: Node): Node = {
-    node
+    val pathName = node.id.pathName
+    val parentPathName = node.id.parentPathName
+    if(prefixes.contains(parentPathName)) Node(FakeId(pathName))
+    else node
   }
   private def onArg(arg: Arg): Arg = arg match {
     case n : Node => onNode(n)
@@ -48,7 +59,7 @@ object prefixNames {
     case other => other
   }
 
-  def apply(c: Circuit): Circuit = {
+  def run(c: Circuit): Circuit = {
     c.copy(components = c.components.map(onComponent))
   }
 }
