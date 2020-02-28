@@ -81,6 +81,9 @@ object Elaboration {
       sp.get
     }
 
+    val spec_state = FindState(main).run()
+    spec_state.foreach(println)
+
     val methods = sp.get.methods.map { meth =>
       val body = elaborateBody(sp.get, meth.body.generate)
       val guard =  meth.guard.map(g => elaborateBody(sp.get, () => { val guard = g() }))
@@ -99,6 +102,9 @@ object Elaboration {
 
     println("Implementation:")
     println(impl_fir._1.serialize)
+
+    val impl_state = FindState(impl_fir._1).run()
+    impl_state.foreach(println)
 
     println()
     println("Binding...")

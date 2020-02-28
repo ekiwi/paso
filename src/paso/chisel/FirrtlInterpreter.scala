@@ -48,6 +48,25 @@ object FirrtlInterpreter {
   def run(m: ir.Module): Unit = new FirrtlInterpreter().onModule(m)
 }
 
+object firrtlToSmtType {
+  private def getBitVecType(width: BigInt): smt.Type = {
+    require(width > 0, "Zero width wires are not supported")
+    if(width == 1) smt.BoolType else smt.BitVectorType(width.toInt)
+  }
+  def apply(t: ir.Type): smt.Type = t match {
+    case ir.UIntType(ir.IntWidth(w)) => getBitVecType(w)
+    case ir.SIntType(ir.IntWidth(w)) => getBitVecType(w)
+    case ir.ResetType => smt.BoolType
+    case ir.ClockType => smt.BoolType
+    case ir.VectorType(tpe, size) => smt.ArrayType(List(getBitVecType(log2Ceil(size))), apply(tpe))
+    case other => throw new NotImplementedError(s"TODO: implement conversion for $other")
+  }
+  def apply(dataType: ir.Type, depth: BigInt): smt.Type = {
+    val indexType = smt.BitVectorType(log2Ceil(depth))
+    smt.ArrayType(List(indexType), apply(dataType))
+  }
+}
+
 class FirrtlInterpreter extends SmtHelpers {
   val refs = mutable.HashMap[String, smt.Expr]()
   val inputs = mutable.HashMap[String, smt.Type]()
@@ -82,19 +101,8 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.SIntType(_) => true
     case _ => false
   }
-  private def getBitVecType(width: BigInt): smt.Type = {
-    require(width > 0, "Zero width wires are not supported")
-    if(width == 1) smt.BoolType else smt.BitVectorType(width.toInt)
-  }
 
-  def onType(t: ir.Type): smt.Type = t match {
-    case ir.UIntType(ir.IntWidth(w)) => getBitVecType(w)
-    case ir.SIntType(ir.IntWidth(w)) => getBitVecType(w)
-    case ir.ResetType => smt.BoolType
-    case ir.ClockType => smt.BoolType
-    case ir.VectorType(tpe, size) => smt.ArrayType(List(getBitVecType(log2Ceil(size))), onType(tpe))
-    case other => throw new NotImplementedError(s"TODO: implement conversion for $other")
-  }
+  def onType(t: ir.Type): smt.Type = firrtlToSmtType(t)
 
   // most important to customize
   def onReference(r: ir.Reference): smt.Expr = refs(r.name)
