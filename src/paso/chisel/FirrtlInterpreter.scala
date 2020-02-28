@@ -1,8 +1,7 @@
-package paso
+package paso.chisel
 
 import chisel3.util.log2Ceil
 import firrtl.ir
-import firrtl.ir.BundleType
 import uclid.smt
 
 import scala.collection.mutable

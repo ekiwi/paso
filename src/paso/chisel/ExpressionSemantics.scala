@@ -3,10 +3,10 @@
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
 
-package paso
+package paso.chisel
 
-import firrtl.ir._
 import firrtl.PrimOps._
+import firrtl.ir._
 import uclid.smt
 
 trait ExpressionSemantics {

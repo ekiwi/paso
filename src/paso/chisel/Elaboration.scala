@@ -2,13 +2,14 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso
+package paso.chisel
 
 import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
-import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlCompiler, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import firrtl.ir
+import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
+import paso.verification.ProtocolInterpreter
+import paso.{Binding, ExpectAnnotation, StepAnnotation, UntimedModule}
 import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -56,7 +57,7 @@ class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], int
   }
 }
 
-object verify {
+object Elaboration {
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
     def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {

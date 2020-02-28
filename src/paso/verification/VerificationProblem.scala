@@ -5,8 +5,11 @@
 // contains data structures used for verification
 // mostly language neutral (aka Chisel independent)
 
-package paso
+package paso.verification
+
+import paso.UntimedModule
 import uclid.smt
+
 import scala.collection.mutable
 
 // case class UntimedModel(name: String, state: Map[String, ???])
