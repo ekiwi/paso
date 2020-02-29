@@ -7,7 +7,7 @@ import chisel3.internal.firrtl._
 
 /** exposes some of the InjectingAspect magic for people who do not want the resulting firrtl to be appended to the parent module  **/
 object elaborateInContextOfModule {
-  def apply(ctx: RawModule, gen: () => Unit): firrtl.ir.Circuit = {
+  def apply(ctx: RawModule, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annnotation]) = {
     val (chiselIR, _) = Builder.build(Module(new ModuleAspect(ctx) {
       ctx match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }

@@ -5,8 +5,12 @@
 package paso.chisel
 
 import chisel3.util.log2Ceil
+import firrtl.annotations.Annotation
 import firrtl.ir
+import paso.{AssertAnnotation, ExpectAnnotation, MemToVecAnnotation, StepAnnotation}
+import paso.verification.ProtocolInterpreter
 import uclid.smt
+import uclid.smt.Expr
 
 import scala.collection.mutable
 
@@ -242,5 +246,25 @@ class FirrtlInterpreter extends SmtHelpers {
   def onModule(m: ir.Module): Unit = {
     m.ports.foreach(onPort)
     onStmt(m.body)
+  }
+}
+
+/** FirrtlInterpreter with some protocol specific extensions */
+class PasoFirrtlInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends FirrtlInterpreter {
+  require(circuit.modules.length == 1)
+  require(circuit.modules.head.isInstanceOf[ir.Module])
+  val mod = circuit.modules.head.asInstanceOf[ir.Module]
+  val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
+  val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
+  private val asserts = annos.collect{ case AssertAnnotation(target) => target.ref }.toSet
+  private val vecAsMem = annos.collect{ case MemToVecAnnotation(vec, mem) => vec.ref -> mem.ref }.toMap
+
+  def run(): Unit = onModule(mod)
+
+  def onAssert(expr: Expr): Unit = {}
+
+  override def onConnect(lhs: String, rhs: Expr): Unit = {
+    if(asserts.contains(lhs)) onAssert(rhs)
+    super.onConnect(lhs, rhs)
   }
 }

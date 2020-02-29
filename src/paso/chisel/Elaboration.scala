@@ -8,9 +8,7 @@ import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import paso.verification.ProtocolInterpreter
-import paso.{Binding, ExpectAnnotation, StepAnnotation, UntimedModule}
-import uclid.smt
+import paso.{Binding, UntimedModule}
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
 class CustomFirrtlCompiler extends Compiler {
@@ -18,43 +16,6 @@ class CustomFirrtlCompiler extends Compiler {
   def transforms: Seq[Transform] =
     CompilerUtils.getLoweringTransforms(ChirrtlForm, HighForm) ++
         Seq(new IRToWorkingIR, new ResolveAndCheck, new firrtl.transforms.DedupModules)
-}
-
-object FirrtlProtocolInterpreter {
-  def run(circuit: ir.Circuit, annos: Seq[Annotation]): Unit ={
-    val int = new ProtocolInterpreter
-    new FirrtlProtocolInterpreter(circuit, annos, int).run()
-    val graph = int.getGraph
-    println(graph)
-  }
-}
-
-/** protocols built on a custom extension of firrtl */
-class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends FirrtlInterpreter {
-  require(circuit.modules.length == 1)
-  require(circuit.modules.head.isInstanceOf[ir.Module])
-  val mod = circuit.modules.head.asInstanceOf[ir.Module]
-  val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
-  val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
-
-  def run(): Unit = onModule(mod)
-
-  override def defWire(name: String, tpe: ir.Type): Unit = {
-    if(steps.contains(name)) { interpreter.onStep() }
-    super.defWire(name, tpe)
-  }
-
-  override def onConnect(name: String, expr: smt.Expr): Unit = {
-    if(expects.contains(name)) expr match {
-      case smt.OperatorApplication(smt.EqualityOp, List(lhs, rhs)) =>
-        assert(isInput(lhs))
-        interpreter.onExpect(lhs, rhs)
-      case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
-    } else if(name.startsWith("io_") && isOutput(name)) {
-      interpreter.onSet(smt.Symbol(name, outputs(name)), expr)
-    }
-    super.onConnect(name, expr)
-  }
 }
 
 object Elaboration {
@@ -134,6 +95,9 @@ object Elaboration {
       val gen = {() => ii(ip.get)}
       val mod = elaborateInContextOfModule(ip.get, gen)
       val f = mod.modules.head.asInstanceOf[ir.Module].body
+
+      new FirrtlInvarianceInterpreter()
+
       println(f.serialize)
       println()
     }
