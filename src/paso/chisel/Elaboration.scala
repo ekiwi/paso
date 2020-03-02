@@ -20,6 +20,7 @@ class CustomFirrtlCompiler extends Compiler {
 }
 
 object Elaboration {
+
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
     def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
@@ -30,6 +31,7 @@ object Elaboration {
     val highFirrtlCompiler = new CustomFirrtlCompiler
     def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
       val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+      // TODO: we would like to lower bundles but not vecs ....
       val st_no_bundles = passes.LowerTypes.execute(st)
       (st_no_bundles.circuit, st_no_bundles.annotations)
     }
@@ -69,7 +71,11 @@ object Elaboration {
     println(impl_fir.serialize)
 
     val impl_state = FindState(impl_fir).run()
-    impl_state.foreach(println)
+    val impl_model = FirrtlToFormal(impl_fir, impl_anno)
+    // cross check states:
+    impl_state.foreach { case (name, tpe) =>
+      assert(impl_model.states.exists(_.sym.id == name), s"State $name : $tpe is missing from the formal model!")
+    }
 
     println()
     println("Binding...")
