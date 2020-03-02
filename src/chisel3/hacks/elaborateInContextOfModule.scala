@@ -31,21 +31,34 @@ object elaborateInContextOfModule {
 
 /** Replace nodes with absolute references if the element parent is part of {prefixes} */
 case class prefixNames(prefixes: Set[String]) {
-  case class FakeId(name: String) extends chisel3.internal.HasId {
+  case class FakeId(ref: Arg) extends chisel3.internal.HasId {
     override def toNamed = ???
     override def toTarget = ???
     override def toAbsoluteTarget = ???
-    override def getRef: Arg = Ref(name)
+    override def getRef: Arg = ref
   }
 
   private def onNode(node: Node): Node = {
-    val pathName = node.id.pathName
-    val parentPathName = node.id.parentPathName
-    if(prefixes.contains(parentPathName)) Node(FakeId(pathName))
-    else node
+    val new_ref: Arg = node.id.getRef match {
+      case a: Slot => onArg(a)
+      case a: Index => onArg(a)
+      case r: Ref =>
+        val pathName = node.id.pathName
+        val parentPathName = node.id.parentPathName
+        if (prefixes.contains(parentPathName)) {
+          Ref(pathName)
+        } else {
+          r
+        }
+    }
+    Node(FakeId(new_ref))
   }
+
   private def onArg(arg: Arg): Arg = arg match {
-    case n : Node => onNode(n)
+    case a : Node => onNode(a)
+    case a : Slot  => a.copy(imm=onNode(a.imm))
+    case a : Index => a.copy(imm=onArg(a.imm))
+    case a : ModuleIO => throw new NotImplementedError(s"TODO: $a")
     case other => other
   }
 

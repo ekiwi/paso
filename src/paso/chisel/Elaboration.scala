@@ -43,6 +43,7 @@ object Elaboration {
       sp.get
     }
 
+    val spec_name = main.main
     val spec_state = FindState(main).run()
     spec_state.foreach(println)
 
@@ -84,12 +85,25 @@ object Elaboration {
     }
 
     println("Mapping:")
+    val map_ports = impl_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, impl_name + "." + name, ir.Input, tpe)
+    } ++ spec_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, spec_name + "." + name, ir.Input, tpe)
+    }
+    val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
+
     binding.maps.foreach { m =>
       val gen = {() => m(ip.get, sp.get)}
       println()
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
-      val f = mod._1.modules.head.asInstanceOf[ir.Module].body
-      println(f.serialize)
+      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
+      val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
+
+      println(c.serialize)
+
+      val elaborated = toHighFirrtl(c, mod._2)
+      val mappings = new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
+      mappings.foreach(println)
       println()
     }
 
