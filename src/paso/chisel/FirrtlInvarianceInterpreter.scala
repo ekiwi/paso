@@ -14,9 +14,7 @@ case class Assertion(guard: smt.Expr, pred: smt.Expr)
 
 class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) {
   val asserts = mutable.ArrayBuffer[Assertion]()
-  private val tru = smt.BooleanLit(true)
-
   override def onAssert(expr: smt.Expr): Unit = {
-    asserts.append(Assertion(tru, expr))
+    asserts.append(Assertion(pathCondition, expr))
   }
 }

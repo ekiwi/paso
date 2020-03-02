@@ -7,6 +7,7 @@ package paso.chisel
 import chisel3._
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
+import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
 import paso.{Binding, UntimedModule}
 
@@ -27,10 +28,10 @@ object Elaboration {
       (Driver.toFirrtl(chiselCircuit), annos)
     }
     val highFirrtlCompiler = new CustomFirrtlCompiler
-    def toHighFirrtl(c: ir.Circuit): ir.Circuit = {
-      val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, Seq(), None), Seq())
+    def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
+      val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
       val st_no_bundles = passes.LowerTypes.execute(st)
-      st_no_bundles.circuit
+      (st_no_bundles.circuit, st_no_bundles.annotations)
     }
 
     def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
@@ -59,12 +60,14 @@ object Elaboration {
       println()}
 
     var ip: Option[IM] = None
-    val impl_fir = toFirrtl{() => ip = Some(impl); ip.get}
+    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
+    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
+    val impl_name = impl_fir.main
 
     println("Implementation:")
-    println(impl_fir._1.serialize)
+    println(impl_fir.serialize)
 
-    val impl_state = FindState(impl_fir._1).run()
+    val impl_state = FindState(impl_fir).run()
     impl_state.foreach(println)
 
     println()
@@ -73,8 +76,8 @@ object Elaboration {
 
     binding.protos.foreach{ p =>
       println(s"Protocol for: ${p.methodName}")
-      val (raw_firrtl, annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
-      val ff = toHighFirrtl(raw_firrtl)
+      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
+      val (ff, annos) = toHighFirrtl(raw_firrtl, raw_annos)
       FirrtlProtocolInterpreter.run(ff, annos)
       //println(ff.serialize)
       //println()
@@ -91,12 +94,19 @@ object Elaboration {
     }
 
     println("Invariances:")
+    val inv_ports = impl_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, name, ir.Input, tpe)
+    }
+    val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
+
+
     binding.invs.foreach { ii =>
       val gen = {() => ii(ip.get)}
       val mod = elaborateInContextOfModule(ip.get, gen)
-
-      val invariances = new FirrtlInvarianceInterpreter(mod._1, mod._2).run().asserts
-
+      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
+      val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
+      val elaborated = toHighFirrtl(c, mod._2)
+      val invariances = new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
       invariances.foreach(println)
       println()
     }

@@ -15,8 +15,12 @@ import uclid.smt.Expr
 import scala.collection.mutable
 
 trait SmtHelpers {
+  def bool_to_bv(b: smt.Expr): smt.Expr = b match {
+    case smt.BooleanLit(value) => smt.BitVectorLit(if(value) 1 else 0, 1)
+    case other => ite(other, smt.BitVectorLit(1,1), smt.BitVectorLit(0,1))
+  }
   def as_bv(e: smt.Expr): smt.Expr = e.typ match {
-    case smt.BoolType => ite(e, smt.BitVectorLit(1,1), smt.BitVectorLit(0,1))
+    case smt.BoolType => bool_to_bv(e)
     case smt.BitVectorType(_) => e
     case other => throw new RuntimeException(s"$other cannot be converted to a bitvector")
   }
@@ -78,6 +82,8 @@ class FirrtlInterpreter extends SmtHelpers {
   val regs = mutable.HashMap[String, smt.Type]()
   val mems = mutable.HashMap[String, smt.Type]()
   val wires = mutable.HashMap[String, smt.Type]()
+  private val cond_stack = mutable.Stack[smt.Expr]()
+  def pathCondition: smt.Expr = cond_stack.foldLeft[smt.Expr](smt.BooleanLit(true))((a,b) => app(smt.ConjunctionOp, a, b))
 
   def isInput(name: String): Boolean = inputs.contains(name)
   def isInput(sym: smt.Symbol): Boolean = inputs.get(sym.id).exists(_ == sym.typ)
@@ -129,7 +135,14 @@ class FirrtlInterpreter extends SmtHelpers {
     require(!refs.contains(name))
     refs(name) = value
   }
-  def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = ???
+  def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
+    cond_stack.push(cond)
+    onStmt(tru)
+    cond_stack.pop()
+    cond_stack.push(app(smt.NegationOp, cond))
+    onStmt(fals)
+    cond_stack.pop()
+  }
 
   // extends expression to width
   def onExpr(e: ir.Expression, width: Int): smt.Expr =
