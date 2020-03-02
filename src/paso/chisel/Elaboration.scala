@@ -34,7 +34,7 @@ object Elaboration {
     }
 
     def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
-      elaborateInContextOfModule(m, gen).modules.head.asInstanceOf[ir.Module].body
+      elaborateInContextOfModule(m, gen)._1.modules.head.asInstanceOf[ir.Module].body
 
     var sp: Option[SM] = None
     val (main, _) = toFirrtl { () =>
@@ -85,7 +85,7 @@ object Elaboration {
       val gen = {() => m(ip.get, sp.get)}
       println()
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
-      val f = mod.modules.head.asInstanceOf[ir.Module].body
+      val f = mod._1.modules.head.asInstanceOf[ir.Module].body
       println(f.serialize)
       println()
     }
@@ -94,11 +94,10 @@ object Elaboration {
     binding.invs.foreach { ii =>
       val gen = {() => ii(ip.get)}
       val mod = elaborateInContextOfModule(ip.get, gen)
-      val f = mod.modules.head.asInstanceOf[ir.Module].body
 
-      new FirrtlInvarianceInterpreter()
+      val invariances = new FirrtlInvarianceInterpreter(mod._1, mod._2).run().asserts
 
-      println(f.serialize)
+      invariances.foreach(println)
       println()
     }
 

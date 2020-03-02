@@ -259,7 +259,7 @@ class PasoFirrtlInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends
   private val asserts = annos.collect{ case AssertAnnotation(target) => target.ref }.toSet
   private val vecAsMem = annos.collect{ case MemToVecAnnotation(vec, mem) => vec.ref -> mem.ref }.toMap
 
-  def run(): Unit = onModule(mod)
+  def run(): this.type = { onModule(mod) ; this }
 
   def onAssert(expr: Expr): Unit = {}
 
