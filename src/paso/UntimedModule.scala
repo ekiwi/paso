@@ -4,9 +4,23 @@
 
 package paso
 import chisel3._
+import chisel3.experimental.{ChiselAnnotation, annotate}
+import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
+
 import scala.collection.mutable
 
-case class MethodGenerator(name: String, guard: Option[() => Bool], body: MethodBody)
+case class MethodGenerator(name: String, guard: Option[() => Bool], body: MethodBody) {
+  def generate(): Unit = {
+    val guard_cond = guard.map(_()).getOrElse(true.B)
+    annotate(new ChiselAnnotation { override def toFirrtl = GuardAnnotation(guard_cond.toTarget) })
+    guard_cond.suggestName("guard")
+    body.generate()
+  }
+}
+
+case class GuardAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
 
 // TODO: rename to something more sensible
 case class NMethod(gen: MethodGenerator)

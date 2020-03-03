@@ -62,15 +62,13 @@ object Elaboration {
     val spec_state = FindState(main).run()
 
     val methods = sp.get.methods.map { meth =>
-      val body = elaborateBody(sp.get, meth.body.generate)
-      val guard =  meth.guard.map(g => elaborateBody(sp.get, () => { val guard = g() }))
-      (meth.name, guard, body)
+      val body = elaborateBody(sp.get, meth.generate)
+      (meth.name, body)
     }
 
     println(main.serialize)
-    methods.foreach{ case (name, guard, body) =>
+    methods.foreach{ case (name, body) =>
       println(s"Method $name")
-      guard.foreach{g => println(s"guard: ${g.serialize}")}
       println(body.serialize)
       println()}
 
