@@ -28,6 +28,10 @@ object Elaboration {
   private val highFirrtlCompiler = new CustomFirrtlCompiler
   private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
     val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+    (st.circuit, st.annotations)
+  }
+  private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
+    val st = CircuitState(tup._1, ChirrtlForm, tup._2, None)
     // TODO: we would like to lower bundles but not vecs ....
     val st_no_bundles = passes.LowerTypes.execute(st)
     (st_no_bundles.circuit, st_no_bundles.annotations)
@@ -35,6 +39,8 @@ object Elaboration {
   private def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
     elaborateInContextOfModule(m, gen)._1.modules.head.asInstanceOf[ir.Module].body
 
+
+  private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
 
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
@@ -61,20 +67,34 @@ object Elaboration {
     val spec_name = main.main
     val spec_state = FindState(main).run()
 
+    val spec_module = getMain(main)
     val methods = sp.get.methods.map { meth =>
       val (raw_firrtl, raw_annos) = elaborateInContextOfModule(sp.get, meth.generate)
-      println(raw_firrtl.serialize)
 
-      val body = elaborateBody(sp.get, meth.generate)
-      (meth.name, body)
+      // build module for this method:
+      val method_body = getMain(raw_firrtl).body
+      val comb_body = ir.Block(Seq(spec_module.body, method_body))
+      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(body=comb_body)), spec_name)
+
+
+      println(comb_c.serialize)
+
+      val (ff, annos) = toHighFirrtl(comb_c, raw_annos)
+
+      println(meth.name)
+      println(ff.serialize)
+
+
+      //val body = elaborateBody(sp.get, meth.generate)
+      //(meth.name, body)
     }
 
-    println(main.serialize)
-    methods.foreach{ case (name, body) =>
-      println(s"Method $name")
-      println(body.serialize)
-      println()
-    }
+//    println(main.serialize)
+//    methods.foreach{ case (name, body) =>
+//      println(s"Method $name")
+//      println(body.serialize)
+//      println()
+//    }
 
 
     println()
@@ -84,7 +104,7 @@ object Elaboration {
     binding.protos.foreach{ p =>
       println(s"Protocol for: ${p.methodName}")
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
-      val (ff, annos) = toHighFirrtl(raw_firrtl, raw_annos)
+      val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
       FirrtlProtocolInterpreter.run(ff, annos)
     }
 
@@ -101,7 +121,7 @@ object Elaboration {
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
-      val elaborated = toHighFirrtl(c, mod._2)
+      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
     mappings.foreach(println)
@@ -119,7 +139,7 @@ object Elaboration {
       val mod = elaborateInContextOfModule(ip.get, gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
-      val elaborated = toHighFirrtl(c, mod._2)
+      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
     invariances.foreach(println)
