@@ -76,7 +76,7 @@ object firrtlToSmtType {
 }
 
 class FirrtlInterpreter extends SmtHelpers {
-  val nodes = mutable.HashMap[String, smt.Expr]()
+  val refs = mutable.HashMap[String, smt.Expr]()
   val connections = mutable.HashMap[String, Seq[(smt.Expr, smt.Expr)]]()
   val inputs = mutable.HashMap[String, smt.Type]()
   val outputs = mutable.HashMap[String, smt.Type]()
@@ -116,19 +116,16 @@ class FirrtlInterpreter extends SmtHelpers {
   def onType(t: ir.Type): smt.Type = firrtlToSmtType(t)
 
   // most important to customize
-  def onReference(r: ir.Reference): smt.Expr = {
-    nodes.getOrElse(r.name, regs.get(r.name).map(smt.Symbol(r.name, _)).get)
-  }
-  def onSubfield(r: ir.SubField): smt.Expr = {
-    nodes.getOrElse(r.serialize, regs.get(r.serialize).map(smt.Symbol(r.serialize, _)).get)
-  }
+  def onReference(r: ir.Reference): smt.Expr = refs(r.name)
+  def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
   def onSubAccess(array: smt.Expr, index: ir.Expression): smt.Expr = {
     val indexWidth = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
     select(array, onExpr(index, indexWidth))
   }
   def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
   private def defX(name: String, tpe: smt.Type, registry: mutable.HashMap[String, smt.Type]): Unit = {
-    require(!nodes.contains(name) && !connections.contains(name))
+    require(!refs.contains(name))
+    refs(name) = smt.Symbol(name, tpe)
     connections(name) = Seq()
     registry(name) = tpe
   }
@@ -137,8 +134,8 @@ class FirrtlInterpreter extends SmtHelpers {
   def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
     defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
   def defNode(name: String, value: smt.Expr): Unit = {
-    require(!nodes.contains(name) && !connections.contains(name))
-    nodes(name) = value
+    require(!refs.contains(name))
+    refs(name) = value
   }
   def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
     cond_stack.push(cond)
@@ -267,7 +264,7 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
       val tpe = onType(p.tpe)
-      //refs(p.name) = smt.Symbol(p.name, tpe)
+      refs(p.name) = smt.Symbol(p.name, tpe)
       if(isInput(p)) inputs(p.name) = tpe else outputs(p.name) = tpe
     }
   }
