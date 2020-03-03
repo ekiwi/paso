@@ -12,7 +12,7 @@ import uclid.smt
 
 import scala.collection.mutable
 
-case class MethodSemantics(guard: smt.Expr, updates: Map[String, smt.Expr], outputs: Map[String, smt.Expr])
+case class MethodSemantics(guard: smt.Expr, updates: Map[String, smt.Expr], outputs: Map[String, smt.Expr], inputs: Map[String, smt.Type])
 
 class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) {
   private val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref }.toSet
@@ -32,15 +32,9 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     val updates = (regs ++ mems).map { case (name, tpe) =>
       name -> stateUpdates.getOrElse(name, smt.Symbol(name, tpe))
     }.toMap
-    MethodSemantics(guard=guard, updates = updates, outputs = outputExpr.toMap)
-  }
-
-  override def onReference(r: Reference): smt.Expr = {
-    val ret = super.onReference(r)
-    if(methodInputs.contains(r.name)) {
-      // TODO: deal with bundles...
-      smt.Symbol("inputs", ret.typ)
-    } else { ret }
+    // find input types
+    val ins = methodInputs.map { ii => ii -> wires(ii)}.toMap
+    MethodSemantics(guard=guard, updates = updates, outputs = outputExpr.toMap, inputs = ins)
   }
 
   override def onAssign(name: String, expr: smt.Expr): Unit = {
