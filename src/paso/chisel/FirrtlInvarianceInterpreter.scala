@@ -6,6 +6,7 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
+import paso.MemToVecAnnotation
 import uclid.smt
 
 import scala.collection.mutable
@@ -13,6 +14,7 @@ import scala.collection.mutable
 case class Assertion(guard: smt.Expr, pred: smt.Expr)
 
 class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) {
+  private val vecAsMem = annos.collect{ case MemToVecAnnotation(vec, mem) => vec.ref -> mem.ref }.toMap
   val asserts = mutable.ArrayBuffer[Assertion]()
 
   def makeAsserts(guard: smt.Expr, pred: smt.Expr): Seq[Assertion] = pred match {

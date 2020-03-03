@@ -267,10 +267,7 @@ class PasoFirrtlInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends
   require(circuit.modules.length == 1)
   require(circuit.modules.head.isInstanceOf[ir.Module])
   val mod = circuit.modules.head.asInstanceOf[ir.Module]
-  val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
-  val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
   private val asserts = annos.collect{ case AssertAnnotation(target) => target.ref }.toSet
-  private val vecAsMem = annos.collect{ case MemToVecAnnotation(vec, mem) => vec.ref -> mem.ref }.toMap
 
   def run(): this.type = { onModule(mod) ; this }
 

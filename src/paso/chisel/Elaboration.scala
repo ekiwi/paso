@@ -60,7 +60,6 @@ object Elaboration {
 
     val spec_name = main.main
     val spec_state = FindState(main).run()
-    spec_state.foreach(println)
 
     val methods = sp.get.methods.map { meth =>
       val body = elaborateBody(sp.get, meth.body.generate)

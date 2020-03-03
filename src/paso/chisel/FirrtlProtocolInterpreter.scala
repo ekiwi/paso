@@ -21,6 +21,9 @@ object FirrtlProtocolInterpreter {
 
 /** protocols built on a custom extension of firrtl */
 class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends PasoFirrtlInterpreter(circuit, annos) {
+  private val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
+  private val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
+
   override def defWire(name: String, tpe: ir.Type): Unit = {
     if(steps.contains(name)) { interpreter.onStep() }
     super.defWire(name, tpe)
