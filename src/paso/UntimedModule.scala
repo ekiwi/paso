@@ -11,10 +11,10 @@ import scala.collection.mutable
 
 case class MethodGenerator(name: String, guard: Option[() => Bool], body: MethodBody) {
   def generate(): Unit = {
+    body.generate()
     val guard_cond = guard.map(_()).getOrElse(true.B)
     annotate(new ChiselAnnotation { override def toFirrtl = GuardAnnotation(guard_cond.toTarget) })
     guard_cond.suggestName("guard")
-    body.generate()
   }
 }
 

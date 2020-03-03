@@ -62,6 +62,9 @@ object Elaboration {
     val spec_state = FindState(main).run()
 
     val methods = sp.get.methods.map { meth =>
+      val (raw_firrtl, raw_annos) = elaborateInContextOfModule(sp.get, meth.generate)
+      println(raw_firrtl.serialize)
+
       val body = elaborateBody(sp.get, meth.generate)
       (meth.name, body)
     }
@@ -70,7 +73,8 @@ object Elaboration {
     methods.foreach{ case (name, body) =>
       println(s"Method $name")
       println(body.serialize)
-      println()}
+      println()
+    }
 
 
     println()
@@ -82,8 +86,6 @@ object Elaboration {
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
       val (ff, annos) = toHighFirrtl(raw_firrtl, raw_annos)
       FirrtlProtocolInterpreter.run(ff, annos)
-      //println(ff.serialize)
-      //println()
     }
 
     println("Mapping:")
@@ -94,21 +96,17 @@ object Elaboration {
     }
     val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
 
-    binding.maps.foreach { m =>
+    val mappings: Seq[Assertion] = binding.maps.flatMap { m =>
       val gen = {() => m(ip.get, sp.get)}
-      println()
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
-
-      println(c.serialize)
-
       val elaborated = toHighFirrtl(c, mod._2)
-      val mappings = new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
-      mappings.foreach(println)
-      println()
+      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
+    mappings.foreach(println)
 
+    println()
     println("Invariances:")
     val inv_ports = impl_state.map { case (name, tpe) =>
       ir.Port(NoInfo, name, ir.Input, tpe)
@@ -116,16 +114,15 @@ object Elaboration {
     val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
 
 
-    binding.invs.foreach { ii =>
+    val invariances: Seq[Assertion] = binding.invs.flatMap { ii =>
       val gen = {() => ii(ip.get)}
       val mod = elaborateInContextOfModule(ip.get, gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
       val elaborated = toHighFirrtl(c, mod._2)
-      val invariances = new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
-      invariances.foreach(println)
-      println()
+      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
+    invariances.foreach(println)
 
   }
 }
