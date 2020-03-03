@@ -17,9 +17,11 @@ class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) e
   private val vecAsMem = annos.collect{ case MemToVecAnnotation(vec, mem) => vec.ref -> mem.ref }.toMap
   val asserts = mutable.ArrayBuffer[Assertion]()
 
+  private def simp(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
+
   def makeAsserts(guard: smt.Expr, pred: smt.Expr): Seq[Assertion] = pred match {
     case smt.OperatorApplication(smt.ConjunctionOp, List(a,b)) => makeAsserts(guard, a) ++ makeAsserts(guard, b)
-    case other => Seq(Assertion(guard, other))
+    case other => Seq(Assertion(simp(guard), simp(other)))
   }
 
   override def onAssert(expr: smt.Expr): Unit = {
