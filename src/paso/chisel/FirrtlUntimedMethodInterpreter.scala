@@ -15,9 +15,9 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
   assert(guards.size == 1, "Exactly one guard expected")
   private var guard: smt.Expr = smt.BooleanLit(true)
 
-  override def onConnect(name: String, expr: smt.Expr): Unit = {
-    if(guards.contains(name)) { guard = expr }
-    println(s"$name <= $expr")
-    super.onConnect(name, expr)
+  override def onAssign(name: String, expr: smt.Expr): Unit = {
+    val simp_expr = SMTSimplifier.simplify(expr)
+    if(guards.contains(name)) { guard = simp_expr }
+    println(s"$name <= $simp_expr")
   }
 }

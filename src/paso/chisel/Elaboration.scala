@@ -77,12 +77,12 @@ object Elaboration {
       val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(body=comb_body)), spec_name)
 
 
-      println(comb_c.serialize)
+      //println(comb_c.serialize)
 
       val (ff, annos) = toHighFirrtl(comb_c, raw_annos)
 
       println(meth.name)
-      println(ff.serialize)
+      //println(ff.serialize)
 
 
       val interpreter = new FirrtlUntimedMethodInterpreter(ff, annos).run()

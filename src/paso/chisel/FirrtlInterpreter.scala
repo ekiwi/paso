@@ -116,6 +116,7 @@ class FirrtlInterpreter extends SmtHelpers {
   def onType(t: ir.Type): smt.Type = firrtlToSmtType(t)
 
   // most important to customize
+  def onAssign(name: String, expr: smt.Expr): Unit = {}
   def onReference(r: ir.Reference): smt.Expr = refs(r.name)
   def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
   def onSubAccess(array: smt.Expr, index: ir.Expression): smt.Expr = {
@@ -134,6 +135,7 @@ class FirrtlInterpreter extends SmtHelpers {
   def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
     defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
   def defNode(name: String, value: smt.Expr): Unit = {
+    onAssign(name, value)
     require(!refs.contains(name))
     refs(name) = value
   }
@@ -195,21 +197,24 @@ class FirrtlInterpreter extends SmtHelpers {
   }
 
   def onConnect(lhs: String, rhs: smt.Expr): Unit = {
+    onAssign(lhs, rhs)
     if(!isIO(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, rhs))
     }
   }
   def onConnect(lhs: String, index: Int, rhs: smt.Expr): Unit = {
     //println(s"$lhs[$index] := $rhs")
+    val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+    onAssign(lhs, st)
     if(!isIO(lhs)) {
-      val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
   def onConnect(lhs: String, index: smt.Expr, rhs: smt.Expr): Unit = {
     //println(s"$lhs[$index] := $rhs")
+    val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+    onAssign(lhs, st)
     if(!isIO(lhs)) {
-      val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
