@@ -85,6 +85,9 @@ object Elaboration {
       println(ff.serialize)
 
 
+      val interpreter = new FirrtlUntimedMethodInterpreter(ff, annos).run()
+
+      println()
       //val body = elaborateBody(sp.get, meth.generate)
       //(meth.name, body)
     }

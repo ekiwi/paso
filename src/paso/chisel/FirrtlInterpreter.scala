@@ -76,7 +76,8 @@ object firrtlToSmtType {
 }
 
 class FirrtlInterpreter extends SmtHelpers {
-  val refs = mutable.HashMap[String, smt.Expr]()
+  val nodes = mutable.HashMap[String, smt.Expr]()
+  val connections = mutable.HashMap[String, Seq[(smt.Expr, smt.Expr)]]()
   val inputs = mutable.HashMap[String, smt.Type]()
   val outputs = mutable.HashMap[String, smt.Type]()
   val regs = mutable.HashMap[String, smt.Type]()
@@ -115,16 +116,20 @@ class FirrtlInterpreter extends SmtHelpers {
   def onType(t: ir.Type): smt.Type = firrtlToSmtType(t)
 
   // most important to customize
-  def onReference(r: ir.Reference): smt.Expr = refs(r.name)
-  def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
+  def onReference(r: ir.Reference): smt.Expr = {
+    nodes.getOrElse(r.name, regs.get(r.name).map(smt.Symbol(r.name, _)).get)
+  }
+  def onSubfield(r: ir.SubField): smt.Expr = {
+    nodes.getOrElse(r.serialize, regs.get(r.serialize).map(smt.Symbol(r.serialize, _)).get)
+  }
   def onSubAccess(array: smt.Expr, index: ir.Expression): smt.Expr = {
     val indexWidth = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
     select(array, onExpr(index, indexWidth))
   }
   def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
   private def defX(name: String, tpe: smt.Type, registry: mutable.HashMap[String, smt.Type]): Unit = {
-    require(!refs.contains(name))
-    refs(name) = smt.Symbol(name, tpe)
+    require(!nodes.contains(name) && !connections.contains(name))
+    connections(name) = Seq()
     registry(name) = tpe
   }
   def defWire(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), wires)
@@ -132,8 +137,8 @@ class FirrtlInterpreter extends SmtHelpers {
   def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
     defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
   def defNode(name: String, value: smt.Expr): Unit = {
-    require(!refs.contains(name))
-    refs(name) = value
+    require(!nodes.contains(name) && !connections.contains(name))
+    nodes(name) = value
   }
   def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
     cond_stack.push(cond)
@@ -194,23 +199,33 @@ class FirrtlInterpreter extends SmtHelpers {
 
   def onConnect(lhs: String, rhs: smt.Expr): Unit = {
     if(!isIO(lhs)) {
-      refs(lhs) = rhs
+      connections(lhs) = connections(lhs) ++ Seq((pathCondition, rhs))
     }
   }
   def onConnect(lhs: String, index: Int, rhs: smt.Expr): Unit = {
-    println(s"$lhs[$index] := $rhs")
+    //println(s"$lhs[$index] := $rhs")
     if(!isIO(lhs)) {
-      refs(lhs) = store(refs(lhs), index, rhs)
+      val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+      connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
+    }
+  }
+  def onConnect(lhs: String, index: smt.Expr, rhs: smt.Expr): Unit = {
+    //println(s"$lhs[$index] := $rhs")
+    if(!isIO(lhs)) {
+      val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+      connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
 
   private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
     case ir.Reference(name, tpe) => onConnect(name, onExpr(rhs, getWidth(tpe)))
     case firrtl.WRef(name, tpe, _, _) => onConnect(name, onExpr(rhs, getWidth(tpe)))
-    case sub : ir.SubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : ir.SubIndex => onConnect(sub.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubIndex => onConnect(sub.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : ir.SubField => onConnect(sub.expr.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubField => onConnect(sub.expr.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : ir.SubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : ir.SubAccess => onConnect(sub.expr.serialize, onExpr(sub.index), onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubAccess => onConnect(sub.expr.serialize, onExpr(sub.index), onExpr(rhs, getWidth(sub.tpe)))
     case other => throw new NotImplementedError(s"TODO: connect to $other")
   }
 
@@ -231,7 +246,8 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.Connect(_, loc, expr) =>
       onConnect(loc, expr)
     case ir.IsInvalid(_, expr) =>
-      refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
+      throw new RuntimeException("TODO: deal with invalids")
+      //refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
     case ir.EmptyStmt =>
     case other =>
       throw new RuntimeException(s"Unsupported statement: $other")
@@ -251,7 +267,7 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
       val tpe = onType(p.tpe)
-      refs(p.name) = smt.Symbol(p.name, tpe)
+      //refs(p.name) = smt.Symbol(p.name, tpe)
       if(isInput(p)) inputs(p.name) = tpe else outputs(p.name) = tpe
     }
   }
