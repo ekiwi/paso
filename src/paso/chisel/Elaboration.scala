@@ -20,25 +20,38 @@ class CustomFirrtlCompiler extends Compiler {
 }
 
 object Elaboration {
+  private def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
+    val chiselCircuit = Driver.elaborate(gen)
+    val annos = chiselCircuit.annotations.map(_.toFirrtl)
+    (Driver.toFirrtl(chiselCircuit), annos)
+  }
+  private val highFirrtlCompiler = new CustomFirrtlCompiler
+  private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
+    val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+    // TODO: we would like to lower bundles but not vecs ....
+    val st_no_bundles = passes.LowerTypes.execute(st)
+    (st_no_bundles.circuit, st_no_bundles.annotations)
+  }
+  private def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
+    elaborateInContextOfModule(m, gen)._1.modules.head.asInstanceOf[ir.Module].body
+
 
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
 
-    def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
-      val chiselCircuit = Driver.elaborate(gen)
-      val annos = chiselCircuit.annotations.map(_.toFirrtl)
-      (Driver.toFirrtl(chiselCircuit), annos)
-    }
-    val highFirrtlCompiler = new CustomFirrtlCompiler
-    def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
-      val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
-      // TODO: we would like to lower bundles but not vecs ....
-      val st_no_bundles = passes.LowerTypes.execute(st)
-      (st_no_bundles.circuit, st_no_bundles.annotations)
+    println("Implementation:")
+    var ip: Option[IM] = None
+    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
+    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
+    val impl_name = impl_fir.main
+    val impl_state = FindState(impl_fir).run()
+    val impl_model = FirrtlToFormal(impl_fir, impl_anno)
+    // cross check states:
+    impl_state.foreach { case (name, tpe) =>
+      assert(impl_model.states.exists(_.sym.id == name), s"State $name : $tpe is missing from the formal model!")
     }
 
-    def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
-      elaborateInContextOfModule(m, gen)._1.modules.head.asInstanceOf[ir.Module].body
-
+    println()
+    println("Untimed Model:")
     var sp: Option[SM] = None
     val (main, _) = toFirrtl { () =>
       sp = Some(spec)
@@ -62,20 +75,6 @@ object Elaboration {
       println(body.serialize)
       println()}
 
-    var ip: Option[IM] = None
-    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
-    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
-    val impl_name = impl_fir.main
-
-    println("Implementation:")
-    println(impl_fir.serialize)
-
-    val impl_state = FindState(impl_fir).run()
-    val impl_model = FirrtlToFormal(impl_fir, impl_anno)
-    // cross check states:
-    impl_state.foreach { case (name, tpe) =>
-      assert(impl_model.states.exists(_.sym.id == name), s"State $name : $tpe is missing from the formal model!")
-    }
 
     println()
     println("Binding...")
