@@ -9,6 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
+import paso.verification.UntimedModel
 import paso.{Binding, UntimedModule}
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -76,30 +77,14 @@ object Elaboration {
       val comb_body = ir.Block(Seq(spec_module.body, method_body))
       val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(body=comb_body)), spec_name)
 
-
-      //println(comb_c.serialize)
-
       val (ff, annos) = toHighFirrtl(comb_c, raw_annos)
-
-      println(meth.name)
-      //println(ff.serialize)
-
-
       val semantics = new FirrtlUntimedMethodInterpreter(ff, annos).run().getSemantics
+      meth.name -> semantics
+    }.toMap
 
-      println(semantics)
-      println()
-      //val body = elaborateBody(sp.get, meth.generate)
-      //(meth.name, body)
-    }
-
-//    println(main.serialize)
-//    methods.foreach{ case (name, body) =>
-//      println(s"Method $name")
-//      println(body.serialize)
-//      println()
-//    }
-
+    val spec_smt_state = spec_state.map{ case (name, tpe) => name -> firrtlToSmtType(tpe)}.toMap
+    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
+    println(untimed_model)
 
     println()
     println("Binding...")

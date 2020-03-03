@@ -132,12 +132,6 @@ case class InputEdge(I: Seq[smt.Expr] = Seq(), A: Seq[smt.Expr] = Seq(), next: O
 case class OutputEdge(O: Seq[smt.Expr] = Seq(), R: Seq[smt.Expr] = Seq(), next: Option[PendingInputNode] = None)
 
 
-
-case class UntimedMethod(name: String, inputs: Map[String,smt.Type], outputs: Map[String,smt.Type],
-                         guard: smt.Expr, sem: Map[String, smt.Expr])
-case class UntimedModel(name: String, methods: Seq[UntimedMethod], state: Seq[smt.Symbol])
-//case class Protocol()
-
 case class VerificationProblem(
   impl: smt.SymbolicTransitionSystem,
   untimed: UntimedModule,

@@ -6,13 +6,11 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
-import firrtl.ir.Reference
+import paso.verification.MethodSemantics
 import paso.{GuardAnnotation, MethodIOAnnotation}
 import uclid.smt
 
 import scala.collection.mutable
-
-case class MethodSemantics(guard: smt.Expr, updates: Map[String, smt.Expr], outputs: Map[String, smt.Expr], inputs: Map[String, smt.Type])
 
 class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) {
   private val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref }.toSet
