@@ -105,7 +105,7 @@ object Elaboration {
     }
     val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
 
-    val mappings: Seq[Assertion] = binding.maps.flatMap { m =>
+    val mappings = binding.maps.flatMap { m =>
       val gen = {() => m(ip.get, sp.get)}
       val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
@@ -123,7 +123,7 @@ object Elaboration {
     val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
 
 
-    val invariances: Seq[Assertion] = binding.invs.flatMap { ii =>
+    val invariances = binding.invs.flatMap { ii =>
       val gen = {() => ii(ip.get)}
       val mod = elaborateInContextOfModule(ip.get, gen)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body

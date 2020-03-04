@@ -22,32 +22,32 @@ class ProtocolInterpreter {
 
   def getGraph: PendingInputNode = _init.toImmutable
 
+  private def isConstantNotIOSymbol(rhs: smt.Expr): Boolean = rhs match {
+    case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) => false
+    case smt.Symbol(name, typ) => false
+    case smt.BitVectorLit(value, width) => true
+    case smt.BooleanLit(value) => true
+    case other => throw new RuntimeException(s"Unexpected rhs expression: $other")
+  }
 
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = {
     require(inInputPhase, "A step is required before sending inputs.")
     val iPhase = phase.asInstanceOf[InputPhase]
-
-    val I_not_A = rhs match {
-      case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) => false
-      case smt.Symbol(name, typ) => false
-      case smt.BitVectorLit(value, width) => true
-      case smt.BooleanLit(value) => true
-      case other => throw new RuntimeException(s"Unexpected rhs expression: $other")
-    }
-
+    val I_not_A = isConstantNotIOSymbol(rhs)
     if(I_not_A) iPhase.edges.foreach{_.I.append(eq(lhs, rhs))}
     else        iPhase.edges.foreach{_.A.append(eq(lhs, rhs))}
   }
 
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = {
-    finishInputPhase()
-
-
+    val oPhase = finishInputPhase()
+    val O_not_R = isConstantNotIOSymbol(rhs)
+    if(O_not_R) oPhase.edges.foreach{_.O.append(eq(lhs, rhs))}
+    else        oPhase.edges.foreach{_.R.append(eq(lhs, rhs))}
   }
 
-  private def finishInputPhase(): Unit = {
-    phase match {
+  private def finishInputPhase(): OutputPhase = {
+    val new_phase  = phase match {
       case InputPhase(edges) =>
         // finish input phase
         val out_edges = edges.map { in =>
@@ -56,11 +56,13 @@ class ProtocolInterpreter {
           in.next = Some(state)
           state.next.head
         }
-        phase = OutputPhase(out_edges)
-      case OutputPhase(_) => None
+        OutputPhase(out_edges)
+      case o : OutputPhase => o
     }
+    phase = new_phase
     // after finishing the input phase we are always in a output phase
     assert(inOutputPhase)
+    new_phase
   }
 
   def onStep(): Unit = {
