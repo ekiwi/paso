@@ -9,10 +9,12 @@ import scala.collection.mutable
 
 class ProtocolInterpreter {
   private trait Phase {}
+  private case class IdlePhase(states: Seq[MPendingInputNode]) extends Phase
   private case class InputPhase(edges: Seq[MInputEdge]) extends Phase
   private case class OutputPhase(edges: Seq[MOutputEdge]) extends Phase
-  private val _init = MPendingInputNode(mutable.ArrayBuffer(MInputEdge()))
-  private var phase: Phase = InputPhase(Seq(_init.next.head))
+  private val _init = MPendingInputNode(mutable.ArrayBuffer())
+  private var phase: Phase = IdlePhase(Seq(_init))
+  private def inIdlePhase: Boolean = phase.isInstanceOf[IdlePhase]
   private def inInputPhase: Boolean = phase.isInstanceOf[InputPhase]
   private def inOutputPhase: Boolean = phase.isInstanceOf[OutputPhase]
   private def eq(a: smt.Expr, b: smt.Expr): smt.Expr = smt.OperatorApplication(smt.EqualityOp, List(a,b))
@@ -20,7 +22,7 @@ class ProtocolInterpreter {
   private val mappedBits = mutable.HashMap[String, BigInt]()
   //private def isNewMapping() // TODO
 
-  def getGraph: PendingInputNode = _init.toImmutable
+  def getGraph(method: String): PendingInputNode = _init.toImmutable(method)
 
   private def isMapping(name: String, hi: Int, lo: Int): Boolean = {
     val oldMap : BigInt = mappedBits.getOrElse(name, 0)
@@ -46,8 +48,7 @@ class ProtocolInterpreter {
 
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = {
-    require(inInputPhase, "A step is required before sending inputs.")
-    val iPhase = phase.asInstanceOf[InputPhase]
+    val iPhase = enterInputPhase()
     val I_not_A = isConstraintNotMapping(rhs)
     if(I_not_A) iPhase.edges.foreach{_.I.append(eq(lhs, rhs))}
     else        iPhase.edges.foreach{_.A.append(eq(lhs, rhs))}
@@ -79,22 +80,39 @@ class ProtocolInterpreter {
     new_phase
   }
 
+  private def enterInputPhase(): InputPhase = {
+    val new_phase = phase match {
+      case IdlePhase(states) =>
+        val edges = states.map { st => st.next.append(MInputEdge()) ; st.next.head }
+        InputPhase(edges)
+      case in : InputPhase => in
+      case OutputPhase(_) => throw new RuntimeException("A step is required before sending inputs.")
+    }
+    phase = new_phase
+    // after finishing the input phase we are always in a output phase
+    assert(inInputPhase)
+    new_phase
+  }
+
   def onStep(): Unit = {
     phase match {
+      case IdlePhase(_) =>
+        enterInputPhase()
+        onStep()
       case InputPhase(_) =>
         finishInputPhase()
         onStep()
       case OutputPhase(edges) =>
-        val in_edges = edges.map { out =>
-          val state = MPendingInputNode(mutable.ArrayBuffer(MInputEdge()))
+        val states = edges.map { out =>
+          val state = MPendingInputNode(mutable.ArrayBuffer())
           assert(out.next.isEmpty)
           out.next = Some(state)
-          state.next.head
+          state
         }
-        phase = InputPhase(in_edges)
+        phase = IdlePhase(states)
     }
-    // after a step we are always in a new input phase
-    assert(inInputPhase)
+    // after a step we are always in a new idle phase
+    assert(inIdlePhase)
   }
 }
 
@@ -104,16 +122,16 @@ class ProtocolInterpreter {
 
 
 case class MPendingInputNode(next: mutable.ArrayBuffer[MInputEdge] = mutable.ArrayBuffer()) {
-  def toImmutable: PendingInputNode = PendingInputNode(next.map(_.toImmutable))
+  def toImmutable(method: String): PendingInputNode = PendingInputNode(next.map(_.toImmutable(method)))
 }
 case class MPendingOutputNode(next: mutable.ArrayBuffer[MOutputEdge] = mutable.ArrayBuffer()) {
-  def toImmutable: PendingOutputNode = PendingOutputNode(next.map(_.toImmutable))
+  def toImmutable(method: String): PendingOutputNode = PendingOutputNode(next.map(_.toImmutable(method)))
 }
 case class MInputEdge(I: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), A: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), var next: Option[MPendingOutputNode] = None){
-  def toImmutable: InputEdge = InputEdge(I, A, next.map(_.toImmutable))
+  def toImmutable(method: String): InputEdge = InputEdge(I, A, Set(method), next.get.toImmutable(method))
 }
 case class MOutputEdge(O: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), R: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), var next: Option[MPendingInputNode] = None){
-  def toImmutable: OutputEdge = OutputEdge(O, R, next.map(_.toImmutable))
+  def toImmutable(method: String): OutputEdge = OutputEdge(O, R, Set(method), next.get.toImmutable(method))
 }
 
 
