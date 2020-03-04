@@ -29,18 +29,10 @@ class ProtocolInterpreter {
     val iPhase = phase.asInstanceOf[InputPhase]
 
     val I_not_A = rhs match {
-      case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) =>
-        println("Variable Mapping!")
-        false
-      case smt.Symbol(name, typ) =>
-        println("Variable Mapping")
-        false
-      case smt.BitVectorLit(value, width) =>
-        println("Constant Mapping")
-        true
-      case smt.BooleanLit(value) =>
-        println("Constant Mapping")
-        true
+      case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) => false
+      case smt.Symbol(name, typ) => false
+      case smt.BitVectorLit(value, width) => true
+      case smt.BooleanLit(value) => true
       case other => throw new RuntimeException(s"Unexpected rhs expression: $other")
     }
 
@@ -92,7 +84,9 @@ class ProtocolInterpreter {
 
 // Mutable Version of the Verification Graph
 // used for the initial tree creating in the Protocol Interpreter
-// TODO: turn into reverse version (i.e. prev instead of next)
+
+
+
 case class MPendingInputNode(next: mutable.ArrayBuffer[MInputEdge] = mutable.ArrayBuffer()) {
   def toImmutable: PendingInputNode = PendingInputNode(next.map(_.toImmutable))
 }
@@ -105,3 +99,10 @@ case class MInputEdge(I: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), 
 case class MOutputEdge(O: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), R: mutable.ArrayBuffer[smt.Expr] = mutable.ArrayBuffer(), var next: Option[MPendingInputNode] = None){
   def toImmutable: OutputEdge = OutputEdge(O, R, next.map(_.toImmutable))
 }
+
+
+// TODO: turn into reverse version (i.e. prev instead of next)
+//case class RPendingInputNode(prev: Option[ROutputEdge])
+//case class RPendingOutputNode(prev: Option[RInputEdge])
+//case class RInputEdge(prev: Option[RPendingInputNode])
+//case class ROutputEdge(prev: Option[RPendingOutputNode])
