@@ -9,8 +9,9 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import paso.verification.UntimedModel
+import paso.verification.{Assertion, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationProblem}
 import paso.{Binding, UntimedModule}
+import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
 class CustomFirrtlCompiler extends Compiler {
@@ -37,28 +38,69 @@ object Elaboration {
     val st_no_bundles = passes.LowerTypes.execute(st)
     (st_no_bundles.circuit, st_no_bundles.annotations)
   }
-  private def elaborateBody(m: RawModule, gen: () => Unit): ir.Statement =
-    elaborateInContextOfModule(m, gen)._1.modules.head.asInstanceOf[ir.Module].body
-
-
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
 
-  def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]) = {
+  private def elaborateMappings[IM <: RawModule, SM <: UntimedModule](
+      impl: IM, impl_state: Seq[(String, ir.Type)],
+      spec: SM, spec_state: Seq[(String, ir.Type)], maps: Seq[(IM, SM) => Unit]): Seq[Assertion] = {
+    val map_ports = impl_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, impl.name + "." + name, ir.Input, tpe)
+    } ++ spec_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, spec.name + "." + name, ir.Input, tpe)
+    }
+    val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
 
-    println("Implementation:")
+    maps.flatMap { m =>
+      val mod = elaborateInContextOfModule(impl, spec, "map", {() => m(impl, spec)})
+      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
+      val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
+      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
+      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
+    }
+  }
+
+  private def elaborateInvariances[IM <: RawModule](impl: IM, impl_state: Seq[(String, ir.Type)], invs: Seq[IM => Unit]): Seq[Assertion] = {
+    val inv_ports = impl_state.map { case (name, tpe) =>
+      ir.Port(NoInfo, name, ir.Input, tpe)
+    }
+    val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
+
+    invs.flatMap { ii =>
+      val mod = elaborateInContextOfModule(impl, {() => ii(impl)})
+      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
+      val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
+      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
+      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
+    }
+  }
+
+  private def elaborateProtocols(protos: Seq[paso.Protocol]): Seq[(String, PendingInputNode)] = {
+    protos.map{ p =>
+      //println(s"Protocol for: ${p.methodName}")
+      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
+      val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
+      val int = new ProtocolInterpreter
+      new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
+      (p.methodName, int.getGraph)
+    }
+  }
+
+  private case class Impl[IM <: RawModule](mod: IM, state: Seq[(String, ir.Type)], model: smt.SymbolicTransitionSystem)
+  private def elaborateImpl[IM <: RawModule](impl: => IM): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
     val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
-    val impl_name = impl_fir.main
     val impl_state = FindState(impl_fir).run()
     val impl_model = FirrtlToFormal(impl_fir, impl_anno)
     // cross check states:
     impl_state.foreach { case (name, tpe) =>
       assert(impl_model.states.exists(_.sym.id == name), s"State $name : $tpe is missing from the formal model!")
     }
+    Impl(ip.get, impl_state, impl_model)
+  }
 
-    println()
-    println("Untimed Model:")
+  private case class Spec[SM <: UntimedModule](mod: SM, state: Seq[(String, ir.Type)], model: UntimedModel)
+  private def elaborateSpec[SM <: UntimedModule](spec: => SM) = {
     var sp: Option[SM] = None
     val (main, _) = toFirrtl { () =>
       sp = Some(spec)
@@ -84,54 +126,30 @@ object Elaboration {
 
     val spec_smt_state = spec_state.map{ case (name, tpe) => name -> firrtlToSmtType(tpe)}.toMap
     val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
-    println(untimed_model)
+    Spec(sp.get, spec_state, untimed_model)
+  }
 
-    println()
-    println("Binding...")
-    val binding = bind(ip.get, sp.get)
+  def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]): VerificationProblem = {
 
-    binding.protos.foreach{ p =>
-      println(s"Protocol for: ${p.methodName}")
-      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
-      val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
-      FirrtlProtocolInterpreter.run(p.methodName, ff, annos)
-    }
+    val implementation = elaborateImpl(impl)
+    val untimed = elaborateSpec(spec)
 
-    println("Mapping:")
-    val map_ports = impl_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, impl_name + "." + name, ir.Input, tpe)
-    } ++ spec_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, spec_name + "." + name, ir.Input, tpe)
-    }
-    val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
+    // elaborate the binding
+    val binding = bind(implementation.mod, untimed.mod)
+    val protos = elaborateProtocols(binding.protos)
+    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, binding.maps)
+    val invariances = elaborateInvariances(implementation.mod, implementation.state, binding.invs)
 
-    val mappings = binding.maps.flatMap { m =>
-      val gen = {() => m(ip.get, sp.get)}
-      val mod = elaborateInContextOfModule(ip.get, sp.get, "map", gen)
-      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
-      val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
-      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
-      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
-    }
-    mappings.foreach(println)
+    // combine into verification problem
+    val prob = VerificationProblem(
+      impl = implementation.model,
+      untimed = untimed.model,
+      protocols = protos.toMap,
+      invariances = invariances,
+      mapping = mappings
+    )
 
-    println()
-    println("Invariances:")
-    val inv_ports = impl_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, name, ir.Input, tpe)
-    }
-    val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
-
-
-    val invariances = binding.invs.flatMap { ii =>
-      val gen = {() => ii(ip.get)}
-      val mod = elaborateInContextOfModule(ip.get, gen)
-      val body = mod._1.modules.head.asInstanceOf[ir.Module].body
-      val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
-      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
-      new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
-    }
-    invariances.foreach(println)
-
+    println(prob)
+    prob
   }
 }

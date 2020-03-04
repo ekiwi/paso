@@ -7,18 +7,9 @@ package paso.chisel
 import firrtl.annotations.Annotation
 import firrtl.ir
 import firrtl.ir.Reference
-import paso.verification.ProtocolInterpreter
+import paso.verification.{ProtocolInterpreter}
 import paso.{ExpectAnnotation, MethodIOAnnotation, StepAnnotation}
 import uclid.smt
-
-object FirrtlProtocolInterpreter {
-  def run(name: String, circuit: ir.Circuit, annos: Seq[Annotation]): Unit ={
-    val int = new ProtocolInterpreter
-    new FirrtlProtocolInterpreter(name, circuit, annos, int).run()
-    val graph = int.getGraph
-    println(graph)
-  }
-}
 
 trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
   val prefix: String = ""

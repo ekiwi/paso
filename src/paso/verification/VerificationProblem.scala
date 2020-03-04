@@ -7,9 +7,7 @@
 
 package paso.verification
 
-import paso.UntimedModule
 import uclid.smt
-// case class UntimedModel(name: String, state: Map[String, ???])
 
 // things that need to be verified:
 // (1) do assertions on untimed model always hold? (can we do an inductive proof?)
@@ -30,7 +28,7 @@ case class Assertion(guard: smt.Expr, pred: smt.Expr)
 
 case class VerificationProblem(
   impl: smt.SymbolicTransitionSystem,
-  untimed: UntimedModule,
+  untimed: UntimedModel,
   protocols: Map[String, PendingInputNode],
   invariances: Seq[Assertion],
   mapping: Seq[Assertion]
