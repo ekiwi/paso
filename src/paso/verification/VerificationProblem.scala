@@ -19,10 +19,12 @@ import uclid.smt
 // (4)
 
 // Verification Graph
-case class PendingInputNode(next: Seq[InputEdge] = Seq())
-case class PendingOutputNode(next: Seq[OutputEdge] = Seq())
-case class InputEdge(I: Seq[smt.Expr] = Seq(), A: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingOutputNode)
-case class OutputEdge(O: Seq[smt.Expr] = Seq(), R: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode)
+trait VerificationEdge { val methods: Set[String] ; val next: VerificationNode }
+trait VerificationNode { val next: Seq[VerificationEdge] }
+case class PendingInputNode(next: Seq[InputEdge] = Seq()) extends VerificationNode
+case class PendingOutputNode(next: Seq[OutputEdge] = Seq()) extends VerificationNode
+case class InputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingOutputNode) extends VerificationEdge
+case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode) extends VerificationEdge
 
 case class Assertion(guard: smt.Expr, pred: smt.Expr)
 
