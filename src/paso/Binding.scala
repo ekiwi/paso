@@ -14,30 +14,34 @@ trait Protocol {
   def methodName: String
   def generate(): Unit
 }
-case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol {
-  override def methodName = meth.gen.name
-  override def generate(): Unit = {
-    impl(IO(Flipped(ioType)).suggestName("io"))
+trait ProtocolHelper {
+  protected def makeInput[T <: Data](t: T): T = {
+    val i = IO(Input(t)).suggestName("in")
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(i.toTarget, true) })
+    i
+  }
+  protected def makeOutput[T <: Data](t: T): T = {
+    val o = IO(Output(t)).suggestName("out")
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(o.toTarget, false) })
+    o
   }
 }
-case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol {
+case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol with ProtocolHelper {
   override def methodName = meth.gen.name
-  override def generate(): Unit = {
-    impl(IO(Flipped(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"))
-    //impl(Input(ioType).suggestName("io"), Output(meth.inputType).suggestName("inputs"))
-  }
+  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"))
 }
-case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol {
+case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(): Unit = {
-    impl(IO(Flipped(ioType)).suggestName("io"), IO(Output(meth.outputType)).suggestName("outputs"))
-  }
+  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"), makeInput(meth.inputType))
 }
-case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol {
+case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol with ProtocolHelper  {
+  override def methodName = meth.gen.name
+  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"), makeOutput(meth.outputType))
+}
+case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
   override def generate(): Unit = {
-    impl(IO(Flipped(ioType)).suggestName("io"), IO(Input(meth.inputType)).suggestName("inputs"),
-      IO(Output(meth.outputType)).suggestName("outputs"))
+    impl(IO(Flipped(ioType)).suggestName("io"), makeInput(meth.inputType), makeOutput(meth.outputType))
   }
 }
 

@@ -280,8 +280,10 @@ class FirrtlInterpreter extends SmtHelpers {
   }
 }
 
+trait HasAnnos { val annos: Seq[Annotation] }
+
 /** FirrtlInterpreter with some protocol specific extensions */
-class PasoFirrtlInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends FirrtlInterpreter {
+class PasoFirrtlInterpreter(circuit: ir.Circuit, val annos: Seq[Annotation]) extends FirrtlInterpreter with HasAnnos {
   require(circuit.modules.length == 1)
   require(circuit.modules.head.isInstanceOf[ir.Module])
   val mod = circuit.modules.head.asInstanceOf[ir.Module]

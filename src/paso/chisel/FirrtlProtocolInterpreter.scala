@@ -6,23 +6,37 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
+import firrtl.ir.Reference
 import paso.verification.ProtocolInterpreter
-import paso.{ExpectAnnotation, StepAnnotation}
+import paso.{ExpectAnnotation, MethodIOAnnotation, StepAnnotation}
 import uclid.smt
 
 object FirrtlProtocolInterpreter {
-  def run(circuit: ir.Circuit, annos: Seq[Annotation]): Unit ={
+  def run(name: String, circuit: ir.Circuit, annos: Seq[Annotation]): Unit ={
     val int = new ProtocolInterpreter
-    new FirrtlProtocolInterpreter(circuit, annos, int).run()
+    new FirrtlProtocolInterpreter(name, circuit, annos, int).run()
     val graph = int.getGraph
     println(graph)
   }
 }
 
+trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
+  val prefix: String = ""
+  protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + "inputs") }.toMap
+  protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + "outputs") }.toMap
+  protected lazy val renameIOs = methodInputs ++ methodOutputs
+  override def onReference(r: Reference): smt.Expr = {
+    assert(methodInputs.size < 2 && methodOutputs.size < 2, "TODO: deal with bundles")
+    val ref = super.onReference(r)
+    renameIOs.get(r.name).map(smt.Symbol(_, ref.typ)).getOrElse(ref)
+  }
+}
+
 /** protocols built on a custom extension of firrtl */
-class FirrtlProtocolInterpreter(circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends PasoFirrtlInterpreter(circuit, annos) {
+class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
   private val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
   private val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
+  override val prefix = name + "."
 
   override def defWire(name: String, tpe: ir.Type): Unit = {
     if(steps.contains(name)) { interpreter.onStep() }

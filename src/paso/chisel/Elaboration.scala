@@ -94,7 +94,7 @@ object Elaboration {
       println(s"Protocol for: ${p.methodName}")
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
       val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
-      FirrtlProtocolInterpreter.run(ff, annos)
+      FirrtlProtocolInterpreter.run(p.methodName, ff, annos)
     }
 
     println("Mapping:")
