@@ -22,9 +22,23 @@ class ProtocolInterpreter {
 
   def getGraph: PendingInputNode = _init.toImmutable
 
-  private def isConstantNotIOSymbol(rhs: smt.Expr): Boolean = rhs match {
-    case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) => false
-    case smt.Symbol(name, typ) => false
+  private def isMapping(name: String, hi: Int, lo: Int): Boolean = {
+    val oldMap : BigInt = mappedBits.getOrElse(name, 0)
+    val mask = (BigInt(1) << (hi - lo + 1)) - 1
+    val newMap = mask << lo
+    val duplicateBits = oldMap & newMap
+    val isMapping = duplicateBits == 0
+    if(!isMapping) {
+      assert(duplicateBits == newMap, "TODO: deal with mixed new/old assignment")
+    }
+    mappedBits(name) = oldMap | newMap
+    isMapping
+  }
+
+  private def isConstraintNotMapping(rhs: smt.Expr): Boolean = rhs match {
+    case smt.OperatorApplication(smt.BVExtractOp(hi, lo), List(smt.Symbol(name, typ))) => !isMapping(name, hi, lo)
+    case smt.Symbol(name, smt.BoolType) => !isMapping(name, 0, 0)
+    case smt.Symbol(name, smt.BitVectorType(w)) => !isMapping(name, w-1, 0)
     case smt.BitVectorLit(value, width) => true
     case smt.BooleanLit(value) => true
     case other => throw new RuntimeException(s"Unexpected rhs expression: $other")
@@ -34,14 +48,14 @@ class ProtocolInterpreter {
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = {
     require(inInputPhase, "A step is required before sending inputs.")
     val iPhase = phase.asInstanceOf[InputPhase]
-    val I_not_A = isConstantNotIOSymbol(rhs)
+    val I_not_A = isConstraintNotMapping(rhs)
     if(I_not_A) iPhase.edges.foreach{_.I.append(eq(lhs, rhs))}
     else        iPhase.edges.foreach{_.A.append(eq(lhs, rhs))}
   }
 
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = {
     val oPhase = finishInputPhase()
-    val O_not_R = isConstantNotIOSymbol(rhs)
+    val O_not_R = isConstraintNotMapping(rhs)
     if(O_not_R) oPhase.edges.foreach{_.O.append(eq(lhs, rhs))}
     else        oPhase.edges.foreach{_.R.append(eq(lhs, rhs))}
   }
