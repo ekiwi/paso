@@ -44,7 +44,8 @@ object VerificationGraph extends SmtHelpers {
   )
 
   // returns old or new edge plus remaining edge that needs to be merged
-  private def mergeEdge[E <: VerificationEdge](old: E, new_edge: Option[E]): (Seq[E], Option[E]) = {
+  // maintains the invariance that all outgoing edges of a node are mutually exclusive
+  private def mergeEdge(old: InputEdge, new_edge: Option[InputEdge]): (Seq[InputEdge], Option[InputEdge]) = {
     // fast exit for empty new edge
     if(new_edge.isEmpty) { return (Seq(old), None) }
 
@@ -52,7 +53,7 @@ object VerificationGraph extends SmtHelpers {
     val (old_con, new_con) = (getConstraints(old), getConstraints(new_edge.get))
 
     // if the edge constraints are mutually exclusive, there is nothing to do
-    if(Checker.isMutuallyExclusive(old_con, new_con)) { return (Seq(old), Some(new_edge.get)) }
+    if(Checker.isUnsat(and(old_con, new_con))) { return (Seq(old), Some(new_edge.get)) }
 
     // merge the two edges
     val (o_and_n, o_and_not_n, not_o_and_n) = combineEdges(old, new_edge.get)
@@ -66,8 +67,51 @@ object VerificationGraph extends SmtHelpers {
     (edges, remaining)
   }
 
-  private def mergeEdge[E <: VerificationEdge](edges: Seq[E], edge: E): Seq[E] = {
-    var new_edge: Option[E] = Some(edge)
+  private def mergeEdge(old: OutputEdge, new_edge: Option[OutputEdge]): (Seq[OutputEdge], Option[OutputEdge]) = {
+    // fast exit for empty new edge
+    if(new_edge.isEmpty) { return (Seq(old), None) }
+
+    throw new NotImplementedError("TODO: merge output edges!")
+
+    assert((new_edge.get.methods & old.methods).isEmpty, "Should only merge graphs from different methods")
+
+
+    // now we need to check that the edges don't impose any constraints on each other
+
+
+
+    (Seq(), None) // FIXME
+  }
+
+
+//  private def mergeEdge[E <: VerificationEdge](edges: Seq[E], edge: E): Seq[E] = {
+//    var new_edge: Option[E] = Some(edge)
+//    val new_edges = edges.flatMap { old =>
+//      val res = mergeEdge(old, new_edge)
+//      new_edge = res._2
+//      res._1
+//    }
+//    new_edge match {
+//      case None => new_edges
+//      case Some(e) => new_edges ++ Seq(e)
+//    }
+//  }
+
+  private def mergeEdge(edges: Seq[InputEdge], edge: InputEdge): Seq[InputEdge] = {
+    var new_edge: Option[InputEdge] = Some(edge)
+    val new_edges = edges.flatMap { old =>
+      val res = mergeEdge(old, new_edge)
+      new_edge = res._2
+      res._1
+    }
+    new_edge match {
+      case None => new_edges
+      case Some(e) => new_edges ++ Seq(e)
+    }
+  }
+
+  private def mergeEdge(edges: Seq[OutputEdge], edge: OutputEdge): Seq[OutputEdge] = {
+    var new_edge: Option[OutputEdge] = Some(edge)
     val new_edges = edges.flatMap { old =>
       val res = mergeEdge(old, new_edge)
       new_edge = res._2
@@ -106,7 +150,4 @@ object Checker extends SmtHelpers {
   def isUnsat(e: smt.Expr): Boolean = check(e).isFalse
   def isValid(e: smt.Expr): Boolean = isUnsat(app(smt.NegationOp, e))
   def conjunction(c: Seq[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(ConjunctionOp, a, b)}
-  def equisatisfiable(a: smt.Expr, b:smt.Expr): Boolean = isValid(app(smt.EqualityOp, a, b))
-  def aIsSubsetOfB(a: smt.Expr, b: smt.Expr): Boolean = isValid(app(smt.ImplicationOp, a, b))
-  def isMutuallyExclusive(a: smt.Expr, b: smt.Expr): Boolean = isValid(app(smt.InequalityOp, a, b))
 }
