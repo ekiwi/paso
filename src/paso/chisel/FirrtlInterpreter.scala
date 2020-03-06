@@ -10,7 +10,7 @@ import firrtl.ir
 import paso.{AssertAnnotation, ExpectAnnotation, MemToVecAnnotation, StepAnnotation}
 import paso.verification.ProtocolInterpreter
 import uclid.smt
-import uclid.smt.Expr
+import uclid.smt.{ConjunctionOp, Expr}
 
 import scala.collection.mutable
 
@@ -49,6 +49,9 @@ trait SmtHelpers {
   def zext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVZeroExtOp(w, e))
   def sext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVSignExtOp(w, e))
   def ite(cond: smt.Expr, tru: smt.Expr, fals: smt.Expr): smt.Expr = app(smt.ITEOp, cond, tru, fals)
+  def and(exprs: smt.Expr*): smt.Expr = exprs.reduceLeft((a,b) => app(smt.ConjunctionOp, a, b))
+  def or(exprs: smt.Expr*): smt.Expr = exprs.reduceLeft((a,b) => app(smt.DisjunctionOp, a, b))
+  def not(expr: smt.Expr): smt.Expr = app(smt.NegationOp, expr)
 }
 
 object FirrtlInterpreter {

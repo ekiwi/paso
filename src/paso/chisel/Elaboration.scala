@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import paso.verification.{Assertion, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationProblem}
+import paso.verification.{Assertion, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationGraph, VerificationProblem}
 import paso.{Binding, UntimedModule}
 import uclid.smt
 
@@ -150,6 +150,11 @@ object Elaboration {
     )
 
     println(prob)
+
+    val combined = prob.protocols.values.reduce(VerificationGraph.merge)
+    println("Combined:")
+    println(combined)
+
     prob
   }
 }
