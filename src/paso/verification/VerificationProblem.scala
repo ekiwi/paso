@@ -7,6 +7,7 @@
 
 package paso.verification
 
+import paso.chisel.SmtHelpers
 import uclid.smt
 
 // things that need to be verified:
@@ -35,3 +36,41 @@ case class VerificationProblem(
   invariances: Seq[Assertion],
   mapping: Seq[Assertion]
 )
+
+object VerificationProblem {
+  def verify(p: VerificationProblem): Unit = {
+    val tasks = Seq(new VerifyMapping)
+    tasks.foreach(_.run(p))
+  }
+}
+
+class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
+  override val solverName: String = "z3"
+  val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+  override protected def execute(p: VerificationProblem): Unit = {
+    val impl_states = p.impl.states.map(_.sym)
+    val impl_init_const = conjunction(p.impl.states.collect { case smt.State(sym, Some(init), _) => eq(sym, init) })
+    val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.toSeq
+    val spec_init_const = conjunction(p.untimed.init.map{ case (name, value) => eq(smt.Symbol(name, p.untimed.state(name)), value) }.toSeq)
+    val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
+
+    // forall initial states of the implementation there exists an initial state in the specification for which the mapping holds
+    val unmappable_impl = and(impl_init_const, forall(spec_states, not(and(spec_init_const, mapping_const))))
+
+    val impl_res = check(unmappable_impl)
+    assert(impl_res.isFalse, s"Found an implementation initial state for which there is no mapping: $impl_res")
+
+    // forall initial states of the specification there exists an initial state in the implementation for which the mapping holds
+    val unmappable_spec = and(spec_init_const, forall(impl_states, not(and(impl_init_const, mapping_const))))
+
+    val spec_res = check(unmappable_spec)
+    assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
+  }
+}
+
+
+abstract class VerificationTask {
+  val solverName: String
+  protected def execute(p: VerificationProblem): Unit
+  def run(p: VerificationProblem): Unit = execute(p)
+}

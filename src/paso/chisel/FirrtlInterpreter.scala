@@ -52,6 +52,11 @@ trait SmtHelpers {
   def and(exprs: smt.Expr*): smt.Expr = exprs.reduceLeft((a,b) => app(smt.ConjunctionOp, a, b))
   def or(exprs: smt.Expr*): smt.Expr = exprs.reduceLeft((a,b) => app(smt.DisjunctionOp, a, b))
   def not(expr: smt.Expr): smt.Expr = app(smt.NegationOp, expr)
+  def eq(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.EqualityOp, a, b)
+  def neq(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.InequalityOp, a, b)
+  def implies(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.ImplicationOp, a, b)
+  def conjunction(c: Seq[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(ConjunctionOp, a, b)}
+  def forall(vars: Seq[smt.Symbol], e: smt.Expr): smt.Expr = vars.foldRight(e)((vv, e) => app(smt.ForallOp(List(vv), List()), e))
 }
 
 object FirrtlInterpreter {

@@ -16,9 +16,9 @@ object VerificationGraph extends SmtHelpers {
 
   private def getConstraints(e: VerificationEdge): smt.Expr = e match {
     // for input edges, variable mappings are not constraints
-    case InputEdge(constraints, _, _, _) => Checker.conjunction(constraints)
+    case InputEdge(constraints, _, _, _) => conjunction(constraints)
     // for output edges we over-approximate by treating output mappings as constraints
-    case OutputEdge(constraints, mappings, _, _) => Checker.conjunction(constraints ++ mappings)
+    case OutputEdge(constraints, mappings, _, _) => conjunction(constraints ++ mappings)
   }
 
   // combine two edges into all three combinations
@@ -137,17 +137,20 @@ object VerificationGraph extends SmtHelpers {
 
 }
 
-object Checker extends SmtHelpers {
-  private lazy val solver = new YicesInterface
-  private def check(e: smt.Expr) = {
+object Checker extends SmtHelpers with HasSolver {
+  val solver = new YicesInterface
+  def isSat(e: smt.Expr): Boolean = check(e).isTrue
+  def isUnsat(e: smt.Expr): Boolean = check(e).isFalse
+  def isValid(e: smt.Expr): Boolean = isUnsat(app(smt.NegationOp, e))
+}
+
+trait HasSolver {
+  val solver: smt.Context
+  def check(e: smt.Expr): smt.SolverResult = {
     solver.push()
     solver.assert(e)
     val res = solver.check()
     solver.pop()
     res
   }
-  def isSat(e: smt.Expr): Boolean = check(e).isTrue
-  def isUnsat(e: smt.Expr): Boolean = check(e).isFalse
-  def isValid(e: smt.Expr): Boolean = isUnsat(app(smt.NegationOp, e))
-  def conjunction(c: Seq[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(ConjunctionOp, a, b)}
 }
