@@ -41,12 +41,12 @@ object Elaboration {
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
 
   private def elaborateMappings[IM <: RawModule, SM <: UntimedModule](
-      impl: IM, impl_state: Seq[(String, ir.Type)],
-      spec: SM, spec_state: Seq[(String, ir.Type)], maps: Seq[(IM, SM) => Unit]): Seq[Assertion] = {
-    val map_ports = impl_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, impl.name + "." + name, ir.Input, tpe)
-    } ++ spec_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, spec.name + "." + name, ir.Input, tpe)
+      impl: IM, impl_state: Seq[State],
+      spec: SM, spec_state: Seq[State], maps: Seq[(IM, SM) => Unit]): Seq[Assertion] = {
+    val map_ports = impl_state.map { st =>
+      ir.Port(NoInfo, impl.name + "." + st.name, ir.Input, st.tpe)
+    } ++ spec_state.map { st =>
+      ir.Port(NoInfo, spec.name + "." + st.name, ir.Input, st.tpe)
     }
     val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
 
@@ -59,9 +59,9 @@ object Elaboration {
     }
   }
 
-  private def elaborateInvariances[IM <: RawModule](impl: IM, impl_state: Seq[(String, ir.Type)], invs: Seq[IM => Unit]): Seq[Assertion] = {
-    val inv_ports = impl_state.map { case (name, tpe) =>
-      ir.Port(NoInfo, name, ir.Input, tpe)
+  private def elaborateInvariances[IM <: RawModule](impl: IM, impl_state: Seq[State], invs: Seq[IM => Unit]): Seq[Assertion] = {
+    val inv_ports = impl_state.map { st =>
+      ir.Port(NoInfo, st.name, ir.Input, st.tpe)
     }
     val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
 
@@ -85,7 +85,7 @@ object Elaboration {
     }
   }
 
-  private case class Impl[IM <: RawModule](mod: IM, state: Seq[(String, ir.Type)], model: smt.SymbolicTransitionSystem)
+  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.SymbolicTransitionSystem)
   private def elaborateImpl[IM <: RawModule](impl: => IM): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
@@ -93,13 +93,13 @@ object Elaboration {
     val impl_state = FindState(impl_fir).run()
     val impl_model = FirrtlToFormal(impl_fir, impl_anno)
     // cross check states:
-    impl_state.foreach { case (name, tpe) =>
-      assert(impl_model.states.exists(_.sym.id == name), s"State $name : $tpe is missing from the formal model!")
+    impl_state.foreach { state =>
+      assert(impl_model.states.exists(_.sym.id == state.name), s"State $state is missing from the formal model!")
     }
     Impl(ip.get, impl_state, impl_model)
   }
 
-  private case class Spec[SM <: UntimedModule](mod: SM, state: Seq[(String, ir.Type)], model: UntimedModel)
+  private case class Spec[SM <: UntimedModule](mod: SM, state: Seq[State], model: UntimedModel)
   private def elaborateSpec[SM <: UntimedModule](spec: => SM) = {
     var sp: Option[SM] = None
     val (main, _) = toFirrtl { () =>
@@ -124,8 +124,9 @@ object Elaboration {
       meth.name -> semantics
     }.toMap
 
-    val spec_smt_state = spec_state.map{ case (name, tpe) => name -> firrtlToSmtType(tpe)}.toMap
-    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
+    val spec_smt_state = spec_state.map{ st=> st.name -> firrtlToSmtType(st.tpe)}.toMap
+    val init = spec_state.collect{ case State(name, tpe, Some(init)) => name -> init }.toMap
+    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, init = init)
     Spec(sp.get, spec_state, untimed_model)
   }
 
