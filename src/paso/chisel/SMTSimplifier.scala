@@ -134,6 +134,8 @@ class SMTSimplifier private() {
     case BVGTUOp(_)    => simplifyBVCmp(op, args.head, args(1))
     case BVGEUOp(_)    => simplifyBVCmp(op, args.head, args(1))
 
+    case a: ForallOp   => app(a, args)
+
     case other => throw new RuntimeException(s"Unexpected BoolenResultOp: $other")
   }
 
@@ -213,6 +215,8 @@ trait FirrtlSymExecSimplifications extends SMTSimplifier {
     (a1, a2) match {
       // toBool(toBV(e)) pattern (ITE(e, 1bv1, 0bv1) == 1bv1) <=> e
       case (OperatorApplication(ITEOp, List(e, BV1, BV0)), BV1) => e
+      // make sure that constant comparisons are evaluated
+      case (BitVectorLit(e1, _), BitVectorLit(e2, _)) => BooleanLit(e1 == e2)
       // normalize constants to appear on the right
       case (lit @ BitVectorLit(_, _), e) => simplifyCompareToConstant(EqualityOp, e, lit)
       case (e, lit @ BitVectorLit(_, _)) => simplifyCompareToConstant(EqualityOp, e, lit)
