@@ -44,12 +44,40 @@ object VerificationProblem {
   }
 }
 
+object substituteSmt {
+  def apply(expr: smt.Expr, map: Map[smt.Expr, smt.Expr]): smt.Expr = map.getOrElse(expr, { expr match {
+    case e : smt.Symbol => e
+    case e : smt.OperatorApplication => e.copy(operands = e.operands.map(apply(_, map)))
+    case e : smt.Literal => e
+    case s : smt.ArraySelectOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)))
+    case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)), value = apply(s.value, map))
+    case other => throw new NotImplementedError(s"TODO: deal with $other")
+  }})
+
+}
+
 class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   override val solverName: String = "z3"
   val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+
+  /** starts in initial state and advances one step with reset = 1 and every other input with an arbitrary value */
+  def getResetState(sys: smt.SymbolicTransitionSystem): Map[smt.Symbol, smt.Expr] = {
+    val inits = sys.states.map {
+      case smt.State(sym, Some(init), _) => sym -> init
+      case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
+    }.toMap
+    // TODO: don't hardcode reset
+    val inputs = sys.inputs.map { sym => sym -> (if(sym.id == "reset") smt.BooleanLit(true) else sym) }.toMap
+    val subs: Map[smt.Expr, smt.Expr] = inits ++ inputs
+    sys.states.map {
+      case smt.State(sym, _, Some(next)) => sym -> substituteSmt(next, subs)
+      case smt.State(sym, _, None) => sym -> smt.Symbol(sym.id + ".aux", sym.symbolTyp)
+    }.toMap
+  }
+
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_states = p.impl.states.map(_.sym)
-    val impl_init_const = conjunction(p.impl.states.collect { case smt.State(sym, Some(init), _) => eq(sym, init) })
+    val impl_init_const = conjunction(getResetState(p.impl).map{ case (sym, value) => eq(sym, value) }.toSeq)
     val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.toSeq
     val spec_init_const = conjunction(p.untimed.init.map{ case (name, value) => eq(smt.Symbol(name, p.untimed.state(name)), value) }.toSeq)
     val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
