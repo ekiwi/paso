@@ -39,7 +39,6 @@
 package uclid
 
 import scala.util.parsing.input.Position
-import com.typesafe.scalalogging.Logger
 import java.io.File
 import java.io.PrintWriter
 
@@ -110,7 +109,6 @@ object Utils {
   }
 
   def topoSort[T](roots : List[T], graph: Map[T, Set[T]]) : List[T] = {
-    lazy val logger = Logger("uclid.Utils.topoSort")
     def visit(node : T, visitOrder : Map[T, Int]) : Map[T, Int] = {
       if (visitOrder.contains(node)) {
         visitOrder
@@ -124,30 +122,23 @@ object Utils {
     }
     // now walk through the dep graph
     val order : List[(T, Int)] = roots.foldLeft(Map.empty[T, Int])((acc, r) => visit(r, acc)).toList
-    logger.debug("order: {}", order.toString())
     order.sortWith((x, y) => x._2 < y._2).map(p => p._1)
   }
 
   def schedule[T](roots: List[T], graph: Map[T, Set[T]]) : List[T] = {
-    lazy val logger = Logger("uclid.Utils.schedule")
     def visit(node : T, visitOrder : Map[T, Int]) : Map[T, Int] = {
-      logger.debug("visiting: {}", node.toString())
       if (visitOrder.contains(node)) {
-        logger.debug("already visited", node.toString())
         visitOrder
       } else {
-        logger.debug("recursing", node.toString())
         val visitOrderP = graph.get(node) match {
           case Some(nodes) => nodes.foldLeft(visitOrder)((acc, m) => visit(m, acc))
           case None => visitOrder
         }
         val outputOrder = visitOrderP + (node -> visitOrderP.size)
-        logger.debug("visitOrder[{}]: {}", node.toString(), outputOrder.toString())
         outputOrder
       }
     }
     val order : List[(T, Int)] = roots.foldLeft(Map.empty[T, Int])((acc, r) => visit(r, acc)).toList
-    logger.debug("order: {}", order.toString())
     order.sortWith((x, y) => x._2 < y._2).map(p => p._1)
   }
 

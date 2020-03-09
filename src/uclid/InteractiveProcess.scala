@@ -41,10 +41,8 @@ package uclid
 
 import scala.concurrent.SyncChannel
 import scala.collection.JavaConverters._
-import com.typesafe.scalalogging.Logger
 
 class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
-  val logger = Logger(classOf[InteractiveProcess])
 
   // create the process.
   val cmdLine = (args).asJava
@@ -77,7 +75,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
 
   // Write to the process's input stream.
   def writeInput(str: String) {
-    logger.debug("-> {}", str)
     in.write(stringToBytes(str))
     if (saveInput) inputString += str + "\n"
   }
@@ -95,7 +92,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
     while (!done) {
       if (!isAlive()) {
         done = true
-        logger.debug("Process dead.")
       } else {
         Thread.sleep(5)
         val numAvail = out.available()
@@ -111,7 +107,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
               bytes.slice(0, numRead)
             }
           })
-          logger.debug("<- {}", string)
 
           return Some(string)
         }
