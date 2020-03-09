@@ -6,6 +6,7 @@ import impl.CircularPointerFifo
 import org.scalatest._
 import paso._
 import paso.chisel.Elaboration
+import paso.verification.VerificationProblem
 
 
 
@@ -104,9 +105,11 @@ class FifoSpec extends FlatSpec {
   val depth = 8
   val width = 8
 
-  Elaboration[CircularPointerFifo, UntimedFifo[UInt]](
+  val p = Elaboration[CircularPointerFifo, UntimedFifo[UInt]](
     new CircularPointerFifo(depth = depth, width = width),
     new UntimedFifo(depth = depth, dataType = UInt(width.W)),
     (impl, spec) => new SpecBinding(impl, spec)
   )
+
+  VerificationProblem.verify(p)
 }
