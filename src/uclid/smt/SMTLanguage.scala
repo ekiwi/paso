@@ -137,11 +137,8 @@ case class ArrayType(inTypes: List[Type], outType: Type) extends Type {
   override val hashId = 107
   override val hashCode = computeHash(inTypes, outType)
   override val md5hashCode = computeMD5Hash(inTypes, outType)
-  override def toString = {
-    "array [" +
-    inTypes.tail.fold(inTypes.head.toString){ (acc,i) => acc + "," + i.toString } +
-    "] " + outType
-  }
+  override def toString =
+    "(Array " + Utils.join((inTypes.toIterator ++ Iterator(outType)).map(_.toString).toSeq, " ") + ")"
   override def isArray = true
   override val typeNamePrefix = "array"
 }
@@ -772,7 +769,7 @@ case class LetExpression(letBindings : List[(Symbol, Expr)], expr : Expr) extend
   override val md5hashCode = computeMD5Hash(letBindings, expr)
   override def toString = {
     val bindings = Utils.join(letBindings.map(p => "(%s %s)".format(p._1.toString(), p._2.toString())), " ")
-    "(let (%s) %s)".format(bindings)
+    "(let (%s) %s)".format(bindings, expr)
   }
   override val isConstant = expr.isConstant
 }
