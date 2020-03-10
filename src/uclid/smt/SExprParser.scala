@@ -338,7 +338,7 @@ object SExprParser extends SExprTokenParsers with PackratParsers {
       case Success(model, _) =>
         model
       case NoSuccess(msg, next) =>
-        throw new Utils.RuntimeError("Parser Error: %s.".format(msg))
+        throw new Utils.RuntimeError("Parser Error: %s.\nIn %s".format(msg, text))
     }
   }
 }
