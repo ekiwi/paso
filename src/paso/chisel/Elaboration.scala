@@ -54,7 +54,8 @@ object Elaboration {
       val mod = elaborateInContextOfModule(impl, spec, "map", {() => m(impl, spec)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
-      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
+      //val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
+      val elaborated = toHighFirrtl(c, mod._2)
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
   }

@@ -7,7 +7,7 @@
 
 package paso.verification
 
-import paso.chisel.SmtHelpers
+import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
 
 // things that need to be verified:
@@ -75,24 +75,43 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
     }.toMap
   }
 
+  implicit class symbolSeq(x: Iterable[smt.Symbol]) {
+    def prefix(p: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(p + s.id, s.typ))
+    def suffix(suf: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(s.id + suf, s.typ))
+  }
+
   override protected def execute(p: VerificationProblem): Unit = {
-    val impl_states = p.impl.states.map(_.sym)
-    val impl_init_const = conjunction(getResetState(p.impl).map{ case (sym, value) => eq(sym, value) }.toSeq)
-    val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.toSeq
-    val spec_init_const = conjunction(p.untimed.init.map{ case (name, value) => eq(smt.Symbol(name, p.untimed.state(name)), value) }.toSeq)
+    val impl_states = p.impl.states.map(_.sym).prefix(p.impl.name.get + ".").toSeq
+    val impl_init_const = conjunction(getResetState(p.impl).map{
+      case (smt.Symbol(name, tpe), value) => eq(smt.Symbol(p.impl.name.get + "." + name, tpe), value)
+    }.toSeq)
+    val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.prefix(p.untimed.name + ".").toSeq
+    val spec_init_const = conjunction(p.untimed.init.map{
+      case (name, value) => eq(smt.Symbol(p.untimed.name + "." + name, p.untimed.state(name)), value)
+    }.toSeq)
     val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
 
-    // forall initial states of the implementation there exists an initial state in the specification for which the mapping holds
-    val unmappable_impl = and(impl_init_const, forall(spec_states, not(and(spec_init_const, mapping_const))))
+    // TODO: ideas on how to get solver to verify mappings
+    // 1.) try to merge array comparisons (if all locations are compared, just compare the whole array)
+    // 2.) try to do static slicing in order to check independent state mappings independently
+    // 3.) identify bitwise, bijective mappings that don't impose any constraints; if the initial value is also
+    //     unconstrained -> no need to call the solver
 
-    val impl_res = check(unmappable_impl)
-    assert(impl_res.isFalse, s"Found an implementation initial state for which there is no mapping: $impl_res")
+    try {
+      // forall initial states of the implementation there exists an initial state in the specification for which the mapping holds
+      val unmappable_impl = SMTSimplifier.simplify(and(impl_init_const, forall(spec_states, not(and(spec_init_const, mapping_const)))))
 
-    // forall initial states of the specification there exists an initial state in the implementation for which the mapping holds
-    val unmappable_spec = and(spec_init_const, forall(impl_states, not(and(impl_init_const, mapping_const))))
+      val impl_res = check(unmappable_impl)
+      assert(impl_res.isFalse, s"Found an implementation initial state for which there is no mapping: $impl_res")
 
-    val spec_res = check(unmappable_spec)
-    assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
+      // forall initial states of the specification there exists an initial state in the implementation for which the mapping holds
+      val unmappable_spec = SMTSimplifier.simplify(and(spec_init_const, forall(impl_states, not(and(impl_init_const, mapping_const)))))
+
+      val spec_res = check(unmappable_spec)
+      assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
+    } catch {
+      case e: uclid.Utils.AssertionError => println(s"WARNING: solver probably returned unknown: $e")
+    }
   }
 }
 
