@@ -102,7 +102,6 @@ class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
   val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
 
   override protected def execute(p: VerificationProblem): Unit = {
-    val impl_states = p.impl.states.map(_.sym).toSeq
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
     val inv_const = conjunction(p.invariances.map{ a => implies(a.guard, a.pred) })
 
