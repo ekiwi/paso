@@ -151,12 +151,6 @@ object Elaboration {
       mapping = mappings
     )
 
-    println(prob)
-
-    val combined = prob.protocols.values.reduce(VerificationGraph.merge)
-    println("Combined:")
-    println(combined)
-
     prob
   }
 }
