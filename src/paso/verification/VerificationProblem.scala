@@ -110,7 +110,9 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
       val spec_res = check(unmappable_spec)
       assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
     } catch {
-      case e: uclid.Utils.AssertionError => println(s"WARNING: solver probably returned unknown: $e")
+      case e: uclid.Utils.AssertionError =>
+        assert(e.getMessage.contains("unknown"))
+        println(s"WARNING: cannot prove mapping correct: $solverName returned unknown")
     }
   }
 }
