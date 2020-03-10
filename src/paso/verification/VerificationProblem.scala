@@ -39,7 +39,7 @@ case class VerificationProblem(
 
 object VerificationProblem {
   def verify(p: VerificationProblem): Unit = {
-    val tasks = Seq(new VerifyMapping)
+    val tasks = Seq(new VerifyMapping, new VerifyBaseCase)
     tasks.foreach(_.run(p))
   }
 }
@@ -97,6 +97,21 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   }
 }
 
+class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
+  override val solverName: String = "z3"
+  val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+
+  override protected def execute(p: VerificationProblem): Unit = {
+    val impl_states = p.impl.states.map(_.sym).toSeq
+    val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
+    val inv_const = conjunction(p.invariances.map{ a => implies(a.guard, a.pred) })
+
+    // make sure invariances hold after reset
+    val hold = SMTSimplifier.simplify(implies(impl_init_const, inv_const))
+    val res = check(not(hold))
+    assert(res.isFalse, s"FAIL: Invariances are not necessarily tru after reset: ${res.model}")
+  }
+}
 
 abstract class VerificationTask {
   val solverName: String
