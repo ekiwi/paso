@@ -60,29 +60,9 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   override val solverName: String = "z3"
   val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
 
-  /** starts in initial state and advances one step with reset = 1 and every other input with an arbitrary value */
-  def getResetState(sys: smt.SymbolicTransitionSystem): Map[smt.Symbol, smt.Expr] = {
-    val inits = sys.states.map {
-      case smt.State(sym, Some(init), _) => sym -> init
-      case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
-    }.toMap
-    // TODO: don't hardcode reset
-    val inputs = sys.inputs.map { sym => sym -> (if(sym.id == "reset") smt.BooleanLit(true) else sym) }.toMap
-    val subs: Map[smt.Expr, smt.Expr] = inits ++ inputs
-    sys.states.map {
-      case smt.State(sym, _, Some(next)) => sym -> substituteSmt(next, subs)
-      case smt.State(sym, _, None) => sym -> smt.Symbol(sym.id + ".aux", sym.symbolTyp)
-    }.toMap
-  }
-
-  implicit class symbolSeq(x: Iterable[smt.Symbol]) {
-    def prefix(p: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(p + s.id, s.typ))
-    def suffix(suf: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(s.id + suf, s.typ))
-  }
-
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_states = p.impl.states.map(_.sym).prefix(p.impl.name.get + ".").toSeq
-    val impl_init_const = conjunction(getResetState(p.impl).map{
+    val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{
       case (smt.Symbol(name, tpe), value) => eq(smt.Symbol(p.impl.name.get + "." + name, tpe), value)
     }.toSeq)
     val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.prefix(p.untimed.name + ".").toSeq
@@ -122,4 +102,27 @@ abstract class VerificationTask {
   val solverName: String
   protected def execute(p: VerificationProblem): Unit
   def run(p: VerificationProblem): Unit = execute(p)
+
+  // helper functions
+  implicit class symbolSeq(x: Iterable[smt.Symbol]) {
+    def prefix(p: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(p + s.id, s.typ))
+    def suffix(suf: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(s.id + suf, s.typ))
+  }
+}
+
+object VerificationTask {
+  /** starts in initial state and advances one step with reset = 1 and every other input with an arbitrary value */
+  def getResetState(sys: smt.SymbolicTransitionSystem): Map[smt.Symbol, smt.Expr] = {
+    val inits = sys.states.map {
+      case smt.State(sym, Some(init), _) => sym -> init
+      case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
+    }.toMap
+    // TODO: don't hardcode reset
+    val inputs = sys.inputs.map { sym => sym -> (if(sym.id == "reset") smt.BooleanLit(true) else sym) }.toMap
+    val subs: Map[smt.Expr, smt.Expr] = inits ++ inputs
+    sys.states.map {
+      case smt.State(sym, _, Some(next)) => sym -> substituteSmt(next, subs)
+      case smt.State(sym, _, None) => sym -> smt.Symbol(sym.id + ".aux", sym.symbolTyp)
+    }.toMap
+  }
 }
