@@ -203,7 +203,8 @@ object VerificationTask {
       case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
     }.toMap
     // TODO: don't hardcode reset
-    val inputs = sys.inputs.map { sym => sym -> (if(sym.id == "reset") smt.BooleanLit(true) else sym) }.toMap
+    def is_reset(sym: smt.Symbol): Boolean = sym.id.endsWith(".reset")
+    val inputs = sys.inputs.map { sym => sym -> (if(is_reset(sym)) smt.BooleanLit(true) else sym) }.toMap
     val subs: Map[smt.Expr, smt.Expr] = inits ++ inputs
     sys.states.map {
       case smt.State(sym, _, Some(next)) => sym -> substituteSmt(next, subs)
