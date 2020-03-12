@@ -11,7 +11,7 @@ object NamespaceIdentifiers {
     val (untimed, u_subs, m_subs) = apply(p.untimed, "")
     val (impl, i_subs) = apply(p.impl, "")
     val subs = u_subs ++ i_subs
-    val protocols = p.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
+    val protocols = p.protocols.map{ case(name, graph) => (untimed.name + "." + name, apply(graph, subs, m_subs)) }
     VerificationProblem(
       impl=impl, untimed=untimed, protocols=protocols,
       invariances = p.invariances.map(apply(_, subs)),
