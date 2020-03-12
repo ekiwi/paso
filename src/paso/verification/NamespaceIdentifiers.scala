@@ -38,14 +38,14 @@ object NamespaceIdentifiers {
       sem.outputs.map{ case NamedExpr(sym, _) => sym.copy(id = name + "." + sym.id) }
     }
     val internal_args = untimed.methods.flatMap{case (name, sem) =>
-      (sem.inputs ++ sem.outputs.map(_.sym)).prefix(fullPrefix + "." + name)
+      (sem.inputs ++ sem.outputs.map(_.sym)).prefix(fullPrefix + name + ".")
     }
     val isubs : SymSub = (untimed.state.prefix(fullPrefix) ++ internal_args).toMap
     def rename(name: String, s: MethodSemantics): MethodSemantics =
       MethodSemantics(substituteSmt(s.guard, isubs), s.updates.map(renameNamed), s.outputs.map(renameNamed), s.inputs.map(isubs))
     def renameNamed(n: NamedExpr): NamedExpr = NamedExpr(isubs(n.sym), expr = substituteSmt(n.expr, isubs))
     val renamed_untimed = UntimedModel(
-      name = fullPrefix,
+      name = fullPrefix.dropRight(1),
       state = untimed.state.map(isubs),
       methods = untimed.methods.map{ case (name, s) => (fullPrefix + name,  rename(name, s))},
       init = untimed.init.map(renameNamed)
@@ -62,10 +62,10 @@ object NamespaceIdentifiers {
     def rename(s: smt.State): smt.State =
       smt.State(subs(s.sym), s.init.map(substituteSmt(_, subs)), s.next.map(substituteSmt(_, subs)))
     val renamed_sys = smt.SymbolicTransitionSystem(
-      name = Some(fullPrefix),
+      name = Some(fullPrefix.dropRight(1)),
       inputs = sys.inputs.map(subs),
       states = sys.states.map(rename),
-      outputs = sys.outputs.map{ case (name, expr) => (name, substituteSmt(expr, subs)) },
+      outputs = sys.outputs.map{ case (name, expr) => (fullPrefix + name, substituteSmt(expr, subs)) },
       constraints = sys.constraints.map(substituteSmt(_, subs)),
       bad = sys.bad.map(substituteSmt(_, subs)),
       fair = sys.fair.map(substituteSmt(_, subs)),
