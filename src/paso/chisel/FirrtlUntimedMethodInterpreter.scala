@@ -6,7 +6,7 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
-import paso.verification.MethodSemantics
+import paso.verification.{MethodSemantics, NamedExpr}
 import paso.{GuardAnnotation, MethodIOAnnotation}
 import uclid.smt
 
@@ -26,11 +26,12 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     }
     // if a state was not updated, it stays the same
     val updates = (regs ++ mems).map { case (name, tpe) =>
-      name -> stateUpdates.getOrElse(name, smt.Symbol(name, tpe))
-    }.toMap
+      NamedExpr(smt.Symbol(name, tpe), stateUpdates.getOrElse(name, smt.Symbol(name, tpe)))
+    }
     // find input types
-    val ins = methodInputs.map { case (from, to) => to -> wires(from)}.toMap
-    MethodSemantics(guard=guard, updates = updates, outputs = outputExpr.toMap, inputs = ins)
+    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, wires(from)) }
+    val outputs = outputExpr.map{ case(name, expr) => NamedExpr(smt.Symbol(name, expr.typ), expr) }
+    MethodSemantics(guard=guard, updates = updates.toSeq, outputs = outputs.toSeq, inputs = ins.toSeq)
   }
 
   override def onAssign(name: String, expr: smt.Expr): Unit = {

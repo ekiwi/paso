@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import paso.verification.{Assertion, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationGraph, VerificationProblem}
+import paso.verification.{Assertion, NamedExpr, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationGraph, VerificationProblem}
 import paso.{Binding, UntimedModule}
 import uclid.smt
 
@@ -125,8 +125,8 @@ object Elaboration {
       meth.name -> semantics
     }.toMap
 
-    val spec_smt_state = spec_state.map{ st=> st.name -> firrtlToSmtType(st.tpe)}.toMap
-    val init = spec_state.collect{ case State(name, tpe, Some(init)) => name -> init }.toMap
+    val spec_smt_state = spec_state.map{ st => smt.Symbol(st.name, firrtlToSmtType(st.tpe)) }
+    val init = spec_state.collect{ case State(name, tpe, Some(init)) => NamedExpr(smt.Symbol(name, firrtlToSmtType(tpe)), init) }
     val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, init = init)
     Spec(sp.get, spec_state, untimed_model)
   }

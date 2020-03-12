@@ -39,7 +39,9 @@ case class VerificationProblem(
 )
 
 object VerificationProblem {
-  def verify(p: VerificationProblem): Unit = {
+  def verify(problem: VerificationProblem): Unit = {
+    // first we need to make sure to properly namespace all symbols in the Verification Problem
+    val p = NamespaceIdentifiers(problem)
     val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true))
     tasks.foreach(_.run(p))
   }
@@ -134,14 +136,10 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
 
   override protected def execute(p: VerificationProblem): Unit = {
-    val impl_states = p.impl.states.map(_.sym).prefix(p.impl.name.get + ".").toSeq
-    val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{
-      case (smt.Symbol(name, tpe), value) => eq(smt.Symbol(p.impl.name.get + "." + name, tpe), value)
-    }.toSeq)
-    val spec_states = p.untimed.state.map{ case (name, tpe) => smt.Symbol(name, tpe) }.prefix(p.untimed.name + ".").toSeq
-    val spec_init_const = conjunction(p.untimed.init.map{
-      case (name, value) => eq(smt.Symbol(p.untimed.name + "." + name, p.untimed.state(name)), value)
-    }.toSeq)
+    val impl_states = p.impl.states.map(_.sym)
+    val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)} )
+    val spec_states = p.untimed.state
+    val spec_init_const = conjunction(p.untimed.init.map{i => eq(i.sym, i.expr)})
     val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
 
     // TODO: ideas on how to get solver to verify mappings
@@ -194,24 +192,6 @@ abstract class VerificationTask {
     val end = System.nanoTime()
     println(s"Executed ${this.getClass.getSimpleName} with $solverName in ${(end - start)/1000/1000}ms")
   }
-
-  // helper functions
-  implicit class symbolSeq(x: Iterable[smt.Symbol]) {
-    def prefix(p: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(p + s.id, s.typ))
-    def suffix(suf: String): Iterable[smt.Symbol] = x.map(s => smt.Symbol(s.id + suf, s.typ))
-  }
-}
-
-object substituteSmt {
-  def apply(expr: smt.Expr, map: Map[smt.Expr, smt.Expr]): smt.Expr = map.getOrElse(expr, { expr match {
-    case e : smt.Symbol => e
-    case e : smt.OperatorApplication => e.copy(operands = e.operands.map(apply(_, map)))
-    case e : smt.Literal => e
-    case s : smt.ArraySelectOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)))
-    case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)), value = apply(s.value, map))
-    case other => throw new NotImplementedError(s"TODO: deal with $other")
-  }})
-
 }
 
 object VerificationTask {
