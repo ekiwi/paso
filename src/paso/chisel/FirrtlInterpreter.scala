@@ -10,7 +10,7 @@ import firrtl.ir
 import paso.{AssertAnnotation, ExpectAnnotation, MemToVecAnnotation, StepAnnotation}
 import paso.verification.ProtocolInterpreter
 import uclid.smt
-import uclid.smt.{ConjunctionOp, Expr}
+import uclid.smt.{ConjunctionOp, DisjunctionOp, Expr}
 
 import scala.collection.mutable
 
@@ -53,10 +53,14 @@ trait SmtHelpers {
   def or(exprs: smt.Expr*): smt.Expr = exprs.reduceLeft((a,b) => app(smt.DisjunctionOp, a, b))
   def not(expr: smt.Expr): smt.Expr = app(smt.NegationOp, expr)
   def eq(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.EqualityOp, a, b)
+  def iff(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.IffOp, a, b)
   def neq(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.InequalityOp, a, b)
   def implies(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.ImplicationOp, a, b)
-  def conjunction(c: Seq[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(ConjunctionOp, a, b)}
+  def conjunction(c: Iterable[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(ConjunctionOp, a, b)}
+  def disjunction(c: Iterable[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(false)){case (a,b) => app(DisjunctionOp, a, b)}
   def forall(vars: Seq[smt.Symbol], e: smt.Expr): smt.Expr = vars.foldRight(e)((vv, e) => app(smt.ForallOp(List(vv), List()), e))
+  val tru = smt.BooleanLit(true)
+  val fals = smt.BooleanLit(false)
 }
 
 object FirrtlInterpreter {

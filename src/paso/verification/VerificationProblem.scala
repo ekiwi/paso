@@ -9,6 +9,7 @@ package paso.verification
 
 import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
+import scala.collection.mutable
 
 // things that need to be verified:
 // (1) do assertions on untimed model always hold? (can we do an inductive proof?)
@@ -50,12 +51,81 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   override val solverName: String = "yices2"
   val solver = new smt.SMTLIB2Interface(List("yices-smt2"))
 
+  private def verifyMethods(impl: smt.SymbolicTransitionSystem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): BoundedCheck = {
+    val check = new BoundedCheckBuilder(impl)
+    new MethodVerifier(check).run(proto, methods)
+
+    check.getBoundedCheck
+  }
+
   override protected def execute(p: VerificationProblem): Unit = {
     // first we need to merge the protocol graph to ensure that methods are independent
     // - independence in this case means that for common inputs, the expected outputs are not mutually exclusive
     val combined = p.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
 
+    // we can verify each method individually or with the combined method graph
+    if(oneAtATime) {
+      p.untimed.methods.foreach { case (name, semantics) =>
+        verifyMethods(p.impl, p.protocols(name), Map(name -> semantics))
+      }
+    } else {
+      verifyMethods(p.impl, combined, p.untimed.methods)
+    }
 
+  }
+}
+
+class MethodVerifier(check: BoundedCheckBuilder) extends SmtHelpers {
+
+  def run(proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
+    println(methods.keys.toSeq)
+    visit(proto, ii = 0, guard = tru)
+  }
+
+  private val edges = mutable.HashMap[VerificationEdge, smt.Symbol]()
+  private def edgeSymbol(i: VerificationEdge): smt.Symbol = edges.getOrElseUpdate(i, {
+    smt.Symbol(s"${i.getClass.getSimpleName}_${edges.size}", smt.BoolType)
+  })
+
+  private val finalEdges = mutable.ArrayBuffer[VerificationEdge]()
+
+  private def visit(state: PendingInputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
+    // input constraints
+    val I = state.next.map{ e => conjunction(e.constraints) }
+    // restrict input space to any available edge
+    check.assumeAt(ii, implies(guard, disjunction(I)))
+
+    // the edge symbol is true, iff the edge is taken
+    state.next.zip(I).foreach { case (edge, const) => check.assumeAt(ii, iff(edgeSymbol(edge), and(guard, const))) }
+
+    // map arguments only if input constraints match
+    state.next.collect { case e if e.mappings.nonEmpty =>
+      check.assumeAt(ii, implies(edgeSymbol(e), conjunction(e.mappings)))
+    }
+
+    // visit intermediate states
+    state.next.foreach { e => visit(e.next, ii, guard = edgeSymbol(e)) }
+  }
+
+  private def visit(state: PendingOutputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
+    // output constraints
+    val O = state.next.map{ e => conjunction(e.constraints) }
+    // assert that one of the possible output edges is used
+    check.assertAt(ii, implies(guard, disjunction(O)))
+
+    // the edge symbol is true, iff the edge is taken
+    state.next.zip(O).foreach { case (edge, const) => check.assumeAt(ii, iff(edgeSymbol(edge), and(guard, const))) }
+
+    // map return arguments only if output constraints match
+    state.next.collect { case e if e.mappings.nonEmpty =>
+      check.assumeAt(ii, implies(edgeSymbol(e), conjunction(e.mappings)))
+    }
+
+    // visit next states
+    state.next.foreach { e => visit(e.next, ii + 1, guard = edgeSymbol(e)) }
+
+    // remember final edges
+    finalEdges ++= state.next.filter(_.next.next.isEmpty)
   }
 }
 
