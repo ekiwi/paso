@@ -90,5 +90,6 @@ object substituteSmt {
     case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)), value = apply(s.value, map))
     case other => throw new NotImplementedError(s"TODO: deal with $other")
   }})
-
+  def apply[E <: smt.Expr](a: Assertion, map: Map[smt.Expr, E]): Assertion =
+    Assertion(guard = apply(a.guard, map), pred = apply(a.pred, map))
 }

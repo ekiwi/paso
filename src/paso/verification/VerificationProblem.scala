@@ -54,10 +54,33 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   override val solverName: String = "yices2"
   val solver = new smt.SMTLIB2Interface(List("yices-smt2"))
 
-  private def verifyMethods(impl: smt.SymbolicTransitionSystem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): BoundedCheck = {
-    val check = new BoundedCheckBuilder(impl)
-    new MethodVerifier(check).run(proto, methods)
 
+  private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): BoundedCheck = {
+    val check = new BoundedCheckBuilder(p.impl)
+
+    // assume that invariances hold in the initial state
+    p.invariances.foreach(i => check.assumeAt(0, implies(i.guard, i.pred)))
+    // assume that the mapping function holds in the initial state
+    p.mapping.foreach(m => check.assumeAt(0, implies(m.guard, m.pred)))
+    // compute the results of all methods
+    val method_state_subs = methods.map { case (name, sem) =>
+      sem.outputs.foreach{ o => check.define(o.sym, o.expr) }
+      sem.updates.suffix(s".$name").foreach{ o => check.define(o.sym, o.expr) }
+      name -> sem.updates.map(_.sym).map(s => s -> s.copy(id = s.id + s".$name"))
+    }
+
+    // encode the protocol tree
+    val final_edges = new VerificationTreeEncoder(check).run(proto)
+
+    // make sure that in the final states the mapping as well as the invariances hold
+    final_edges.foreach { case(edge, taken, step) =>
+      assert(edge.methods.size == 1)
+      // substitute any references to the state of the untimed model with the result of applying the method
+      val subs: Map[smt.Expr, smt.Expr] = method_state_subs(edge.methods.head).toMap
+      p.invariances.foreach(i => check.assertAt(step, implies(taken, implies(i.guard, i.pred))))
+      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, implies(m.guard, m.pred))))
+    }
+    
     check.getBoundedCheck
   }
 
@@ -69,20 +92,20 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p.impl, p.protocols(name), Map(name -> semantics))
+        verifyMethods(p, p.protocols(name), Map(name -> semantics))
       }
     } else {
-      verifyMethods(p.impl, combined, p.untimed.methods)
+      verifyMethods(p, combined, p.untimed.methods)
     }
 
   }
 }
 
-class MethodVerifier(check: BoundedCheckBuilder) extends SmtHelpers {
+class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
 
-  def run(proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
-    println(methods.keys.toSeq)
+  def run(proto: PendingInputNode): Seq[(VerificationEdge, smt.Symbol, Int)] = {
     visit(proto, ii = 0, guard = tru)
+    finalEdges
   }
 
   private val edges = mutable.HashMap[VerificationEdge, smt.Symbol]()
@@ -90,7 +113,7 @@ class MethodVerifier(check: BoundedCheckBuilder) extends SmtHelpers {
     smt.Symbol(s"${i.getClass.getSimpleName}_${edges.size}", smt.BoolType)
   })
 
-  private val finalEdges = mutable.ArrayBuffer[VerificationEdge]()
+  private val finalEdges = mutable.ArrayBuffer[(VerificationEdge, smt.Symbol, Int)]()
 
   private def visit(state: PendingInputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
     // input constraints
@@ -128,7 +151,7 @@ class MethodVerifier(check: BoundedCheckBuilder) extends SmtHelpers {
     state.next.foreach { e => visit(e.next, ii + 1, guard = edgeSymbol(e)) }
 
     // remember final edges
-    finalEdges ++= state.next.filter(_.next.next.isEmpty)
+    finalEdges ++= state.next.filter(_.next.next.isEmpty).map(e => (e, edgeSymbol(e), ii + 1))
   }
 }
 
@@ -192,6 +215,11 @@ abstract class VerificationTask {
     execute(p)
     val end = System.nanoTime()
     println(s"Executed ${this.getClass.getSimpleName} with $solverName in ${(end - start)/1000/1000}ms")
+  }
+  // helper functions
+  implicit class namedSeq(x: Iterable[NamedExpr]) {
+    def prefix(p: String): Iterable[NamedExpr] = x.map(s => s.copy(sym = s.sym.copy(id = p + s.sym.id)))
+    def suffix(p: String): Iterable[NamedExpr] = x.map(s => s.copy(sym = s.sym.copy(id = s.sym.id + p)))
   }
 }
 

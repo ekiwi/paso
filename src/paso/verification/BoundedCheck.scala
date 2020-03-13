@@ -39,5 +39,9 @@ class BoundedCheckBuilder(base: smt.SymbolicTransitionSystem) {
 
   }
 
+  def define(name: smt.Symbol, expr: smt.Expr): Unit = {
+    println(s"define: $name := $expr")
+  }
+
   def getBoundedCheck: BoundedCheck = BoundedCheck()
 }

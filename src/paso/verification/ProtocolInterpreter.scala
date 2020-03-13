@@ -22,7 +22,12 @@ class ProtocolInterpreter {
   private val mappedBits = mutable.HashMap[String, BigInt]()
   //private def isNewMapping() // TODO
 
-  def getGraph(method: String): PendingInputNode = _init.toImmutable(method)
+  def getGraph(method: String, guard: smt.Expr): PendingInputNode = {
+    // add method guard to the constraints for the first edge
+    // --> the first edge should only be executed if our system is in the correct state
+    if(guard != smt.BooleanLit(true)) { _init.next.foreach(_.I.append(guard)) }
+    _init.toImmutable(method)
+  }
 
   private def isMapping(name: String, hi: Int, lo: Int): Boolean = {
     val oldMap : BigInt = mappedBits.getOrElse(name, 0)

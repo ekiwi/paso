@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, ResolveAndCheck, Transform, ir, passes}
-import paso.verification.{Assertion, NamedExpr, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationGraph, VerificationProblem}
+import paso.verification.{Assertion, MethodSemantics, NamedExpr, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationGraph, VerificationProblem}
 import paso.{Binding, UntimedModule}
 import uclid.smt
 
@@ -75,14 +75,14 @@ object Elaboration {
     }
   }
 
-  private def elaborateProtocols(protos: Seq[paso.Protocol]): Seq[(String, PendingInputNode)] = {
+  private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, PendingInputNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
       val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
       val int = new ProtocolInterpreter
       new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
-      (p.methodName, int.getGraph(p.methodName))
+      (p.methodName, int.getGraph(p.methodName, methods(p.methodName).guard))
     }
   }
 
@@ -138,7 +138,7 @@ object Elaboration {
 
     // elaborate the binding
     val binding = bind(implementation.mod, untimed.mod)
-    val protos = elaborateProtocols(binding.protos)
+    val protos = elaborateProtocols(binding.protos, untimed.model.methods)
     val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, binding.maps)
     val invariances = elaborateInvariances(implementation.mod, implementation.state, binding.invs)
 
