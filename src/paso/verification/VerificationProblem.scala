@@ -55,7 +55,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   val solver = new smt.SMTLIB2Interface(List("yices-smt2"))
 
 
-  private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): BoundedCheck = {
+  private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
     val check = new BoundedCheckBuilder(p.impl)
 
     // assume that invariances hold in the initial state
@@ -80,8 +80,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
       p.invariances.foreach(i => check.assertAt(step, implies(taken, implies(i.guard, i.pred))))
       p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, implies(m.guard, m.pred))))
     }
-    
-    check.getBoundedCheck
+
+    val sys = check.getCombinedSystem
+    smt.Btor2.serialize(sys).foreach(println)
   }
 
   override protected def execute(p: VerificationProblem): Unit = {
