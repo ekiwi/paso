@@ -68,6 +68,7 @@ object Btor2Serializer {
     def line(l: String): Int = {
       val ii = index
       lines += s"$ii $l"
+      println(s"$ii $l")
       index += 1
       ii
     }
@@ -163,10 +164,15 @@ object Btor2Serializer {
       st.init.foreach{ init => line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}") }
       st.next.foreach{ next => line(s"next ${t(next.typ)} ${s(st.sym)} ${s(next)}") }
     }
-    // define outputs, bad states, constraints and fairness properties
+
+    // define outputs first to allow other labels to refer to the output symbols
+    sys.outputs.foreach{ case (name, expr) =>
+      expr_cache(Symbol(name, expr.typ)) = line(s"output ${s(expr)} $name")
+    }
+
+    // define bad states, constraints and fairness properties
     val lbls = Seq("constraint" -> sys.constraints, "bad" -> sys.bad, "fair" -> sys.fair)
     lbls.foreach { case (lbl, exprs) => exprs.foreach{ e => line(s"$lbl ${s(e)}") } }
-    sys.outputs.foreach{ case (name, expr) => line(s"output ${s(expr)} $name")}
 
     lines.toSeq
   }
