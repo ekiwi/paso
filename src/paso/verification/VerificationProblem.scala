@@ -81,7 +81,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
       p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, implies(m.guard, m.pred))))
     }
 
-    val sys = check.getCombinedSystem
+    val sys = check.getSystems
     smt.Btor2.serialize(sys).foreach(println)
   }
 

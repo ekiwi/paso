@@ -54,21 +54,37 @@ object Btor2 {
     sys
   }
   def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
-  def serialize(sys: SymbolicTransitionSystem, startIndex: Int = 1): Seq[String] = Btor2Serializer.serialize(sys)
+  def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys)
+  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = Btor2Serializer.serialize(sys)
 }
 
 
 object Btor2Serializer {
-  def serialize(sys: SymbolicTransitionSystem, startIndex: Int = 1): Seq[String] = {
-    val expr_cache = mutable.HashMap[Expr,Int]()
-    val sort_cache = mutable.HashMap[Type,Int]()
+  def serialize(sys: SymbolicTransitionSystem): Seq[String] = {
+    serializeOne(sys, makeState())._1
+  }
+
+  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = {
+    var state = makeState()
+    sys.flatMap{ s =>
+      val (lines, new_state) = serializeOne(s, state)
+      state = new_state
+      lines
+    }.toSeq
+  }
+
+  private case class State(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
+  private def makeState(): State = State(0, mutable.HashMap(), mutable.HashMap())
+
+  private def serializeOne(sys: SymbolicTransitionSystem, state: State): (Seq[String], State) = {
+    val expr_cache = state.expr_cache
+    val sort_cache = state.sort_cache
     val lines = mutable.ArrayBuffer[String]()
-    var index = startIndex
+    var index = state.index
 
     def line(l: String): Int = {
       val ii = index
       lines += s"$ii $l"
-      println(s"$ii $l")
       index += 1
       ii
     }
@@ -174,7 +190,7 @@ object Btor2Serializer {
     val lbls = Seq("constraint" -> sys.constraints, "bad" -> sys.bad, "fair" -> sys.fair)
     lbls.foreach { case (lbl, exprs) => exprs.foreach{ e => line(s"$lbl ${s(e)}") } }
 
-    lines.toSeq
+    (lines.toSeq, state.copy(index=index))
   }
 }
 
