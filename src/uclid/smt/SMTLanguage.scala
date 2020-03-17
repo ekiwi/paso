@@ -746,6 +746,7 @@ case class OperatorApplication(op: Operator, operands: List[Expr]) extends Expr 
 case class ArraySelectOperation(e: Expr, index: List[Expr])
   extends Expr (e.typ.asInstanceOf[ArrayType].outType)
 {
+  require(e.typ.isArray)
   override val hashId = 308
   override val hashCode = computeHash(index, e)
   override val md5hashCode = computeMD5Hash(e, index)
@@ -755,6 +756,7 @@ case class ArraySelectOperation(e: Expr, index: List[Expr])
 }
 case class ArrayStoreOperation(e: Expr, index: List[Expr], value: Expr) extends Expr(e.typ)
 {
+  require(e.typ.isArray)
   override val hashId = 309
   override val hashCode = computeHash(index, e, value)
   override val md5hashCode = computeMD5Hash(e, index, value)

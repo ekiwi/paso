@@ -174,7 +174,8 @@ class FirrtlInterpreter extends SmtHelpers {
   }
   def onConnect(lhs: String, index: smt.Expr, rhs: smt.Expr): Unit = {
     //println(s"$lhs[$index] := $rhs")
-    val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+    val typ = smt.ArrayType(List(index.typ), rhs.typ)
+    val st = store(smt.Symbol(lhs, typ), index, rhs)
     onAssign(lhs, st)
     if(!isIO(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
