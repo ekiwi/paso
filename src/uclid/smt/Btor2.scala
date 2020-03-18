@@ -56,6 +56,37 @@ object Btor2 {
   def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
   def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys)
   def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = Btor2Serializer.serialize(sys)
+  def createBtorMC(): ModelChecker = new BtormcModelChecker()
+}
+
+trait ModelCheckResult {
+  def isFail: Boolean
+  def isSuccess: Boolean = !isFail
+}
+case class ModelCheckSuccess() extends ModelCheckResult { override def isFail: Boolean = false }
+case class ModelCheckFail() extends ModelCheckResult { override def isFail: Boolean = true }
+
+
+class BtormcModelChecker extends ModelChecker {
+  // TODO: check to make sure binary exists
+  override val name: String = "btormc"
+  override def makeArgs(kMax: Int): Seq[String] =
+    if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
+}
+
+abstract class ModelChecker {
+  val name: String
+  def makeArgs(kMax: Int): Seq[String]
+  def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1): ModelCheckResult = {
+    val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
+    val lines = Btor2.serialize(sys)
+    lines.foreach{l => checker.writeInput(l) ; println(l)}
+    checker.finishInput()
+    checker.readOutput() match {
+      case None => ModelCheckSuccess()
+      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
+    }
+  }
 }
 
 
@@ -66,6 +97,9 @@ object Btor2Serializer {
 
   def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = {
     var state = makeState()
+    // btormc needs all states to be declared before their update expressions:
+    // > state id must be greater than id of second operand
+    // thus we put all state into the first system
     sys.flatMap{ s =>
       val (lines, new_state) = serializeOne(s, state)
       state = new_state
@@ -74,7 +108,7 @@ object Btor2Serializer {
   }
 
   private case class State(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
-  private def makeState(): State = State(0, mutable.HashMap(), mutable.HashMap())
+  private def makeState(): State = State(1, mutable.HashMap(), mutable.HashMap())
 
   private def serializeOne(sys: SymbolicTransitionSystem, state: State): (Seq[String], State) = {
     val expr_cache = state.expr_cache

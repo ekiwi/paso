@@ -82,7 +82,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     }
 
     val sys = check.getSystems
-    smt.Btor2.serialize(sys).foreach(println)
+    val checker = smt.Btor2.createBtorMC()
+    val res = checker.check(sys)
+    println(res)
   }
 
   override protected def execute(p: VerificationProblem): Unit = {
