@@ -216,13 +216,13 @@ object Btor2Serializer {
         case EqualityOp => "eq"
         case InequalityOp => "neq"
         case BVGTUOp(_) => "ugt"
-        case BVGEUOp(_) => "uge"
+        case BVGEUOp(_) => "ugte"
         case BVLTUOp(_) => "ult"
-        case BVLEUOp(_) => "ule"
+        case BVLEUOp(_) => "ulte"
         case BVGTOp(_) => "sgt"
-        case BVGEOp(_) => "sge"
+        case BVGEOp(_) => "sgte"
         case BVLTOp(_) => "slt"
-        case BVLEOp(_) => "sle"
+        case BVLEOp(_) => "slte"
         case BVAndOp(_) => "and"
         case ConjunctionOp => "and"
         case BVOrOp(_) => "or"
@@ -373,13 +373,13 @@ object Btor2Parser {
       def app(op: Operator) = OperatorApplication(op, List(a, b))
       op match {
         case "ugt" => app(BVGTUOp(a_w))
-        case "uge" => app(BVGEUOp(a_w))
+        case "ugte" => app(BVGEUOp(a_w))
         case "ult" => app(BVLTUOp(a_w))
-        case "ule" => app(BVLEUOp(a_w))
+        case "ulte" => app(BVLEUOp(a_w))
         case "sgt" => app(BVGTOp(a_w))
-        case "sge" => app(BVGEOp(a_w))
+        case "sgte" => app(BVGEOp(a_w))
         case "slt" => app(BVLTOp(a_w))
-        case "sle" => app(BVLEOp(a_w))
+        case "slte" => app(BVLEOp(a_w))
         case "and" => app(BVAndOp(w))
         case "nand" => OperatorApplication(BVNotOp(w), List(app(BVAndOp(w))))
         case "nor" => OperatorApplication(BVNotOp(w), List(app(BVOrOp(w))))
