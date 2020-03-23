@@ -133,21 +133,50 @@ object Btor2Serializer {
   }
 
   def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = {
-    var state = makeState()
+    val sysSeq = sys.toSeq
+    sysSeq.length match {
+      case 0 => Seq()
+      case 1 => serializeOne(sysSeq.head, makeState())._1
+      case _ => serializeMany(sysSeq)
+    }
+  }
+
+  private def serializeMany(sys: Seq[SymbolicTransitionSystem]): Seq[String] = {
     // btormc needs all states to be declared before their update expressions:
     // > state id must be greater than id of second operand
     // thus we put all state into the first system
-    sys.flatMap{ s =>
-      val (lines, new_state) = serializeOne(s, state)
+    val states = collectStates(sys, checkForNameClashes = true).map(State(_))
+    val s0 = SymbolicTransitionSystem(name=sys.head.name, inputs=Seq(), states = states)
+    val (lines_0, state_0) = serializeOne(s0, makeState())
+    var state = state_0
+    val lines = sys.flatMap{ s =>
+      val (ll, new_state) = serializeOne(s, state, declareStates = false)
       state = new_state
-      lines
-    }.toSeq
+      ll
+    }
+    lines_0 ++ lines
   }
 
-  private case class State(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
-  private def makeState(): State = State(1, mutable.HashMap(), mutable.HashMap())
+  private def collectStates(sys: Iterable[SymbolicTransitionSystem], checkForNameClashes: Boolean): Seq[Symbol] = {
+    val names = mutable.HashSet[String]()
+    val states = mutable.ArrayBuffer[Symbol]()
 
-  private def serializeOne(sys: SymbolicTransitionSystem, state: State): (Seq[String], State) = {
+    sys.foreach { s =>
+      if(checkForNameClashes) {
+        s.states.foreach { state =>
+          assert(!names.contains(state.sym.id), s"State ${state.sym} from ${s.name} overrides a prior state or signal name!")
+        }
+        names ++= (s.states.map(_.sym.id) ++ s.outputs.map(_._1) ++ s.inputs.map(_.id)).toSet
+      }
+      states ++= s.states.map(_.sym)
+    }
+    states
+  }
+
+  private case class InternalState(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
+  private def makeState(): InternalState = InternalState(1, mutable.HashMap(), mutable.HashMap())
+
+  private def serializeOne(sys: SymbolicTransitionSystem, state: InternalState, declareStates: Boolean = true): (Seq[String], InternalState) = {
     val expr_cache = state.expr_cache
     val sort_cache = state.sort_cache
     val lines = mutable.ArrayBuffer[String]()
@@ -239,9 +268,12 @@ object Btor2Serializer {
     sort_cache(BitVectorType(1)) = t(BoolType)
 
     // declare states
-    sys.states.foreach { st =>
-      expr_cache(st.sym) = line(s"state ${t(st.sym.typ)} ${st.sym.id}")
+    if(declareStates) {
+      sys.states.foreach { st =>
+        expr_cache(st.sym) = line(s"state ${t(st.sym.typ)} ${st.sym.id}")
+      }
     }
+
     // declare inputs
     sys.inputs.foreach { ii =>
       expr_cache(ii) = line(s"input ${t(ii.typ)} ${ii.id}")
