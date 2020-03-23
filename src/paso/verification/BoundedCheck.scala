@@ -53,7 +53,7 @@ class BoundedCheckBuilder(base: smt.SymbolicTransitionSystem) {
     defines(name.id) = expr
   }
 
-  def getSystems: Seq[smt.SymbolicTransitionSystem] = {
+  def getCombinedSystem: smt.SymbolicTransitionSystem = {
     val allExpr = steps.flatMap(s => s.assumptions ++ s.assertions) ++ defines.values
     val allSymbols : Set[smt.Symbol] = allExpr.map(smt.Context.findSymbols).reduce((a,b) => a | b)
 
@@ -89,11 +89,11 @@ class BoundedCheckBuilder(base: smt.SymbolicTransitionSystem) {
     val constraints = steps.flatMap{ s => s.assumptions.map(in_step(s.ii, _))}
     val badStates = steps.flatMap{ s => s.assertions.map(a => smt.OperatorApplication(smt.NegationOp, List(in_step(s.ii, a)))) }
 
-    // create a transition system containing the checks, it will be serialized right after the original system
-    val states = constStates ++ defineStates ++ Seq(counterState)
-    val check = SymbolicTransitionSystem(name= None, inputs = Seq(), states = states, constraints = constraints, bad = badStates)
+    // merge everything into a combined transition system
+    val states = sys.states ++ constStates ++ defineStates ++ Seq(counterState)
+    val combined = sys.copy(states = states, constraints = sys.constraints ++ constraints, bad = sys.bad ++ badStates)
 
-    Seq(sys, check)
+    combined
   }
 }
 

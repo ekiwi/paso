@@ -58,9 +58,7 @@ object Btor2 {
   }
   def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
   def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
-  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = Btor2Serializer.serialize(sys, false)
-  def serialize(sys: Iterable[SymbolicTransitionSystem], skipOutput: Boolean): Seq[String] =
-    Btor2Serializer.serialize(sys, skipOutput)
+  def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = Btor2Serializer.serialize(sys, skipOutput)
   def createBtorMC(): ModelChecker = new BtormcModelChecker()
 }
 
@@ -89,14 +87,14 @@ abstract class ModelChecker {
   val name: String
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
-  def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
+  def check(sys: SymbolicTransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
     fileName match {
       case None => checkWithPipe(sys, kMax)
       case Some(file) => checkWithFile(file, sys, kMax)
     }
   }
 
-  private def checkWithFile(fileName: String, sys: Iterable[SymbolicTransitionSystem], kMax: Int): ModelCheckResult = {
+  private def checkWithFile(fileName: String, sys: SymbolicTransitionSystem, kMax: Int): ModelCheckResult = {
     val btorWrite = new PrintWriter(fileName)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => btorWrite.println(l) }
@@ -123,7 +121,7 @@ abstract class ModelChecker {
     }
   }
 
-  private def checkWithPipe(sys: Iterable[SymbolicTransitionSystem], kMax: Int): ModelCheckResult = {
+  private def checkWithPipe(sys: SymbolicTransitionSystem, kMax: Int): ModelCheckResult = {
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => checker.writeInput(l) ; println(l)}
