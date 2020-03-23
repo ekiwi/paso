@@ -180,7 +180,8 @@ object Btor2Serializer {
         line(s"read ${t(expr.typ)} ${s(array)} ${s(index)}")
       case ArrayStoreOperation(array, List(index), value) =>
         line(s"write ${t(expr.typ)} ${s(array)} ${s(index)} ${s(value)}")
-      case Symbol(id, typ) => throw new RuntimeException(s"Unknown symbol $id : $typ")
+      case Symbol(id, typ) =>
+        throw new RuntimeException(s"Unknown symbol $id : $typ")
       case OperatorApplication(op, List(a)) => unary(op, a, expr.typ)
       case OperatorApplication(op, List(a, b)) => binary(op, a, b, expr.typ)
       case OperatorApplication(ITEOp, List(cond, a, b)) =>
@@ -241,24 +242,36 @@ object Btor2Serializer {
       line(s"$btor_op ${t(typ)} ${s(a)} ${s(b)}")
     }
 
+    val sortStatesByInitDependencies = true
+    val states = if(sortStatesByInitDependencies) {
+      val knownSymbols = sys.inputs.toSet
+      val deps : Map[Symbol, Set[Symbol]] = sys.states.map { st =>
+        st.sym -> st.init.toSeq.flatMap(Context.findSymbols).toSet.diff(knownSymbols).diff(Set(st.sym))
+      }.toMap
+      val dependencyGraph = firrtl.graph.DiGraph(deps).reverse
+      val stateOrder = dependencyGraph.linearize
+      val stateSymToState = sys.states.map{st => st.sym -> st}.toMap
+      stateOrder.map(stateSymToState(_))
+    } else { sys.states }
+
     // make sure that BV<1> and Bool alias to the same type
     sort_cache(BitVectorType(1)) = t(BoolType)
-
-    // declare states
-    sys.states.foreach { st =>
-      expr_cache(st.sym) = line(s"state ${t(st.sym.typ)} ${st.sym.id}")
-    }
 
     // declare inputs
     sys.inputs.foreach { ii =>
       expr_cache(ii) = line(s"input ${t(ii.typ)} ${ii.id}")
     }
+
     // define state init and next
-    sys.states.foreach { st =>
-      st.init.foreach{ init =>
-        comment(s"${st.sym}.init := $init")
-        line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}")
-      }
+    states.foreach { st =>
+      // calculate init expression before declaring the state
+      // this is required by btormc (presumably to avoid cycles in the init expression)
+      st.init.foreach{ init => comment(s"${st.sym}.init := $init") ; s(init) }
+
+      expr_cache(st.sym) = line(s"state ${t(st.sym.typ)} ${st.sym.id}")
+
+      st.init.foreach{ init => line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}") }
+
       st.next.foreach{ next =>
         comment(s"${st.sym}.next := $next")
         line(s"next ${t(next.typ)} ${s(st.sym)} ${s(next)}")
