@@ -36,9 +36,12 @@
 
 package uclid.smt
 
+import java.io.{File, PrintWriter}
+
 import scala.io.Source
 import scala.collection.mutable
 import scala.util.matching.Regex
+import scala.sys.process._
 
 case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
 case class SymbolicTransitionSystem(name: Option[String], inputs: Seq[Symbol], states: Seq[State],
@@ -70,22 +73,56 @@ case class ModelCheckFail() extends ModelCheckResult { override def isFail: Bool
 class BtormcModelChecker extends ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "btormc"
-  override def makeArgs(kMax: Int): Seq[String] =
-    if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
+  override def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
+    val prefix = if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
+    inputFile match {
+      case None => prefix
+      case Some(file) => prefix ++ Seq(s"$file")
+    }
+  }
 }
 
 abstract class ModelChecker {
   val name: String
-  def makeArgs(kMax: Int): Seq[String]
-  def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1): ModelCheckResult = {
+  def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
+  def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
+    val res = fileName match {
+      case None => checkWithPipe(sys, kMax)
+      case Some(file) => checkWithFile(file, sys, kMax)
+    }
+    res match {
+      case None => ModelCheckSuccess()
+      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
+    }
+  }
+
+  private def checkWithFile(fileName: String, sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
+    val btorWrite = new PrintWriter(fileName)
+    val lines = Btor2.serialize(sys)
+    lines.foreach{l => btorWrite.println(l) }
+    btorWrite.close()
+
+    // execute model checker
+    val resultFileName = fileName + ".out"
+    val cmd = makeArgs(kMax, Some(fileName))
+    println(cmd)
+    val ret = (cmd #> new File(resultFileName)).!
+    val success = (ret == 0)
+
+    if(success) { None } else {
+      val ff = Source.fromFile(resultFileName)
+      val lines = ff.getLines().mkString("\n")
+      ff.close()
+      Some(lines)
+    }
+  }
+
+  private def checkWithPipe(sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
     val lines = Btor2.serialize(sys)
     lines.foreach{l => checker.writeInput(l) ; println(l)}
     checker.finishInput()
-    checker.readOutput() match {
-      case None => ModelCheckSuccess()
-      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
-    }
+    checker.readOutput()
   }
 }
 
