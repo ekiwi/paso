@@ -90,17 +90,13 @@ abstract class ModelChecker {
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
-    val res = fileName match {
+    fileName match {
       case None => checkWithPipe(sys, kMax)
       case Some(file) => checkWithFile(file, sys, kMax)
     }
-    res match {
-      case None => ModelCheckSuccess()
-      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
-    }
   }
 
-  private def checkWithFile(fileName: String, sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
+  private def checkWithFile(fileName: String, sys: Iterable[SymbolicTransitionSystem], kMax: Int): ModelCheckResult = {
     val btorWrite = new PrintWriter(fileName)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => btorWrite.println(l) }
@@ -111,22 +107,32 @@ abstract class ModelChecker {
     val cmd = makeArgs(kMax, Some(fileName))
     println(cmd)
     val ret = (cmd #> new File(resultFileName)).!
-    val success = (ret == 0)
 
-    if(success) { None } else {
-      val ff = Source.fromFile(resultFileName)
-      val lines = ff.getLines().mkString("\n")
-      ff.close()
-      Some(lines)
+    // read result file
+    val ff = Source.fromFile(resultFileName)
+    val res = ff.getLines().toSeq
+    ff.close()
+
+    // check if it starts with sat
+    if(res.nonEmpty && res.head.startsWith("sat")) {
+      ModelCheckFail()
+    } else {
+      println("Does this look like success to you?")
+      println(res.mkString("\n"))
+      ModelCheckSuccess()
     }
   }
 
-  private def checkWithPipe(sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
+  private def checkWithPipe(sys: Iterable[SymbolicTransitionSystem], kMax: Int): ModelCheckResult = {
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => checker.writeInput(l) ; println(l)}
     checker.finishInput()
-    checker.readOutput()
+    val res = checker.readOutput()
+    res match {
+      case None => ModelCheckSuccess()
+      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
+    }
   }
 }
 

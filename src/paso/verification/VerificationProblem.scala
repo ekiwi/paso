@@ -85,6 +85,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     val checker = smt.Btor2.createBtorMC()
     val res = checker.check(sys, fileName=Some("test.btor"))
     println(res)
+    assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.untimed.name}")
   }
 
   override protected def execute(p: VerificationProblem): Unit = {
