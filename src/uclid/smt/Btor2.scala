@@ -57,8 +57,10 @@ object Btor2 {
     sys
   }
   def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
-  def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys)
-  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = Btor2Serializer.serialize(sys)
+  def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
+  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = Btor2Serializer.serialize(sys, false)
+  def serialize(sys: Iterable[SymbolicTransitionSystem], skipOutput: Boolean): Seq[String] =
+    Btor2Serializer.serialize(sys, skipOutput)
   def createBtorMC(): ModelChecker = new BtormcModelChecker()
 }
 
@@ -73,6 +75,7 @@ case class ModelCheckFail() extends ModelCheckResult { override def isFail: Bool
 class BtormcModelChecker extends ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "btormc"
+  override val supportsOutput: Boolean = false
   override def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
     val prefix = if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
     inputFile match {
@@ -85,6 +88,7 @@ class BtormcModelChecker extends ModelChecker {
 abstract class ModelChecker {
   val name: String
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
+  val supportsOutput: Boolean
   def check(sys: Iterable[SymbolicTransitionSystem], kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
     val res = fileName match {
       case None => checkWithPipe(sys, kMax)
@@ -98,7 +102,7 @@ abstract class ModelChecker {
 
   private def checkWithFile(fileName: String, sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
     val btorWrite = new PrintWriter(fileName)
-    val lines = Btor2.serialize(sys)
+    val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => btorWrite.println(l) }
     btorWrite.close()
 
@@ -119,7 +123,7 @@ abstract class ModelChecker {
 
   private def checkWithPipe(sys: Iterable[SymbolicTransitionSystem], kMax: Int): Option[String] = {
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
-    val lines = Btor2.serialize(sys)
+    val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => checker.writeInput(l) ; println(l)}
     checker.finishInput()
     checker.readOutput()
@@ -128,19 +132,19 @@ abstract class ModelChecker {
 
 
 object Btor2Serializer {
-  def serialize(sys: SymbolicTransitionSystem): Seq[String] = {
-    serializeOne(sys, makeState())._1
+  def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = {
+    serializeOne(sys, makeState(), skipOutput)._1
   }
 
-  def serialize(sys: Iterable[SymbolicTransitionSystem]): Seq[String] = {
+  def serialize(sys: Iterable[SymbolicTransitionSystem], skipOutput: Boolean): Seq[String] = {
     val sysSeq = sys.toSeq
     sysSeq.length match {
       case 0 => Seq()
-      case 1 => serializeOne(sysSeq.head, makeState())._1
+      case 1 => serializeOne(sysSeq.head, makeState(), skipOutput)._1
       case _ => {
         var state = makeState()
         sysSeq.flatMap{ s =>
-          val (ll, new_state) = serializeOne(s, state)
+          val (ll, new_state) = serializeOne(s, state, skipOutput)
           state = new_state
           ll
         }
@@ -151,7 +155,7 @@ object Btor2Serializer {
   private case class InternalState(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
   private def makeState(): InternalState = InternalState(1, mutable.HashMap(), mutable.HashMap())
 
-  private def serializeOne(sys: SymbolicTransitionSystem, state: InternalState): (Seq[String], InternalState) = {
+  private def serializeOne(sys: SymbolicTransitionSystem, state: InternalState, skipOutput: Boolean): (Seq[String], InternalState) = {
     val expr_cache = state.expr_cache
     val sort_cache = state.sort_cache
     val lines = mutable.ArrayBuffer[String]()
@@ -284,7 +288,8 @@ object Btor2Serializer {
 
     // define outputs first to allow other labels to refer to the output symbols
     sys.outputs.foreach{ case (name, expr) =>
-      expr_cache(Symbol(name, expr.typ)) = line(s"output ${s(expr)} $name")
+      expr_cache(Symbol(name, expr.typ)) = s(expr)
+      if(!skipOutput) line(s"output ${s(expr)} $name")
     }
 
     // define bad states, constraints and fairness properties
