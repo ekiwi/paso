@@ -145,12 +145,13 @@ object Btor2Serializer {
     // btormc needs all states to be declared before their update expressions:
     // > state id must be greater than id of second operand
     // thus we put all state into the first system
-    val states = collectStates(sys, checkForNameClashes = true).map(State(_))
-    val s0 = SymbolicTransitionSystem(name=sys.head.name, inputs=Seq(), states = states)
-    val (lines_0, state_0) = serializeOne(s0, makeState())
-    var state = state_0
+//    val states = collectStates(sys, checkForNameClashes = true).map(State(_))
+//    val s0 = SymbolicTransitionSystem(name=sys.head.name, inputs=Seq(), states = states)
+//    val (lines_0, state_0) = serializeOne(s0, makeState())
+    val lines_0 = Seq()
+    var state = makeState()
     val lines = sys.flatMap{ s =>
-      val (ll, new_state) = serializeOne(s, state, declareStates = false)
+      val (ll, new_state) = serializeOne(s, state, declareStates = true)
       state = new_state
       ll
     }
