@@ -197,7 +197,11 @@ object Btor2Serializer {
       if(value == 0) line(s"zero $typ")
       else if(value == 1) line(s"one $typ")
       else if(value == mask) line(s"ones $typ")
-      else line(s"const $typ ${value.toString(2)}")
+      else {
+        val digits = value.toString(2)
+        val padded = digits.reverse.padTo(w, '0').reverse
+        line(s"const $typ $padded")
+      }
     }
 
     def unary(op: Operator, a: Expr, typ: Type): Int = op match {
