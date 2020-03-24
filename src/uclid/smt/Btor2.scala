@@ -137,33 +137,10 @@ abstract class ModelChecker {
 
 object Btor2Serializer {
   def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = {
-    serializeOne(sys, makeState(), skipOutput)._1
-  }
-
-  def serialize(sys: Iterable[SymbolicTransitionSystem], skipOutput: Boolean): Seq[String] = {
-    val sysSeq = sys.toSeq
-    sysSeq.length match {
-      case 0 => Seq()
-      case 1 => serializeOne(sysSeq.head, makeState(), skipOutput)._1
-      case _ => {
-        var state = makeState()
-        sysSeq.flatMap{ s =>
-          val (ll, new_state) = serializeOne(s, state, skipOutput)
-          state = new_state
-          ll
-        }
-      }
-    }
-  }
-
-  private case class InternalState(index: Int, expr_cache: mutable.HashMap[Expr, Int], sort_cache: mutable.HashMap[Type,Int])
-  private def makeState(): InternalState = InternalState(1, mutable.HashMap(), mutable.HashMap())
-
-  private def serializeOne(sys: SymbolicTransitionSystem, state: InternalState, skipOutput: Boolean): (Seq[String], InternalState) = {
-    val expr_cache = state.expr_cache
-    val sort_cache = state.sort_cache
+    val expr_cache = mutable.HashMap[Expr, Int]()
+    val sort_cache = mutable.HashMap[Type, Int]()
     val lines = mutable.ArrayBuffer[String]()
-    var index = state.index
+    var index = 1
 
     def line(l: String): Int = {
       val ii = index
@@ -300,7 +277,7 @@ object Btor2Serializer {
     val lbls = Seq("constraint" -> sys.constraints, "bad" -> sys.bad, "fair" -> sys.fair)
     lbls.foreach { case (lbl, exprs) => exprs.foreach{ e => line(s"$lbl ${s(e)}") } }
 
-    (lines.toSeq, state.copy(index=index))
+    lines
   }
 }
 
