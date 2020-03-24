@@ -46,7 +46,15 @@ import scala.sys.process._
 case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
 case class SymbolicTransitionSystem(name: Option[String], inputs: Seq[Symbol], states: Seq[State],
                                     outputs: Seq[Tuple2[String,Expr]] = Seq(),
-                                    constraints: Seq[Expr] = Seq(), bad: Seq[Expr] = Seq(), fair: Seq[Expr] = Seq())
+                                    constraints: Seq[Expr] = Seq(), bad: Seq[Expr] = Seq(), fair: Seq[Expr] = Seq()) {
+  private def disjunction(props: Seq[Expr]): Seq[Expr] = if(props.isEmpty) {Seq()} else {
+    Seq(props.reduce{ (a,b) => OperatorApplication(DisjunctionOp, List(a, b)) })
+  }
+  // ensures that the number of bad states is 1 or 0
+  def unifyProperties(): SymbolicTransitionSystem = {
+    this.copy(bad = disjunction(this.bad))
+  }
+}
 
 
 object Btor2 {
@@ -60,6 +68,7 @@ object Btor2 {
   def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
   def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = Btor2Serializer.serialize(sys, skipOutput)
   def createBtorMC(): ModelChecker = new BtormcModelChecker()
+  def createCosa2MC(): ModelChecker = new Cosa2ModelChecker()
 }
 
 trait ModelCheckResult {
@@ -83,14 +92,31 @@ class BtormcModelChecker extends ModelChecker {
   }
 }
 
+class Cosa2ModelChecker extends ModelChecker {
+  // TODO: check to make sure binary exists
+  override val name: String = "cosa2"
+  override val supportsOutput: Boolean = true
+  override val supportsMultipleProperties: Boolean = false
+  override def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
+    val base = Seq("cosa2", "--engine bmc")
+    val prefix = if(kMax > 0) base ++ Seq(s"--bound $kMax") else base
+    inputFile match {
+      case None => throw new RuntimeException("cosa2 only supports file based input. Please supply a filename!")
+      case Some(file) => prefix ++ Seq(s"$file")
+    }
+  }
+}
+
 abstract class ModelChecker {
   val name: String
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
+  val supportsMultipleProperties: Boolean = true
   def check(sys: SymbolicTransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
+    val checkSys = if(supportsMultipleProperties) sys else sys.unifyProperties()
     fileName match {
-      case None => checkWithPipe(sys, kMax)
-      case Some(file) => checkWithFile(file, sys, kMax)
+      case None => checkWithPipe(checkSys, kMax)
+      case Some(file) => checkWithFile(file, checkSys, kMax)
     }
   }
 
@@ -102,9 +128,10 @@ abstract class ModelChecker {
 
     // execute model checker
     val resultFileName = fileName + ".out"
-    val cmd = makeArgs(kMax, Some(fileName))
+    val cmd = makeArgs(kMax, Some(fileName)).mkString(" ")
     println(cmd)
     val ret = (cmd #> new File(resultFileName)).!
+    println(s"ret: $ret")
 
     // read result file
     val ff = Source.fromFile(resultFileName)
