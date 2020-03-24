@@ -78,7 +78,7 @@ trait ModelCheckResult {
   def isSuccess: Boolean = !isFail
 }
 case class ModelCheckSuccess() extends ModelCheckResult { override def isFail: Boolean = false }
-case class ModelCheckFail() extends ModelCheckResult { override def isFail: Boolean = true }
+case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override def isFail: Boolean = true }
 
 
 class BtormcModelChecker extends ModelChecker {
@@ -142,8 +142,8 @@ abstract class ModelChecker {
 
     // check if it starts with sat
     if(res.nonEmpty && res.head.startsWith("sat")) {
-      Btor2.readWitness(res)
-      ModelCheckFail()
+      val witness = Btor2.readWitness(res)
+      ModelCheckFail(witness)
     } else {
       println("Does this look like success to you?")
       println(res.mkString("\n"))
@@ -159,7 +159,9 @@ abstract class ModelChecker {
     val res = checker.readOutput()
     res match {
       case None => ModelCheckSuccess()
-      case Some(msg) => assert(msg == "sat", msg) ; ModelCheckFail()
+      case Some(msg) =>
+        val witness = Btor2.readWitness(res)
+        ModelCheckFail(witness)
     }
   }
 }
@@ -311,7 +313,7 @@ object Btor2Serializer {
   }
 }
 
-case class Witness()
+case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
 object Btor2WitnessParser {
   private trait State
@@ -320,11 +322,32 @@ object Btor2WitnessParser {
   private case class Props(bad: Seq[Int], fair: Seq[Int]) extends State
   private case class States(ii: Int) extends State
   private case class Inputs(ii: Int) extends State
+  private case class Assignment(ii: Int, value: BigInt, index: Option[BigInt], symbol: String)
 
   def read(lines: Iterable[String], parseMax: Int = 1): Seq[Witness] = {
     var state: State = Start()
     val witnesses = mutable.ArrayBuffer[Witness]()
+    // work in progress witness
+    var failedBad: Seq[Int] = Seq()
+    val regInit = mutable.HashMap[Int, BigInt]()
+    val memInit = mutable.HashMap[Int, Seq[(BigInt, BigInt)]]()
+    val allInputs = mutable.ArrayBuffer[Map[Int, BigInt]]()
+    val inputs = mutable.Map[Int, BigInt]()
+
     def done = witnesses.length >= parseMax
+
+    def parseAssignment(parts: Seq[String]): Assignment = {
+      val is_array = parts.length == 4
+      val is_bv = parts.length == 3
+      assert(is_array || is_bv, s"Expected assignment to consist of 3-4 parts, not: $parts")
+      val ii = Integer.parseUnsignedInt(parts.head)
+      val (value, index) = if(is_array) {
+        assert(parts(1).startsWith("[") && parts(1).endsWith("]"), s"Expected `[index]`, not `${parts(1)}` in: $parts")
+        val ii = BigInt(parts(1).drop(1).dropRight(1), 2)
+        (BigInt(parts(2), 2), Some(ii))
+      } else { (BigInt(parts(1), 2), None) }
+      Assignment(ii, value, index, symbol = parts.last)
+    }
 
     def parse_line(line: String): Unit = {
       if (line.isEmpty) { /* skip blank lines */ return }
@@ -332,11 +355,28 @@ object Btor2WitnessParser {
       val parts = line.split(" ")
       def uintStartingAt(ii: Int) = Integer.parseUnsignedInt(line.substring(ii))
 
-      print(state)
+      //print(state)
 
-      def finish(): State = {
-        witnesses.append(Witness())
+      def finishWitness(): State = {
+        witnesses.append(Witness(failedBad=failedBad, regInit=regInit.toMap, memInit=memInit.toMap, inputs=allInputs))
+        regInit.clear()
+        memInit.clear()
+        inputs.clear()
         Start()
+      }
+      def newInputs(): State = {
+        val ii = uintStartingAt(1)
+        assert(ii == allInputs.length, s"Expected inputs @${allInputs.length}, not @$ii")
+        Inputs(ii)
+      }
+      def newStates(): State = {
+        val ii = uintStartingAt(1)
+        assert(ii == 0, s"We currently only support a single state frame!")
+        States(ii)
+      }
+      def finishInputFrame() {
+        allInputs.append(inputs.toMap)
+        inputs.clear()
       }
 
       state = state match {
@@ -347,31 +387,44 @@ object Btor2WitnessParser {
         case s: WaitForProp => {
           parts.foreach{p => assert(p.startsWith("b") || p.startsWith("j"), s"unexpected property name: $p in $line")}
           val props = parts.map{p => (p.substring(0,1), Integer.parseUnsignedInt(p.substring(1)))}
-          Props(bad = props.filter(_._1 == "b").map(_._2), fair = props.filter(_._1 == "j").map(_._2))
+          val next = Props(bad = props.filter(_._1 == "b").map(_._2), fair = props.filter(_._1 == "j").map(_._2))
+          assert(next.fair.isEmpty, "Fairness properties are not supported yet.")
+          failedBad = next.bad
+          next
         }
         case s: Props => {
           assert(line == "#0", s"Expected initial state frame, not: $line")
-          States(0)
+          newStates()
         }
         case s: States => {
-          if(line == ".") { finish() }
-          else if(line.startsWith("@")) { Inputs(uintStartingAt(1)) } else {
+          if(line == ".") { finishWitness() }
+          else if(line.startsWith("@")) { newInputs() } else {
+            val a = parseAssignment(parts)
+            a.index match {
+              case None => regInit(a.ii) = a.value
+              case Some(index) =>
+                val priorWrites = memInit.getOrElse(a.ii, Seq())
+                memInit(a.ii) = priorWrites ++ Seq((index, a.value))
+            }
             s
           }
         }
         case s: Inputs => {
-          if(line == ".") { finish() }
-          else if(line.startsWith("@")) { Inputs(uintStartingAt(1)) }
-          else if(line.startsWith("#")) { States(uintStartingAt(1)) } else {
+          if(line == ".") { finishWitness() }
+          else if(line.startsWith("@")) { finishInputFrame() ; newInputs() }
+          else if(line.startsWith("#")) { finishInputFrame() ; newStates()  } else {
+            val a = parseAssignment(parts)
+            assert(a.index.isEmpty, s"Input frames are not expected to contain array assignments!")
+            inputs(a.ii) = a.value
             s
           }
         }
       }
-      println(s" -> $state")
+      //println(s" -> $state")
     }
 
     breakable { lines.foreach{ ll =>
-      println(ll.trim)
+      //println(ll.trim)
       parse_line(ll.trim)
       if(done) break
     }}
