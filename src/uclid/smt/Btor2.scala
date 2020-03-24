@@ -42,6 +42,7 @@ import scala.io.Source
 import scala.collection.mutable
 import scala.util.matching.Regex
 import scala.sys.process._
+import util.control.Breaks._
 
 case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
 case class SymbolicTransitionSystem(name: Option[String], inputs: Seq[Symbol], states: Seq[State],
@@ -65,6 +66,7 @@ object Btor2 {
     sys
   }
   def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
+  def readWitness(lines: Iterable[String]): Witness = Btor2WitnessParser.read(lines, parseMax = 1).head
   def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
   def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = Btor2Serializer.serialize(sys, skipOutput)
   def createBtorMC(): ModelChecker = new BtormcModelChecker()
@@ -129,9 +131,9 @@ abstract class ModelChecker {
     // execute model checker
     val resultFileName = fileName + ".out"
     val cmd = makeArgs(kMax, Some(fileName)).mkString(" ")
-    println(cmd)
+    print(cmd)
     val ret = (cmd #> new File(resultFileName)).!
-    println(s"ret: $ret")
+    println(s" -> $ret")
 
     // read result file
     val ff = Source.fromFile(resultFileName)
@@ -140,6 +142,7 @@ abstract class ModelChecker {
 
     // check if it starts with sat
     if(res.nonEmpty && res.head.startsWith("sat")) {
+      Btor2.readWitness(res)
       ModelCheckFail()
     } else {
       println("Does this look like success to you?")
@@ -308,6 +311,75 @@ object Btor2Serializer {
   }
 }
 
+case class Witness()
+
+object Btor2WitnessParser {
+  private trait State
+  private case class Start() extends State
+  private case class WaitForProp() extends State
+  private case class Props(bad: Seq[Int], fair: Seq[Int]) extends State
+  private case class States(ii: Int) extends State
+  private case class Inputs(ii: Int) extends State
+
+  def read(lines: Iterable[String], parseMax: Int = 1): Seq[Witness] = {
+    var state: State = Start()
+    val witnesses = mutable.ArrayBuffer[Witness]()
+    def done = witnesses.length >= parseMax
+
+    def parse_line(line: String): Unit = {
+      if (line.isEmpty) { /* skip blank lines */ return }
+      if (line.startsWith(";")) { /* skip comments */ return }
+      val parts = line.split(" ")
+      def uintStartingAt(ii: Int) = Integer.parseUnsignedInt(line.substring(ii))
+
+      print(state)
+
+      def finish(): State = {
+        witnesses.append(Witness())
+        Start()
+      }
+
+      state = state match {
+        case s: Start => {
+          assert(line == "sat", s"Expected witness header to be `sat`, not `$line`")
+          WaitForProp()
+        }
+        case s: WaitForProp => {
+          parts.foreach{p => assert(p.startsWith("b") || p.startsWith("j"), s"unexpected property name: $p in $line")}
+          val props = parts.map{p => (p.substring(0,1), Integer.parseUnsignedInt(p.substring(1)))}
+          Props(bad = props.filter(_._1 == "b").map(_._2), fair = props.filter(_._1 == "j").map(_._2))
+        }
+        case s: Props => {
+          assert(line == "#0", s"Expected initial state frame, not: $line")
+          States(0)
+        }
+        case s: States => {
+          if(line == ".") { finish() }
+          else if(line.startsWith("@")) { Inputs(uintStartingAt(1)) } else {
+            s
+          }
+        }
+        case s: Inputs => {
+          if(line == ".") { finish() }
+          else if(line.startsWith("@")) { Inputs(uintStartingAt(1)) }
+          else if(line.startsWith("#")) { States(uintStartingAt(1)) } else {
+            s
+          }
+        }
+      }
+      println(s" -> $state")
+    }
+
+    breakable { lines.foreach{ ll =>
+      println(ll.trim)
+      parse_line(ll.trim)
+      if(done) break
+    }}
+
+    witnesses
+  }
+}
+
 object Btor2Parser {
   val unary = Set("not", "inc", "dec", "neg", "redand", "redor", "redxor")
   val binary = Set("iff", "implies", "sgt", "ugt", "sgte", "ugte", "slt", "ult", "slte", "ulte",
@@ -327,7 +399,7 @@ object Btor2Parser {
     def is_unique(name: String): Boolean = !unique_names.contains(name)
     def unique_name(prefix: String): String = Iterator.from(0).map(i => s"_${prefix}_$i").filter(is_unique(_)).next
 
-    // while not part of the btor2 spec, yosys annotates the systems name
+    // while not part of the btor2 spec, yosys annotates the system's name
     var name: Option[String] = None
 
     def to_bool(expr: Expr) = OperatorApplication(EqualityOp, List(expr, BitVectorLit(1,1)))
