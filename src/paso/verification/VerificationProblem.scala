@@ -86,6 +86,12 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     //val checker = smt.Btor2.createCosa2MC()
     val res = checker.check(sys, fileName=Some("test.btor"))
     println(res)
+
+    res match {
+      case smt.ModelCheckFail(witness) => new smt.TransitionSystemSimulator(sys).run(witness)
+      case smt.ModelCheckSuccess() =>
+    }
+
     assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.untimed.name}")
   }
 
