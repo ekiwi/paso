@@ -241,18 +241,6 @@ object Btor2Serializer {
       line(s"$btor_op ${t(typ)} ${s(a)} ${s(b)}")
     }
 
-    val sortStatesByInitDependencies = true
-    val states = if(sortStatesByInitDependencies) {
-      val knownSymbols = sys.inputs.toSet
-      val deps : Map[Symbol, Set[Symbol]] = sys.states.map { st =>
-        st.sym -> st.init.toSeq.flatMap(Context.findSymbols).toSet.diff(knownSymbols).diff(Set(st.sym))
-      }.toMap
-      val dependencyGraph = firrtl.graph.DiGraph(deps).reverse
-      val stateOrder = dependencyGraph.linearize
-      val stateSymToState = sys.states.map{st => st.sym -> st}.toMap
-      stateOrder.map(stateSymToState(_))
-    } else { sys.states }
-
     // make sure that BV<1> and Bool alias to the same type
     sort_cache(BitVectorType(1)) = t(BoolType)
 
@@ -262,7 +250,7 @@ object Btor2Serializer {
     }
 
     // define state init and next
-    states.foreach { st =>
+    sys.states.foreach { st =>
       // calculate init expression before declaring the state
       // this is required by btormc (presumably to avoid cycles in the init expression)
       st.init.foreach{ init => comment(s"${st.sym}.init := $init") ; s(init) }

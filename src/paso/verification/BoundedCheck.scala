@@ -93,7 +93,7 @@ class BoundedCheckBuilder(base: smt.TransitionSystem) {
     val states = sys.states ++ constStates ++ defineStates ++ Seq(counterState)
     val combined = sys.copy(states = states, constraints = sys.constraints ++ constraints, bad = sys.bad ++ badStates)
 
-    combined
+    combined.sortStatesByInitDependencies()
   }
 }
 

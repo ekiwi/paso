@@ -47,6 +47,17 @@ case class TransitionSystem(name: Option[String], inputs: Seq[Symbol], states: S
   def unifyProperties(): TransitionSystem = {
     this.copy(bad = disjunction(this.bad))
   }
+  /* ensures that states are ordered by the dependencies in their init expressions */
+  def sortStatesByInitDependencies(): TransitionSystem = {
+    val stateSymbols = states.map(_.sym).toSet
+    val dependencies = states.map { st =>
+      st.sym -> st.init.toSeq.flatMap(Context.findSymbols).toSet.intersect(stateSymbols).diff(Set(st.sym))
+    }.toMap
+    val dependencyGraph = firrtl.graph.DiGraph(dependencies).reverse
+    val stateOrder = dependencyGraph.linearize
+    val stateSymToState = states.map{st => st.sym -> st}.toMap
+    this.copy(states = stateOrder.map(stateSymToState))
+  }
 }
 
 trait ModelCheckResult {
@@ -57,3 +68,17 @@ case class ModelCheckSuccess() extends ModelCheckResult { override def isFail: B
 case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override def isFail: Boolean = true }
 
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
+
+class TransitionSystemSimulator(sys: TransitionSystem) {
+  val inputs: Map[Int, Symbol] = sys.inputs.zipWithIndex.map{ case (input, index) => index -> input }.toMap
+  val states: Map[Int, State] = sys.states.zipWithIndex.map{ case (state, index) => index -> state}.toMap
+
+
+}
+
+
+object BitVectorSemantics {
+  def binary(op: Operator, a: BigInt, b: BigInt): BigInt = op match {
+    case BVAddOp(w) => a + b
+  }
+}
