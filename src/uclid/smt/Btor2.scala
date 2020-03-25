@@ -374,7 +374,7 @@ object Btor2WitnessParser {
           }
         }
         case s: Inputs => {
-          if(line == ".") { finishWitness() }
+          if(line == ".") { finishInputFrame() ; finishWitness() }
           else if(line.startsWith("@")) { finishInputFrame() ; newInputs() }
           else if(line.startsWith("#")) { finishInputFrame() ; newStates()  } else {
             val a = parseAssignment(parts)
