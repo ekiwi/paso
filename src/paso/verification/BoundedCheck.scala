@@ -7,7 +7,7 @@ package paso.verification
 import chisel3.util.log2Ceil
 import paso.chisel.SMTSimplifier
 import uclid.smt
-import uclid.smt.SymbolicTransitionSystem
+import uclid.smt.TransitionSystem
 
 import scala.collection.mutable
 
@@ -15,7 +15,7 @@ case class BoundedCheck()
 
 case class CheckStep(ii: Int, assertions: Seq[smt.Expr] = Seq(), assumptions: Seq[smt.Expr] = Seq())
 
-class BoundedCheckBuilder(base: smt.SymbolicTransitionSystem) {
+class BoundedCheckBuilder(base: smt.TransitionSystem) {
   require(base.constraints.isEmpty)
   require(base.bad.isEmpty)
   require(base.fair.isEmpty)
@@ -53,7 +53,7 @@ class BoundedCheckBuilder(base: smt.SymbolicTransitionSystem) {
     defines(name.id) = expr
   }
 
-  def getCombinedSystem: smt.SymbolicTransitionSystem = {
+  def getCombinedSystem: smt.TransitionSystem = {
     val allExpr = steps.flatMap(s => s.assumptions ++ s.assertions) ++ defines.values
     val allSymbols : Set[smt.Symbol] = allExpr.map(smt.Context.findSymbols).reduce((a,b) => a | b)
 

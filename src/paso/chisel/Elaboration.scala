@@ -86,7 +86,7 @@ object Elaboration {
     }
   }
 
-  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.SymbolicTransitionSystem)
+  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem)
   private def elaborateImpl[IM <: RawModule](impl: => IM): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})

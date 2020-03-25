@@ -44,42 +44,20 @@ import scala.util.matching.Regex
 import scala.sys.process._
 import util.control.Breaks._
 
-case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
-case class SymbolicTransitionSystem(name: Option[String], inputs: Seq[Symbol], states: Seq[State],
-                                    outputs: Seq[Tuple2[String,Expr]] = Seq(),
-                                    constraints: Seq[Expr] = Seq(), bad: Seq[Expr] = Seq(), fair: Seq[Expr] = Seq()) {
-  private def disjunction(props: Seq[Expr]): Seq[Expr] = if(props.isEmpty) {Seq()} else {
-    Seq(props.reduce{ (a,b) => OperatorApplication(DisjunctionOp, List(a, b)) })
-  }
-  // ensures that the number of bad states is 1 or 0
-  def unifyProperties(): SymbolicTransitionSystem = {
-    this.copy(bad = disjunction(this.bad))
-  }
-}
-
-
 object Btor2 {
-  def load(filename: String): SymbolicTransitionSystem = {
+  def load(filename: String): TransitionSystem = {
     val ff = Source.fromFile(filename)
     val sys = read(ff.getLines())
     ff.close()
     sys
   }
-  def read(lines: Iterator[String]): SymbolicTransitionSystem = Btor2Parser.read(lines)
+  def read(lines: Iterator[String]): TransitionSystem = Btor2Parser.read(lines)
   def readWitness(lines: Iterable[String]): Witness = Btor2WitnessParser.read(lines, parseMax = 1).head
-  def serialize(sys: SymbolicTransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
-  def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = Btor2Serializer.serialize(sys, skipOutput)
+  def serialize(sys: TransitionSystem): Seq[String] = Btor2Serializer.serialize(sys, false)
+  def serialize(sys: TransitionSystem, skipOutput: Boolean): Seq[String] = Btor2Serializer.serialize(sys, skipOutput)
   def createBtorMC(): ModelChecker = new BtormcModelChecker()
   def createCosa2MC(): ModelChecker = new Cosa2ModelChecker()
 }
-
-trait ModelCheckResult {
-  def isFail: Boolean
-  def isSuccess: Boolean = !isFail
-}
-case class ModelCheckSuccess() extends ModelCheckResult { override def isFail: Boolean = false }
-case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override def isFail: Boolean = true }
-
 
 class BtormcModelChecker extends ModelChecker {
   // TODO: check to make sure binary exists
@@ -114,7 +92,7 @@ abstract class ModelChecker {
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true
-  def check(sys: SymbolicTransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
+  def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
     val checkSys = if(supportsMultipleProperties) sys else sys.unifyProperties()
     fileName match {
       case None => checkWithPipe(checkSys, kMax)
@@ -122,7 +100,7 @@ abstract class ModelChecker {
     }
   }
 
-  private def checkWithFile(fileName: String, sys: SymbolicTransitionSystem, kMax: Int): ModelCheckResult = {
+  private def checkWithFile(fileName: String, sys: TransitionSystem, kMax: Int): ModelCheckResult = {
     val btorWrite = new PrintWriter(fileName)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => btorWrite.println(l) }
@@ -151,7 +129,7 @@ abstract class ModelChecker {
     }
   }
 
-  private def checkWithPipe(sys: SymbolicTransitionSystem, kMax: Int): ModelCheckResult = {
+  private def checkWithPipe(sys: TransitionSystem, kMax: Int): ModelCheckResult = {
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => checker.writeInput(l) ; println(l)}
@@ -168,7 +146,7 @@ abstract class ModelChecker {
 
 
 object Btor2Serializer {
-  def serialize(sys: SymbolicTransitionSystem, skipOutput: Boolean): Seq[String] = {
+  def serialize(sys: TransitionSystem, skipOutput: Boolean): Seq[String] = {
     val expr_cache = mutable.HashMap[Expr, Int]()
     val sort_cache = mutable.HashMap[Type, Int]()
     val lines = mutable.ArrayBuffer[String]()
@@ -313,8 +291,6 @@ object Btor2Serializer {
   }
 }
 
-case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
-
 object Btor2WitnessParser {
   private trait State
   private case class Start() extends State
@@ -439,7 +415,7 @@ object Btor2Parser {
     "and", "nand", "nor", "or", "xnor", "xor", "rol", "ror", "sll", "sra", "srl", "add", "mul", "sdiv", "udiv", "smod",
     "srem", "urem", "sub", "saddo", "uaddo", "sdivo", "udivo", "smulo", "umulo", "ssubo", "usubo", "concat")
 
-  def read(lines: Iterator[String]): SymbolicTransitionSystem = {
+  def read(lines: Iterator[String]): TransitionSystem = {
     val sorts = new mutable.HashMap[Int,Type]()
     val states = new mutable.HashMap[Int,State]()
     val inputs = new mutable.ArrayBuffer[Symbol]()
@@ -705,7 +681,7 @@ object Btor2Parser {
     //println(yosys_lables)
     // TODO: use yosys_lables to fill in missing symbol names
 
-    SymbolicTransitionSystem(name, inputs=inputs.toSeq, states=states.values.toSeq,
+    TransitionSystem(name, inputs=inputs.toSeq, states=states.values.toSeq,
       outputs = labels("output").toSeq,
       constraints = labels("constraint").map(_._2).toSeq,
       bad = labels("bad").map(_._2).toSeq,

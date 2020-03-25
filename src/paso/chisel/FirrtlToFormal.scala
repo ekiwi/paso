@@ -63,7 +63,7 @@ object FirrtlToFormal extends BackendCompilationUtilities {
 
 
 
-  def apply(c: ir.Circuit, annos: Seq[Annotation]): smt.SymbolicTransitionSystem = {
+  def apply(c: ir.Circuit, annos: Seq[Annotation]): smt.TransitionSystem = {
     val testDir = createTestDirectory(c.main + "_to_btor2")
     val module = makeVerilog(testDir, c, annos)
     val (success, btorFile) = makeBtor(testDir, module)

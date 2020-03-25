@@ -55,13 +55,13 @@ object NamespaceIdentifiers {
     (renamed_untimed, subs, method_subs)
   }
 
-  def apply(sys: smt.SymbolicTransitionSystem, prefix: String): (smt.SymbolicTransitionSystem, Sub)= {
+  def apply(sys: smt.TransitionSystem, prefix: String): (smt.TransitionSystem, Sub)= {
     val fullPrefix = prefix + sys.name.map(_ + ".").getOrElse("")
     val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
     val subs : SymSub = (sys.states.map(_.sym) ++ sys.inputs ++ outputSymbols).prefix(fullPrefix).toMap
     def rename(s: smt.State): smt.State =
       smt.State(subs(s.sym), s.init.map(substituteSmt(_, subs)), s.next.map(substituteSmt(_, subs)))
-    val renamed_sys = smt.SymbolicTransitionSystem(
+    val renamed_sys = smt.TransitionSystem(
       name = Some(fullPrefix.dropRight(1)),
       inputs = sys.inputs.map(subs),
       states = sys.states.map(rename),

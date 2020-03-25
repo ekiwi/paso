@@ -31,11 +31,11 @@ case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr
 case class Assertion(guard: smt.Expr, pred: smt.Expr)
 
 case class VerificationProblem(
-  impl: smt.SymbolicTransitionSystem,
-  untimed: UntimedModel,
-  protocols: Map[String, PendingInputNode],
-  invariances: Seq[Assertion],
-  mapping: Seq[Assertion]
+                                impl: smt.TransitionSystem,
+                                untimed: UntimedModel,
+                                protocols: Map[String, PendingInputNode],
+                                invariances: Seq[Assertion],
+                                mapping: Seq[Assertion]
 )
 
 object VerificationProblem {
@@ -230,7 +230,7 @@ abstract class VerificationTask {
 
 object VerificationTask {
   /** starts in initial state and advances one step with reset = 1 and every other input with an arbitrary value */
-  def getResetState(sys: smt.SymbolicTransitionSystem): Map[smt.Symbol, smt.Expr] = {
+  def getResetState(sys: smt.TransitionSystem): Map[smt.Symbol, smt.Expr] = {
     val inits = sys.states.map {
       case smt.State(sym, Some(init), _) => sym -> init
       case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
