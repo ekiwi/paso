@@ -176,7 +176,9 @@ object Btor2Serializer {
       case ArrayStoreOperation(array, List(index), value) =>
         line(s"write ${t(expr.typ)} ${s(array)} ${s(index)} ${s(value)}")
       case Symbol(id, typ) =>
-        throw new RuntimeException(s"Unknown symbol $id : $typ")
+        val knownSymbol = expr_cache.collectFirst{ case (s: Symbol, _) if s.id == id => s }
+        val suffix = knownSymbol.map(s => s" (Previously declared symbol of similar name: ${s.id} : ${s.typ})").getOrElse("")
+        throw new RuntimeException(s"Unknown symbol $id : $typ$suffix")
       case OperatorApplication(op, List(a)) => unary(op, a, expr.typ)
       case OperatorApplication(op, List(a, b)) => binary(op, a, b, expr.typ)
       case OperatorApplication(ITEOp, List(cond, a, b)) =>
@@ -249,16 +251,18 @@ object Btor2Serializer {
       expr_cache(ii) = line(s"input ${t(ii.typ)} ${ii.id}")
     }
 
-    // define state init and next
+    // define state init
     sys.states.foreach { st =>
       // calculate init expression before declaring the state
       // this is required by btormc (presumably to avoid cycles in the init expression)
-      st.init.foreach{ init => comment(s"${st.sym}.init := $init") ; s(init) }
+      st.init.foreach { init => comment(s"${st.sym}.init := $init"); s(init) }
 
       expr_cache(st.sym) = line(s"state ${t(st.sym.typ)} ${st.sym.id}")
 
-      st.init.foreach{ init => line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}") }
-
+      st.init.foreach { init => line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}") }
+    }
+    // define state next
+    sys.states.foreach { st =>
       st.next.foreach{ next =>
         comment(s"${st.sym}.next := $next")
         line(s"next ${t(next.typ)} ${s(st.sym)} ${s(next)}")
