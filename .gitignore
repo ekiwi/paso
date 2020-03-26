@@ -16,3 +16,7 @@
 
 # treadle
 *.vcd
+
+# temporary files
+test.btor
+test.btor.out
