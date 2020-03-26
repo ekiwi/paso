@@ -70,6 +70,10 @@ class BtormcModelChecker extends ModelChecker {
       case Some(file) => prefix ++ Seq(s"$file")
     }
   }
+  override protected def isFail(ret: Int, res: Seq[String]): Boolean = {
+    assert(ret == 0, "We expect btormc to always return 0. Maybe there was an error:\n" + res.mkString("\n"))
+    super.isFail(ret, res)
+  }
 }
 
 class Cosa2ModelChecker extends ModelChecker {
@@ -84,6 +88,16 @@ class Cosa2ModelChecker extends ModelChecker {
       case None => throw new RuntimeException("cosa2 only supports file based input. Please supply a filename!")
       case Some(file) => prefix ++ Seq(s"$file")
     }
+  }
+  private val WrongUsage = 3
+  private val Unknown = 2
+  private val Sat = 1
+  private val Unsat = 0
+  override protected def isFail(ret: Int, res: Seq[String]): Boolean = {
+    assert(ret != WrongUsage, "There was an error trying to call cosa2:\n"+res.mkString("\n"))
+    val fail = super.isFail(ret, res)
+    if(fail) { assert(ret == Sat) } else { assert(ret == Unknown) /* bmc only returns unknown because it cannot prove unsat */}
+    fail
   }
 }
 
@@ -100,6 +114,9 @@ abstract class ModelChecker {
     }
   }
 
+  /* called to check the results of the solver */
+  protected def isFail(ret: Int, res: Seq[String]): Boolean = res.nonEmpty && res.head.startsWith("sat")
+
   private def checkWithFile(fileName: String, sys: TransitionSystem, kMax: Int): ModelCheckResult = {
     val btorWrite = new PrintWriter(fileName)
     val lines = Btor2.serialize(sys, !supportsOutput)
@@ -109,9 +126,9 @@ abstract class ModelChecker {
     // execute model checker
     val resultFileName = fileName + ".out"
     val cmd = makeArgs(kMax, Some(fileName)).mkString(" ")
-    print(cmd)
+    //print(cmd)
     val ret = (cmd #> new File(resultFileName)).!
-    println(s" -> $ret")
+    //println(s" -> $ret")
 
     // read result file
     val ff = Source.fromFile(resultFileName)
@@ -119,12 +136,10 @@ abstract class ModelChecker {
     ff.close()
 
     // check if it starts with sat
-    if(res.nonEmpty && res.head.startsWith("sat")) {
+    if(isFail(ret, res)) {
       val witness = Btor2.readWitness(res)
       ModelCheckFail(witness)
     } else {
-      println("Does this look like success to you?")
-      println(res.mkString("\n"))
       ModelCheckSuccess()
     }
   }
