@@ -5,6 +5,7 @@
 package paso.verification
 
 import chisel3.util.log2Ceil
+import paso.chisel.SMTSimplifier
 import uclid.smt
 
 import scala.collection.mutable
@@ -13,7 +14,7 @@ case class BoundedCheck()
 
 case class CheckStep(ii: Int, assertions: Seq[smt.Expr] = Seq(), assumptions: Seq[smt.Expr] = Seq())
 
-class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
+class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean = false) {
   require(sys.constraints.isEmpty)
   require(sys.bad.isEmpty)
   require(sys.fair.isEmpty)
@@ -34,19 +35,19 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assertions = step.assertions ++ Seq(expr))
-    //println(s"assert @ $ii: ${SMTSimplifier.simplify(expr)}")
+    if(debugPrint) println(s"assert @ $ii: ${SMTSimplifier.simplify(expr)}")
   }
 
   def assumeAt(ii : Int, expr: smt.Expr): Unit = {
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assumptions = step.assumptions ++ Seq(expr))
-    //println(s"assume @ $ii: ${SMTSimplifier.simplify(expr)}")
+    if(debugPrint) println(s"assume @ $ii: ${SMTSimplifier.simplify(expr)}")
   }
 
   def assume(expr: smt.Expr): Unit = {
     constraints.append(expr)
-    //println(s"assume: $expr")
+    if(debugPrint) println(s"assume: $expr")
   }
 
   def define(name: smt.Symbol, expr: smt.Expr): Unit = {
@@ -54,7 +55,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
     require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
     require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
     defines(name.id) = expr
-    //println(s"define: $name := $expr")
+    if(debugPrint) println(s"define: $name := $expr")
   }
 
   def getCombinedSystem: smt.TransitionSystem = {
