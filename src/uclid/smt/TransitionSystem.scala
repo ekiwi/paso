@@ -181,7 +181,7 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
   private def symbolsToString(symbols: Iterable[Symbol]): Iterable[String] =
     symbols.filter(!_.typ.isArray).map{sym => s"$sym := ${data(bvSymbolToDataIndex(sym))}"}
 
-  def step(inputs: Map[Int, BigInt]): Unit = {
+  def step(inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
     // apply inputs
     inputs.foreach{ case(ii, value) => data(ii) = value }
 
@@ -228,9 +228,16 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     def failedMsg(p: Int) = {
       val expr = sys.bad(p)
       val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
-      s"b$p: $expr ($syms)"
+      s"b$p: $expr with $syms"
     }
-    assert(failed.isEmpty, s"Failed (${failed.size}) properties:\n${failed.map(failedMsg).mkString("\n")}")
+    def failedPropertiesMsg: String = s"Failed (${failed.size}) properties:\n${failed.map(failedMsg).mkString("\n")}"
+    expectedBad match {
+      case None => assert(failed.isEmpty, failedPropertiesMsg)
+      case Some(props) =>
+        assert(failed.toSet == props, s"Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")
+        println(failedPropertiesMsg)
+    }
+
 
     // update state
     newRegValues.foreach{ case (ii, value) => data(ii + stateOffset) = value }
@@ -239,9 +246,14 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
 
   def run(witness: Witness): Unit = {
     init(witness.regInit, witness.memInit)
-    witness.inputs.zipWithIndex.foreach { case(inputs, index) =>
+    witness.inputs.zipWithIndex.foreach { case (inputs, index) =>
       //println(s"Step($index)")
-      step(inputs)
+      // on the last step we expect the bad states to be entered
+      if (index == witness.inputs.size - 1 && witness.failedBad.nonEmpty) {
+        step(inputs, Some(witness.failedBad.toSet))
+      } else {
+        step(inputs)
+      }
     }
   }
 }
