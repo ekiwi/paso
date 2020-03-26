@@ -36,6 +36,7 @@
 
 package uclid.smt
 
+import uclid.vcd
 import scala.collection.mutable
 
 case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
@@ -77,19 +78,24 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
   private val states = sys.states.zipWithIndex.map{ case (state, index) => index -> state.sym}
   private val outputOffset = stateOffset + states.size
   private val outputs = sys.outputs.zipWithIndex.map{ case ((name, expr), index) => index -> Symbol(name, expr.typ) }
-
-
   private val regStates = sys.states.zipWithIndex.filter(!_._1.sym.typ.isArray)
   private val memStates = sys.states.zipWithIndex.filter(_._1.sym.typ.isArray)
   private val memCount = memStates.size
 
+  // mutable state
   private val data = new mutable.ArraySeq[BigInt](inputs.size + states.size + outputs.size)
   private val memories = new mutable.ArraySeq[Memory](memCount)
+
+  // mutable state indexing
   private val memStateIdToArrayIndex = memStates.map(_._2).zipWithIndex.toMap
   private val memSymbolToArrayIndex = memStates.map{ case (state, i) => state.sym -> memStateIdToArrayIndex(i) }.toMap
   private val bvSymbolToDataIndex : Map[Symbol, Int] =
-    (inputs.map{ case (i, sym) => sym -> i} ++ states.map{ case (i, sym) => sym -> (i + stateOffset) }
+    (inputs.map{ case (i, sym) => sym -> i} ++ regStates.map{ case (state, i) => state.sym -> (i + stateOffset) }
       ++ outputs.map{ case (i, sym) => sym -> (i + outputOffset) }).toMap
+  private val dataIndexToName: Map[Int, String] = bvSymbolToDataIndex.map{ case (symbol, i) => i -> symbol.id}
+
+  // vcd dumping
+  private var vcdWriter: Option[vcd.VCD] = None
 
   private case class Memory(data: Seq[BigInt]) {
     def depth: Int = data.size
@@ -152,7 +158,16 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     println("TODO: memories")
   }
 
-  def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]]) = {
+  def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], withVcd: Boolean) = {
+    // initialize vcd
+    vcdWriter = if(!withVcd) None else {
+      val vv = vcd.VCD(sys.name.getOrElse("Top"))
+      vv.addWire("Step", 64)
+      def getWidth(typ: Type): Int = typ match { case BoolType => 1 case BitVectorType(w) => w }
+      bvSymbolToDataIndex.keys.foreach(s => vv.addWire(s.id, getWidth(s.typ)))
+      Some(vv)
+    }
+
     // initialize registers
     regStates.foreach { case (state, ii) =>
       val value = state.init match {
@@ -181,9 +196,17 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
   private def symbolsToString(symbols: Iterable[Symbol]): Iterable[String] =
     symbols.filter(!_.typ.isArray).map{sym => s"$sym := ${data(bvSymbolToDataIndex(sym))}"}
 
-  def step(inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
+  def step(index: Int, inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
+    vcdWriter.foreach(_.wireChanged("Step", index))
+
+    // dump state (TODO: memories)
+    vcdWriter.foreach(v => regStates.foreach{ case (state, i) => v.wireChanged(state.sym.id, data(i + stateOffset)) })
+
     // apply inputs
-    inputs.foreach{ case(ii, value) => data(ii) = value }
+    inputs.foreach{ case(ii, value) =>
+      data(ii) = value
+      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii), value))
+    }
 
     // calculate next states
     val newRegValues = regStates.map { case (state, ii) =>
@@ -209,7 +232,10 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
       (ii, value)
     }
     // update outputs (constraints and bad states could depend on the new value)
-    newOutputs.foreach{ case (ii, value) => data(ii + outputOffset) = value }
+    newOutputs.foreach{ case (ii, value) =>
+      data(ii + outputOffset) = value
+      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + outputOffset), value))
+    }
 
     // make sure constraints are not violated
     sys.constraints.foreach { expr =>
@@ -238,22 +264,30 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
         println(failedPropertiesMsg)
     }
 
+    // increment time
+    vcdWriter.foreach(_.incrementTime())
 
     // update state
     newRegValues.foreach{ case (ii, value) => data(ii + stateOffset) = value }
     newMemValues.foreach{ case (ii, value) => memories(memStateIdToArrayIndex(ii)) = value }
   }
 
-  def run(witness: Witness): Unit = {
-    init(witness.regInit, witness.memInit)
+  def run(witness: Witness, vcdFileName: Option[String] = None): Unit = {
+    init(witness.regInit, witness.memInit, withVcd = vcdFileName.nonEmpty)
     witness.inputs.zipWithIndex.foreach { case (inputs, index) =>
       //println(s"Step($index)")
       // on the last step we expect the bad states to be entered
       if (index == witness.inputs.size - 1 && witness.failedBad.nonEmpty) {
-        step(inputs, Some(witness.failedBad.toSet))
+        step(index, inputs, Some(witness.failedBad.toSet))
       } else {
-        step(inputs)
+        step(index, inputs)
       }
+    }
+    vcdFileName.foreach { ff =>
+      val vv = vcdWriter.get
+      vv.wireChanged("Step", witness.inputs.size)
+      vv.incrementTime()
+      vv.write(ff)
     }
   }
 }

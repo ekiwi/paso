@@ -88,7 +88,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
 
     // find failing property and print
     res match {
-      case smt.ModelCheckFail(witness) => new smt.TransitionSystemSimulator(sys).run(witness)
+      case smt.ModelCheckFail(witness) => new smt.TransitionSystemSimulator(sys).run(witness, Some("test.vcd"))
       case smt.ModelCheckSuccess() =>
     }
 
