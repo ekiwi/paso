@@ -93,7 +93,7 @@ abstract class ModelChecker {
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true
   def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
-    val checkSys = if(supportsMultipleProperties) sys else sys.unifyProperties()
+    val checkSys = if(supportsMultipleProperties) sys else sys.unifyProperties() //.unifyConstraints()
     fileName match {
       case None => checkWithPipe(checkSys, kMax)
       case Some(file) => checkWithFile(file, checkSys, kMax)

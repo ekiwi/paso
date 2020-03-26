@@ -48,9 +48,16 @@ case class TransitionSystem(name: Option[String], inputs: Seq[Symbol], states: S
   private def disjunction(props: Seq[Expr]): Seq[Expr] = if(props.isEmpty) {Seq()} else {
     Seq(props.reduce{ (a,b) => OperatorApplication(DisjunctionOp, List(a, b)) })
   }
+  private def conjunction(props: Seq[Expr]): Seq[Expr] = if(props.isEmpty) {Seq()} else {
+    Seq(props.reduce{ (a,b) => OperatorApplication(ConjunctionOp, List(a, b)) })
+  }
   // ensures that the number of bad states is 1 or 0
   def unifyProperties(): TransitionSystem = {
     this.copy(bad = disjunction(this.bad))
+  }
+  // ensures that the number of constraints is 1 or 0
+  def unifyConstraints(): TransitionSystem = {
+    this.copy(constraints = conjunction(this.constraints))
   }
   /* ensures that states are ordered by the dependencies in their init expressions */
   def sortStatesByInitDependencies(): TransitionSystem = {
