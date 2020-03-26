@@ -84,7 +84,7 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = {
     val w = Wire(Vec(m.length.toInt, m.t)).suggestName(m.pathName.replace('.', '_'))
     annotate(new ChiselAnnotation {
-      override def toFirrtl = MemToVecAnnotation(w.toTarget, m.toTarget)
+      override def toFirrtl = MemToVecAnnotation(w.toTarget, m.toTarget, m.length, m.t.getWidth)
     })
     w
   }
@@ -119,6 +119,6 @@ case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotatio
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
-case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }

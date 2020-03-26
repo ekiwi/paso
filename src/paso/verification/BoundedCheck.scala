@@ -5,9 +5,7 @@
 package paso.verification
 
 import chisel3.util.log2Ceil
-import paso.chisel.SMTSimplifier
 import uclid.smt
-import uclid.smt.TransitionSystem
 
 import scala.collection.mutable
 
@@ -48,6 +46,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
 
   def assume(expr: smt.Expr): Unit = {
     constraints.append(expr)
+    //println(s"assume: $expr")
   }
 
   def define(name: smt.Symbol, expr: smt.Expr): Unit = {
@@ -55,6 +54,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
     require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
     require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
     defines(name.id) = expr
+    //println(s"define: $name := $expr")
   }
 
   def getCombinedSystem: smt.TransitionSystem = {
