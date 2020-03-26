@@ -277,7 +277,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
       s"b$p: $expr with $syms"
     }
-    def failedPropertiesMsg: String = s"Failed (${failed.size}) properties:\n${failed.map(failedMsg).mkString("\n")}"
+    def failedPropertiesMsg: String = s"Failed (${failed.size}) properties in step #$index:\n${failed.map(failedMsg).mkString("\n")}"
     expectedBad match {
       case None => assert(failed.isEmpty, failedPropertiesMsg)
       case Some(props) =>
