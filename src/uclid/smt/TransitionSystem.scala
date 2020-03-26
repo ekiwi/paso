@@ -36,7 +36,9 @@
 
 package uclid.smt
 
+import paso.chisel.SMTSimplifier
 import uclid.vcd
+
 import scala.collection.mutable
 
 case class State(sym: Symbol, init: Option[Expr] = None, next: Option[Expr]= None)
@@ -254,12 +256,13 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     }
 
     // make sure constraints are not violated
+    def simpl(e: Expr): Expr = SMTSimplifier.simplify(e) // TODO: this uses code outside of uclid...
     sys.constraints.zipWithIndex.foreach { case (expr, i) =>
       val holds = eval(expr)
       assert(holds == 0 || holds == 1, s"Constraint $expr returned invalid value when evaluated: $holds")
       vcdWriter.foreach(_.wireChanged(s"Constraints.c$i", holds))
       if(eval(expr) == 0) {
-        println(s"ERROR: Constraint #$i $expr was violated!")
+        println(s"ERROR: Constraint #$i ${simpl(expr)} was violated!")
         symbolsToString(Context.findSymbols(expr)).foreach(println)
         //printData()
         throw new RuntimeException("Violated constraint!")
@@ -273,7 +276,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       (ii, value)
     }.filter(_._2 != 0).map(_._1)
     def failedMsg(p: Int) = {
-      val expr = sys.bad(p)
+      val expr = simpl(sys.bad(p))
       val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
       s"b$p: $expr with $syms"
     }
