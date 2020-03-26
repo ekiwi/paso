@@ -86,7 +86,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     val sys = check.getCombinedSystem
     val checker = smt.Btor2.createBtorMC()
     //val checker = smt.Btor2.createCosa2MC()
-    val res = checker.check(sys, fileName=Some("test.btor"))
+    val res = checker.check(sys, fileName=Some("test.btor"), kMax = check.getK)
 
     // find failing property and print
     res match {
