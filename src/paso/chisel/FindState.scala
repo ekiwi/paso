@@ -18,15 +18,19 @@ case class FindState(c: ir.Circuit) {
     case ir.DefRegister(_, name, tpe, _, _, ir.Reference(_, _)) =>
       state.append(State(prefix + name, tpe))
     case ir.DefRegister(_, name, tpe, _, _, ir.UIntLiteral(value, ir.IntWidth(w))) =>
-      state.append(State(prefix + name, tpe, Some(smt.BitVectorLit(value, w.toInt))))
+      state.append(State(prefix + name, tpe, Some(mkBitVec(value, tpe))))
     case ir.DefRegister(_, name, tpe, _, _, ir.SIntLiteral(value, ir.IntWidth(w))) =>
-      state.append(State(prefix + name, tpe, Some(smt.BitVectorLit(value, w.toInt))))
+      state.append(State(prefix + name, tpe, Some(mkBitVec(value, tpe))))
     case otherReg: ir.DefRegister => throw new NotImplementedError(s"TODO: handle $otherReg")
     case ir.DefMemory(_, name, tpe, depth, _,  _, _,_,_,_) =>
       state.append(State(prefix + name, ir.VectorType(tpe, depth.toInt)))
     case ir.DefInstance(_, name, module) if mods.contains(module) =>
       mods(module).body.foreachStmt(onStmt(prefix + name + ".", _))
     case other => other.foreachStmt(onStmt(prefix, _))
+  }
+  def mkBitVec(value: BigInt, tpe: ir.Type): smt.Expr = tpe match {
+    case ir.UIntType(ir.IntWidth(w)) => smt.BitVectorLit(value, w.toInt)
+    case ir.SIntType(ir.IntWidth(w)) => smt.BitVectorLit(value, w.toInt)
   }
   def run(): Seq[State] = {
     onStmt("", mods(c.main).body)
