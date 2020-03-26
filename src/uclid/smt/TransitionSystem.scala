@@ -165,6 +165,8 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
       vv.addWire("Step", 64)
       def getWidth(typ: Type): Int = typ match { case BoolType => 1 case BitVectorType(w) => w }
       bvSymbolToDataIndex.keys.foreach(s => vv.addWire(s.id, getWidth(s.typ)))
+      sys.constraints.zipWithIndex.foreach{ case (_, i) => vv.addWire(s"Constraints.c$i", 1)}
+      sys.bad.zipWithIndex.foreach{ case (_, i) => vv.addWire(s"BadStates.b$i", 1)}
       Some(vv)
     }
 
@@ -238,11 +240,12 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     }
 
     // make sure constraints are not violated
-    sys.constraints.foreach { expr =>
+    sys.constraints.zipWithIndex.foreach { case (expr, i) =>
       val holds = eval(expr)
       assert(holds == 0 || holds == 1, s"Constraint $expr returned invalid value when evaluated: $holds")
+      vcdWriter.foreach(_.wireChanged(s"Constraints.c$i", holds))
       if(eval(expr) == 0) {
-        println(s"ERROR: Constraint $expr was violated!")
+        println(s"ERROR: Constraint #$i $expr was violated!")
         symbolsToString(Context.findSymbols(expr)).foreach(println)
         //printData()
         throw new RuntimeException("Violated constraint!")
@@ -250,7 +253,11 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     }
 
     // evaluate safety properties
-    val failed = sys.bad.zipWithIndex.map { case (expr, ii) => (ii, eval(expr)) }.filter(_._2 != 0).map(_._1)
+    val failed = sys.bad.zipWithIndex.map { case (expr, ii) =>
+      val value = eval(expr)
+      vcdWriter.foreach(_.wireChanged(s"BadStates.b$ii", value))
+      (ii, value)
+    }.filter(_._2 != 0).map(_._1)
     def failedMsg(p: Int) = {
       val expr = sys.bad(p)
       val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
