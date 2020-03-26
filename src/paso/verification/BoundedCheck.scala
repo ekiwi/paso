@@ -15,11 +15,11 @@ case class BoundedCheck()
 
 case class CheckStep(ii: Int, assertions: Seq[smt.Expr] = Seq(), assumptions: Seq[smt.Expr] = Seq())
 
-class BoundedCheckBuilder(base: smt.TransitionSystem) {
-  require(base.constraints.isEmpty)
-  require(base.bad.isEmpty)
-  require(base.fair.isEmpty)
-  private val sys = base
+class BoundedCheckBuilder(val sys: smt.TransitionSystem) {
+  require(sys.constraints.isEmpty)
+  require(sys.bad.isEmpty)
+  require(sys.fair.isEmpty)
+  private val constraints = mutable.ArrayBuffer[smt.Expr]()
   private val steps = mutable.ArrayBuffer[CheckStep]()
   private val sysSymbols =
     (sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) } ++ sys.inputs ++ sys.states.map(_.sym))
@@ -44,6 +44,10 @@ class BoundedCheckBuilder(base: smt.TransitionSystem) {
     val step = steps(ii)
     steps(ii) = step.copy(assumptions = step.assumptions ++ Seq(expr))
     //println(s"assume @ $ii: ${SMTSimplifier.simplify(expr)}")
+  }
+
+  def assume(expr: smt.Expr): Unit = {
+    constraints.append(expr)
   }
 
   def define(name: smt.Symbol, expr: smt.Expr): Unit = {
@@ -86,12 +90,12 @@ class BoundedCheckBuilder(base: smt.TransitionSystem) {
     ))
 
     // translate step assumptions/assertions into global constraints/bad states
-    val constraints = steps.flatMap{ s => s.assumptions.map(in_step(s.ii, _))}
+    val consts = steps.flatMap{ s => s.assumptions.map(in_step(s.ii, _))} ++ constraints
     val badStates = steps.flatMap{ s => s.assertions.map(a => smt.OperatorApplication(smt.NegationOp, List(in_step(s.ii, a)))) }
 
     // merge everything into a combined transition system
     val states = sys.states ++ constStates ++ defineStates ++ Seq(counterState)
-    val combined = sys.copy(states = states, constraints = sys.constraints ++ constraints, bad = sys.bad ++ badStates)
+    val combined = sys.copy(states = states, constraints = sys.constraints ++ consts, bad = sys.bad ++ badStates)
 
     combined.sortStatesByInitDependencies()
   }

@@ -58,6 +58,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
     val check = new BoundedCheckBuilder(p.impl)
 
+    // assume that reset is inactive
+    VerificationTask.findReset(p.impl.inputs).foreach(r => check.assume(not(r)))
     // assume that invariances hold in the initial state
     p.invariances.foreach(i => check.assumeAt(0, implies(i.guard, i.pred)))
     // assume that the mapping function holds in the initial state
@@ -235,15 +237,16 @@ abstract class VerificationTask {
 }
 
 object VerificationTask {
+  // TODO: don't hardcode reset
+  def isReset(sym: smt.Symbol): Boolean = sym.id.endsWith(".reset") && sym.typ.isBool
+  def findReset(symbols: Iterable[smt.Symbol]): Option[smt.Symbol] = symbols.find(isReset)
   /** starts in initial state and advances one step with reset = 1 and every other input with an arbitrary value */
   def getResetState(sys: smt.TransitionSystem): Map[smt.Symbol, smt.Expr] = {
     val inits = sys.states.map {
       case smt.State(sym, Some(init), _) => sym -> init
       case smt.State(sym, None, _) => sym -> smt.Symbol(sym.id + ".init", sym.typ)
     }.toMap
-    // TODO: don't hardcode reset
-    def is_reset(sym: smt.Symbol): Boolean = sym.id.endsWith(".reset")
-    val inputs = sys.inputs.map { sym => sym -> (if(is_reset(sym)) smt.BooleanLit(true) else sym) }.toMap
+    val inputs = sys.inputs.map { sym => sym -> (if(isReset(sym)) smt.BooleanLit(true) else sym) }.toMap
     val subs: Map[smt.Expr, smt.Expr] = inits ++ inputs
     sys.states.map {
       case smt.State(sym, _, Some(next)) => sym -> substituteSmt(next, subs)
