@@ -72,7 +72,7 @@ case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override 
 
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
-class TransitionSystemSimulator(sys: TransitionSystem) {
+class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128) {
   private val inputs = sys.inputs.zipWithIndex.map{ case (input, index) => index -> input }
   private val stateOffset = inputs.size
   private val states = sys.states.zipWithIndex.map{ case (state, index) => index -> state.sym}
@@ -96,6 +96,7 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
 
   // vcd dumping
   private var vcdWriter: Option[vcd.VCD] = None
+  private val observedMemories = memSymbolToArrayIndex.filter{case (Symbol(_, typ), _) => getDepthAndWidth(typ)._1 <= maxMemVcdSize}
 
   private case class Memory(data: Seq[BigInt]) {
     def depth: Int = data.size
@@ -158,13 +159,20 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     println("TODO: memories")
   }
 
+  private def getWidth(typ: Type): Int = typ match { case BoolType => 1 case BitVectorType(w) => w }
+  private def getDepthAndWidth(typ: Type): (BigInt, Int) = typ match {
+    case ArrayType(List(BitVectorType(w0)), BitVectorType(w1)) => ((BigInt(1) << w0) - 1, w1)
+  }
   def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], withVcd: Boolean) = {
     // initialize vcd
     vcdWriter = if(!withVcd) None else {
       val vv = vcd.VCD(sys.name.getOrElse("Top"))
       vv.addWire("Step", 64)
-      def getWidth(typ: Type): Int = typ match { case BoolType => 1 case BitVectorType(w) => w }
       bvSymbolToDataIndex.keys.foreach(s => vv.addWire(s.id, getWidth(s.typ)))
+      observedMemories.foreach { case(s, _) =>
+        val (depth, width) = getDepthAndWidth(s.typ)
+        (0 to depth.toInt).foreach(a => vv.addWire(s"${s.id}.${a}", width))
+      }
       sys.constraints.zipWithIndex.foreach{ case (_, i) => vv.addWire(s"Constraints.c$i", 1)}
       sys.bad.zipWithIndex.foreach{ case (_, i) => vv.addWire(s"BadStates.b$i", 1)}
       Some(vv)
@@ -201,8 +209,14 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
   def step(index: Int, inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
     vcdWriter.foreach(_.wireChanged("Step", index))
 
-    // dump state (TODO: memories)
-    vcdWriter.foreach(v => regStates.foreach{ case (state, i) => v.wireChanged(state.sym.id, data(i + stateOffset)) })
+    // dump state
+    vcdWriter.foreach{v =>
+      regStates.foreach{ case (state, i) => v.wireChanged(state.sym.id, data(i + stateOffset)) }
+      observedMemories.foreach{ case (sym, ii) =>
+        val (depth, _) = getDepthAndWidth(sym.typ)
+        (0 to depth.toInt).foreach(a => v.wireChanged(s"${sym.id}.${a}", memories(ii).read(a)))
+      }
+    }
 
     // apply inputs
     inputs.foreach{ case(ii, value) =>
