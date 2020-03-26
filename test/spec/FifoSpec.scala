@@ -104,9 +104,10 @@ class SpecBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends Bi
 class FifoSpec extends FlatSpec {
   val depth = 8
   val width = 8
+  val fixed = true
 
   val p = Elaboration[CircularPointerFifo, UntimedFifo[UInt]](
-    new CircularPointerFifo(depth = depth, width = width),
+    new CircularPointerFifo(depth = depth, width = width, fixed = fixed),
     new UntimedFifo(depth = depth, dataType = UInt(width.W)),
     (impl, spec) => new SpecBinding(impl, spec)
   )
