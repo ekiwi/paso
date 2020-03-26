@@ -16,8 +16,8 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
   require(depth > 0)
   require(isPow2(depth))
   val mem = Reg(Vec(depth, dataType))
-  val count = Reg(UInt((log2Ceil(depth) + 1).W))
-  val read = Reg(UInt(log2Ceil(depth).W))
+  val count = RegInit(UInt((log2Ceil(depth) + 1).W), 0.U)
+  val read = RegInit(UInt(log2Ceil(depth).W), 0.U)
   val full = count === depth.U
   val empty = count === 0.U
 
