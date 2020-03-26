@@ -267,7 +267,7 @@ class TransitionSystemSimulator(sys: TransitionSystem) {
     expectedBad match {
       case None => assert(failed.isEmpty, failedPropertiesMsg)
       case Some(props) =>
-        assert(failed.toSet == props, s"Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")
+        assert(props.subsetOf(failed.toSet), s"Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")
         println(failedPropertiesMsg)
     }
 
