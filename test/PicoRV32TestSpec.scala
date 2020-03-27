@@ -69,7 +69,7 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     dut.clock.step()
   }
 
-  "PicoRV32Mul" should "correctly multiply 100 and 7" in {
+  "PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)" should "correctly multiply 100 and 7" in {
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
       val (rs1, rs2) = (BigInt(100), BigInt(7))
       val rd = do_mul(MULHU, rs1, rs2)
@@ -77,47 +77,32 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     }
   }
 
-  "PicoRV32Mul" should "correctly MUL 100 different numbers" in {
+  case class TestConfig(stepsAtOnce: Int, carryChain: Int, op: String, rounds: Int, withVcd: Boolean = false) {
+    def name: String = s"PicoRV32Mul(stepsAtOnce = $stepsAtOnce, carryChain = $carryChain"
+    def task: String = s"correctly $op $rounds different pairs of numbers"
+  }
+  val tests = Seq(
+    TestConfig(1, 0, MUL,    100),
+    TestConfig(1, 0, MULH,   100),
+    TestConfig(1, 0, MULHU,  100),
+    TestConfig(1, 0, MULHSU, 100),
+  )
+
+  def runTest(conf: TestConfig): Unit = {
+    val annos = if(conf.withVcd) withVcd else noVcd
     val random = new scala.util.Random(0)
-    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      (0 until 100).foreach{ _ =>
+    test(new PicoRV32Mul(stepsAtOnce = conf.stepsAtOnce, carryChain = conf.carryChain)).withAnnotations(annos) { dut =>
+      (0 until conf.rounds).foreach{ _ =>
         val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
-        val rd = do_mul(MUL, rs1, rs2)
-        mulProtocol(dut, MUL, rs1, rs2, rd)
+        val rd = do_mul(conf.op, rs1, rs2)
+        mulProtocol(dut, conf.op, rs1, rs2, rd)
       }
     }
   }
 
-  "PicoRV32Mul" should "correctly MULH 100 different numbers" in {
-    val random = new scala.util.Random(0)
-    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      (0 until 100).foreach{ _ =>
-        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
-        val rd = do_mul(MULH, rs1, rs2)
-        mulProtocol(dut, MULH, rs1, rs2, rd)
-      }
-    }
+  def declareAndRunTest(conf: TestConfig): Unit = {
+    conf.name should conf.task in { runTest(conf) }
   }
 
-  "PicoRV32Mul" should "correctly MULHU 100 different numbers" in {
-    val random = new scala.util.Random(0)
-    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      (0 until 100).foreach{ _ =>
-        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
-        val rd = do_mul(MULHU, rs1, rs2)
-        mulProtocol(dut, MULHU, rs1, rs2, rd)
-      }
-    }
-  }
-
-  "PicoRV32Mul" should "correctly MULHSU 100 different numbers" in {
-    val random = new scala.util.Random(0)
-    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      (0 until 100).foreach{ _ =>
-        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
-        val rd = do_mul(MULHSU, rs1, rs2)
-        mulProtocol(dut, MULHSU, rs1, rs2, rd)
-      }
-    }
-  }
+  tests.foreach(declareAndRunTest)
 }
