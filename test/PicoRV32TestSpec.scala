@@ -76,8 +76,26 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
   "PicoRV32Mul" should "correctly MUL 100 different numbers" in {
     val random = new scala.util.Random(0)
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      (0 until 1000).foreach{ _ =>
+      (0 until 100).foreach{ _ =>
         mulProtocol(dut, MUL, BigInt(32, random), BigInt(32, random))
+      }
+    }
+  }
+
+  "PicoRV32Mul" should "correctly MULH 100 different numbers" in {
+    val random = new scala.util.Random(0)
+    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
+      (0 until 100).foreach{ _ =>
+        mulProtocol(dut, MULH, BigInt(32, random), BigInt(32, random))
+      }
+    }
+  }
+
+  "PicoRV32Mul" should "correctly MULHU 100 different numbers" in {
+    val random = new scala.util.Random(0)
+    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
+      (0 until 100).foreach{ _ =>
+        mulProtocol(dut, MULHU, BigInt(32, random), BigInt(32, random))
       }
     }
   }
