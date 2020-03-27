@@ -40,16 +40,18 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
         val product = asSigned32(a) * asSigned32(b)
         fromSigned64(product) >> 32
       case MULHU => (a * b) >> 32
+      case MULHSU =>
+        val product = asSigned32(a) * b
+        fromSigned64(product) >> 32
       case other => throw new RuntimeException(s"unsupported op $other")
     }
     assert(res >= 0)
     res & mask32
   }
 
-  def mulProtocol(dut: PicoRV32Mul, op: String, rs1: BigInt, rs2: BigInt): Unit = {
+  def mulProtocol(dut: PicoRV32Mul, op: String, rs1: BigInt, rs2: BigInt, rd: BigInt): Unit = {
     val instr = "0000001" + "0000000000" + op + "00000" + "0110011"
     assert(instr.length == 32)
-    val rd = do_mul(op, rs1, rs2)
 
     dut.io.valid.poke(true.B)
     dut.io.insn.poke(("b" + instr).U)
@@ -69,7 +71,9 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
 
   "PicoRV32Mul" should "correctly multiply 100 and 7" in {
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
-      mulProtocol(dut, MUL, BigInt(100), BigInt(7))
+      val (rs1, rs2) = (BigInt(100), BigInt(7))
+      val rd = do_mul(MULHU, rs1, rs2)
+      mulProtocol(dut, MULHU, rs1, rs2, rd)
     }
   }
 
@@ -77,7 +81,9 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     val random = new scala.util.Random(0)
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
       (0 until 100).foreach{ _ =>
-        mulProtocol(dut, MUL, BigInt(32, random), BigInt(32, random))
+        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
+        val rd = do_mul(MUL, rs1, rs2)
+        mulProtocol(dut, MUL, rs1, rs2, rd)
       }
     }
   }
@@ -86,7 +92,9 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     val random = new scala.util.Random(0)
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
       (0 until 100).foreach{ _ =>
-        mulProtocol(dut, MULH, BigInt(32, random), BigInt(32, random))
+        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
+        val rd = do_mul(MULH, rs1, rs2)
+        mulProtocol(dut, MULH, rs1, rs2, rd)
       }
     }
   }
@@ -95,7 +103,20 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     val random = new scala.util.Random(0)
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
       (0 until 100).foreach{ _ =>
-        mulProtocol(dut, MULHU, BigInt(32, random), BigInt(32, random))
+        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
+        val rd = do_mul(MULHU, rs1, rs2)
+        mulProtocol(dut, MULHU, rs1, rs2, rd)
+      }
+    }
+  }
+
+  "PicoRV32Mul" should "correctly MULHSU 100 different numbers" in {
+    val random = new scala.util.Random(0)
+    test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
+      (0 until 100).foreach{ _ =>
+        val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
+        val rd = do_mul(MULHSU, rs1, rs2)
+        mulProtocol(dut, MULHSU, rs1, rs2, rd)
       }
     }
   }
