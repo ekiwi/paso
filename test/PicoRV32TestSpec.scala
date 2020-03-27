@@ -116,6 +116,9 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
   tests.foreach(declareAndRunTest)
 
   "PicoRV32Mul" should "work with carry chain" in {
-    runTest(TestConfig(1, 4, MUL, 10, useOriginal = true))
+    runTest(TestConfig(1, 4, MUL, 100, useOriginal = false, withVcd = false))
+    runTest(TestConfig(1, 4, MULH, 100, useOriginal = false, withVcd = false))
+    runTest(TestConfig(1, 4, MULHU, 100, useOriginal = false, withVcd = false))
+    runTest(TestConfig(1, 4, MULHSU, 100, useOriginal = false, withVcd = false))
   }
 }

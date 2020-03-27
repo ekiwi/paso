@@ -66,8 +66,8 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
         val carry = tmp(carryChain) ## 0.U((carryChain-1).W)
         Seq(carry, tmp(carryChain-1,0))
       }.transpose
-      next_rdx = carry_res(0).reduce((a,b) => a ## b) << 1
-      next_rd = carry_res(1).reduce((a,b) => a ## b)
+      next_rdx = carry_res(0).reverse.reduce((a,b) => a ## b) << 1
+      next_rd = carry_res(1).reverse.reduce((a,b) => a ## b)
     }
     next_rs1 = next_rs1 >> 1
     next_rs2 = next_rs2 << 1
