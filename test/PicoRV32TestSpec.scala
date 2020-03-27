@@ -14,6 +14,7 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
   val MULH   = "001" // upper 32bits   signed x signed
   val MULHU  = "011" // upper 32bits unsigned x unsigned
   val MULHSU = "010" // upper 32bits   signed x unsigned
+  val allOps = Seq(MUL, MULH, MULHU, MULHSU)
 
   val mask32 = (BigInt(1) << 32) - 1
   val mask64 = (BigInt(1) << 64) - 1
@@ -81,12 +82,13 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     def name: String = s"PicoRV32Mul(stepsAtOnce = $stepsAtOnce, carryChain = $carryChain"
     def task: String = s"correctly $op $rounds different pairs of numbers"
   }
+
   val tests = Seq(
     TestConfig(1, 0, MUL,    100),
     TestConfig(1, 0, MULH,   100),
     TestConfig(1, 0, MULHU,  100),
     TestConfig(1, 0, MULHSU, 100),
-  )
+  ) ++ (1 to 31).flatMap(s => allOps.map(TestConfig(s, 0, _, 10)))
 
   def runTest(conf: TestConfig): Unit = {
     val annos = if(conf.withVcd) withVcd else noVcd
