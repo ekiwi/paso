@@ -15,3 +15,4 @@ libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % 
 
 scalaSource in Compile := baseDirectory.value / "src"
 scalaSource in Test := baseDirectory.value / "test"
+resourceDirectory in Test := baseDirectory.value / "test" / "resources"

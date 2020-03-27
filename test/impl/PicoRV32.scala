@@ -4,6 +4,7 @@
 package impl
 
 import chisel3._
+import chisel3.util._
 
 /* Pico Co-Processor Interface (https://github.com/cliffordwolf/picorv32#pico-co-processor-interface-pcpi) */
 class PCPI extends Bundle {
@@ -59,7 +60,14 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
       next_rdx = ((next_rd & next_rdx) | (next_rd & this_rs2) | (next_rdx & this_rs2)) << 1
       next_rd = next_rdt
     } else {
-      throw new NotImplementedError("TODO: carry chain!")
+      val carry_res = (0 until 64 by carryChain).map { j =>
+        val (msb, lsb) = (j + carryChain - 1, j)
+        val tmp = next_rd(msb,lsb) +& next_rdx(msb,lsb) +& this_rs2(msb,lsb)
+        val carry = tmp(carryChain) ## 0.U((carryChain-1).W)
+        Seq(carry, tmp(carryChain-1,0))
+      }.transpose
+      next_rdx = carry_res(0).reduce((a,b) => a ## b) << 1
+      next_rd = carry_res(1).reduce((a,b) => a ## b)
     }
     next_rs1 = next_rs1 >> 1
     next_rs2 = next_rs2 << 1
@@ -93,4 +101,33 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
   when(mulFinish) { rdBuffer := Mux(instrAnyMulH, state.rd >> 32, state.rd) }
   io.rd := rdBuffer
 
+}
+
+class OriginalPicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIModule {
+  val bb = Module(new picorv32_pcpi_mul(stepsAtOnce, carryChain))
+  bb.io.clk := clock
+  bb.io.resetn := !reset.asUInt()
+  bb.io.pcpi_valid := io.valid
+  bb.io.pcpi_insn := io.insn
+  bb.io.pcpi_rs1 := io.rs1
+  bb.io.pcpi_rs2 := io.rs2
+  io.wr := bb.io.pcpi_wr
+  io.rd := bb.io.pcpi_rd
+  io.doWait := bb.io.pcpi_wait
+  io.ready := bb.io.pcpi_ready
+}
+class picorv32_pcpi_mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends BlackBox(Map("STEPS_AT_ONCE" -> stepsAtOnce, "CARRY_CHAIN" -> carryChain)) with HasBlackBoxResource {
+  val io = IO(new Bundle {
+    val clk = Input(Clock())
+    val resetn = Input(Bool())
+    val pcpi_valid = Input(UInt(1.W))
+    val pcpi_insn = Input(UInt(32.W))
+    val pcpi_rs1 = Input(UInt(32.W))
+    val pcpi_rs2 = Input(UInt(32.W))
+    val pcpi_wr = Output(UInt(1.W))
+    val pcpi_rd = Output(UInt(32.W))
+    val pcpi_wait = Output(UInt(1.W))
+    val pcpi_ready = Output(UInt(1.W))
+  })
+  addResource("/picorv32_pcpi_mul.v")
 }

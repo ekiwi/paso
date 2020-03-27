@@ -2,13 +2,14 @@ import org.scalatest._
 import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
-import chiseltest.internal.WriteVcdAnnotation
-import impl.PicoRV32Mul
+import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
+import impl.{OriginalPicoRV32Mul, PCPIModule, PicoRV32Mul}
 
 class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
 
   val withVcd = Seq(WriteVcdAnnotation)
   val noVcd = Seq()
+  val withVerilator = Seq(VerilatorBackendAnnotation)
 
   val MUL    = "000" // lower 32bits
   val MULH   = "001" // upper 32bits   signed x signed
@@ -50,7 +51,7 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     res & mask32
   }
 
-  def mulProtocol(dut: PicoRV32Mul, op: String, rs1: BigInt, rs2: BigInt, rd: BigInt): Unit = {
+  def mulProtocol(dut: PCPIModule, op: String, rs1: BigInt, rs2: BigInt, rd: BigInt): Unit = {
     val instr = "0000001" + "0000000000" + op + "00000" + "0110011"
     assert(instr.length == 32)
 
@@ -78,9 +79,15 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     }
   }
 
-  case class TestConfig(stepsAtOnce: Int, carryChain: Int, op: String, rounds: Int, withVcd: Boolean = false) {
-    def name: String = s"PicoRV32Mul(stepsAtOnce = $stepsAtOnce, carryChain = $carryChain"
+  case class TestConfig(stepsAtOnce: Int, carryChain: Int, op: String, rounds: Int, useOriginal: Boolean = false, withVcd: Boolean = false) {
+    def implName: String = if(useOriginal) "OriginalPicoRV32Mul" else "PicoRV32Mul"
+    def name: String = s"$implName(stepsAtOnce = $stepsAtOnce, carryChain = $carryChain"
     def task: String = s"correctly $op $rounds different pairs of numbers"
+    def gen(): PCPIModule = if(useOriginal) {
+      new OriginalPicoRV32Mul(stepsAtOnce, carryChain)
+    } else {
+      new PicoRV32Mul(stepsAtOnce, carryChain)
+    }
   }
 
   val tests = Seq(
@@ -91,9 +98,9 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
   ) ++ (1 to 31).flatMap(s => allOps.map(TestConfig(s, 0, _, 10)))
 
   def runTest(conf: TestConfig): Unit = {
-    val annos = if(conf.withVcd) withVcd else noVcd
+    val annos = (if(conf.withVcd) withVcd else Seq()) ++ (if(conf.useOriginal) withVerilator else Seq())
     val random = new scala.util.Random(0)
-    test(new PicoRV32Mul(stepsAtOnce = conf.stepsAtOnce, carryChain = conf.carryChain)).withAnnotations(annos) { dut =>
+    test(conf.gen()).withAnnotations(annos) { dut =>
       (0 until conf.rounds).foreach{ _ =>
         val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
         val rd = do_mul(conf.op, rs1, rs2)
@@ -107,4 +114,8 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
   }
 
   tests.foreach(declareAndRunTest)
+
+  "PicoRV32Mul" should "work with carry chain" in {
+    runTest(TestConfig(1, 4, MUL, 10, useOriginal = true))
+  }
 }
