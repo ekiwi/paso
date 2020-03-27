@@ -90,12 +90,31 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     }
   }
 
-  val tests = Seq(
+  val allTests = Seq(
     TestConfig(1, 0, MUL,    100),
     TestConfig(1, 0, MULH,   100),
     TestConfig(1, 0, MULHU,  100),
     TestConfig(1, 0, MULHSU, 100),
-  ) ++ (1 to 31).flatMap(s => allOps.map(TestConfig(s, 0, _, 10)))
+  ) ++
+  // try different step sizes
+  (1 to 31).flatMap(s => allOps.map(TestConfig(s, 0, _, 10))) ++
+  // try different carry chains != 0
+  Seq(2,4,8,16,32,64).flatMap(c => Seq(1,3,7,19,31).flatMap(s => allOps.map(TestConfig(s, c, _, 10))))
+
+  val quickRegressionsTests = Seq(
+    TestConfig(1, 0, MUL,    40),
+    TestConfig(1, 0, MULH,   40),
+    TestConfig(1, 0, MULHU,  40),
+    TestConfig(1, 0, MULHSU, 40),
+    TestConfig(8, 0, MUL,    40),
+    TestConfig(8, 0, MULH,   40),
+    TestConfig(8, 0, MULHU,  40),
+    TestConfig(8, 0, MULHSU, 40),
+    TestConfig(1, 4, MUL,    40),
+    TestConfig(1, 4, MULH,   40),
+    TestConfig(1, 4, MULHU,  40),
+    TestConfig(1, 4, MULHSU, 40),
+  )
 
   def runTest(conf: TestConfig): Unit = {
     val annos = (if(conf.withVcd) withVcd else Seq()) ++ (if(conf.useOriginal) withVerilator else Seq())
@@ -113,12 +132,6 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     conf.name should conf.task in { runTest(conf) }
   }
 
-  tests.foreach(declareAndRunTest)
-
-  "PicoRV32Mul" should "work with carry chain" in {
-    runTest(TestConfig(1, 4, MUL, 100, useOriginal = false, withVcd = false))
-    runTest(TestConfig(1, 4, MULH, 100, useOriginal = false, withVcd = false))
-    runTest(TestConfig(1, 4, MULHU, 100, useOriginal = false, withVcd = false))
-    runTest(TestConfig(1, 4, MULHSU, 100, useOriginal = false, withVcd = false))
-  }
+  quickRegressionsTests.foreach(declareAndRunTest)
+  // allTests.foreach(declareAndRunTest)
 }
