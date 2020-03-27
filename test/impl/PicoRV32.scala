@@ -29,6 +29,7 @@ class CarrySaveState extends Bundle {
 }
 
 class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIModule {
+  require(stepsAtOnce >= 1 && stepsAtOnce <= 31)
   // decoder
   def isMulInstr(kind: UInt) = io.valid && io.insn(6,0) === "b0110011".U && io.insn(31,25) === 1.U && io.insn(14,12) === kind
   val instrMul = RegNext(isMulInstr("b000".U))
