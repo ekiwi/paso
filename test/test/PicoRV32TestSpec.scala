@@ -4,7 +4,7 @@ import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
-import impl.{OriginalPicoRV32Mul, PCPIModule, PicoRV32Mul}
+import impl.{OriginalPicoRV32Mul, PCPI, PCPIModule, PicoRV32Mul}
 import org.scalatest._
 
 class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
@@ -53,31 +53,33 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     res & mask32
   }
 
-  def mulProtocol(dut: PCPIModule, op: String, rs1: BigInt, rs2: BigInt, rd: BigInt): Unit = {
-    val instr = "0000001" + "0000000000" + op + "00000" + "0110011"
-    assert(instr.length == 32)
+  def mulProtocol(io: PCPI, clock: Clock, op: String, rs1: UInt, rs2: UInt, rd: UInt): Unit = {
+    val instr = ("b" + "0000001" + "0000000000" + op + "00000" + "0110011").U
+    // TODO: we need support for operations on chisel constants
+    // val instr: UInt = "b0000001".U ## "b0000000000".U ## op ## "b00000".U ## "b0110011".U
+    //assert(instr.getWidth == 32)
 
-    dut.io.valid.poke(true.B)
-    dut.io.insn.poke(("b" + instr).U)
-    dut.io.rs1.poke(rs1.U)
-    dut.io.rs2.poke(rs2.U)
-    dut.io.wr.expect(false.B)
-    dut.io.ready.expect(false.B)
-    dut.clock.step()
-    while(!dut.io.ready.peek().litToBoolean) {
-      dut.clock.step()
+    io.valid.poke(true.B)
+    io.insn.poke(instr)
+    io.rs1.poke(rs1)
+    io.rs2.poke(rs2)
+    io.wr.expect(false.B)
+    io.ready.expect(false.B)
+    clock.step()
+    while(!io.ready.peek().litToBoolean) {
+      clock.step()
     }
-    dut.io.rd.expect(rd.U)
-    dut.io.wr.expect(true.B)
-    dut.io.valid.poke(false.B)
-    dut.clock.step()
+    io.rd.expect(rd)
+    io.wr.expect(true.B)
+    io.valid.poke(false.B)
+    clock.step()
   }
 
   "PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)" should "correctly multiply 100 and 7" in {
     test(new PicoRV32Mul(stepsAtOnce = 1, carryChain = 0)).withAnnotations(withVcd) { dut =>
       val (rs1, rs2) = (BigInt(100), BigInt(7))
       val rd = do_mul(MULHU, rs1, rs2)
-      mulProtocol(dut, MULHU, rs1, rs2, rd)
+      mulProtocol(dut.io, dut.clock, MULHU, rs1.U, rs2.U, rd.U)
     }
   }
 
@@ -125,7 +127,7 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
       (0 until conf.rounds).foreach{ _ =>
         val (rs1, rs2) = (BigInt(32, random), BigInt(32, random))
         val rd = do_mul(conf.op, rs1, rs2)
-        mulProtocol(dut, conf.op, rs1, rs2, rd)
+        mulProtocol(dut.io, dut.clock, conf.op, rs1.U, rs2.U, rd.U)
       }
     }
   }
