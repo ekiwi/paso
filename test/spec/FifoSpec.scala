@@ -47,35 +47,35 @@ class FifoProtocols[F <: IsFifo](impl: F, spec: UntimedFifo[UInt]) extends Bindi
   require(impl.depth == spec.depth)
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
-  protocol(spec.push)(impl.io) { (dut, in) =>
+  protocol(spec.push)(impl.io) { (clock, dut, in) =>
     dut.pop.poke(false.B)
     dut.push.poke(true.B)
     dut.data_in.poke(in)
     dut.full.expect(false.B)
-    step()
+    clock.step()
   }
 
-  protocol(spec.pop)(impl.io) { (dut, out) =>
+  protocol(spec.pop)(impl.io) { (clock, dut, out) =>
     dut.pop.poke(true.B)
     dut.push.poke(false.B)
     dut.data_out.expect(out)
     dut.empty.expect(false.B)
-    step()
+    clock.step()
   }
 
-  protocol(spec.push_pop)(impl.io) { (dut, in, out) =>
+  protocol(spec.push_pop)(impl.io) { (clock, dut, in, out) =>
     dut.pop.poke(true.B)
     dut.push.poke(true.B)
     dut.data_in.poke(in)
     dut.data_out.expect(out)
     dut.empty.expect(false.B)
-    step()
+    clock.step()
   }
 
-  protocol(spec.idle)(impl.io) { dut =>
+  protocol(spec.idle)(impl.io) { (clock, dut) =>
     dut.pop.poke(false.B)
     dut.push.poke(false.B)
-    step()
+    clock.step()
   }
 }
 

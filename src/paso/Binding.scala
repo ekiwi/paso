@@ -12,7 +12,7 @@ import scala.collection.mutable
 
 trait Protocol {
   def methodName: String
-  def generate(): Unit
+  def generate(clock: Clock): Unit
 }
 trait ProtocolHelper {
   protected def makeInput[T <: Data](t: T): T = {
@@ -25,23 +25,24 @@ trait ProtocolHelper {
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(o.toTarget, false) })
     o
   }
+  protected def io[IO <: Data](ioType: IO): IO = IO(Flipped(ioType)).suggestName("io")
 }
-case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: IO => Unit) extends Protocol with ProtocolHelper {
+case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit) extends Protocol with ProtocolHelper {
   override def methodName = meth.gen.name
-  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"))
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType))
 }
-case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (IO, I) => Unit) extends Protocol with ProtocolHelper  {
+case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"), makeInput(meth.inputType))
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType))
 }
-case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (IO, O) => Unit) extends Protocol with ProtocolHelper  {
+case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(): Unit = impl(IO(Flipped(ioType)).suggestName("io"), makeOutput(meth.outputType))
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType))
 }
-case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
+case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(): Unit = {
-    impl(IO(Flipped(ioType)).suggestName("io"), makeInput(meth.inputType), makeOutput(meth.outputType))
+  override def generate(clock: Clock): Unit = {
+    impl(clock, io(ioType), makeInput(meth.inputType), makeOutput(meth.outputType))
   }
 }
 
@@ -49,13 +50,13 @@ case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMeth
 
 class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val protos = new mutable.ArrayBuffer[Protocol]()
-  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: IO => Unit): Unit =
+  def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: (Clock, IO) => Unit): Unit =
     protos.append(NProtocol(chiselTypeOf(io), meth, gen))
-  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (IO, O) => Unit): Unit =
+  def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (Clock, IO, O) => Unit): Unit =
     protos.append(OProtocol(chiselTypeOf(io), meth, gen))
-  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (IO, I) => Unit): Unit =
+  def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (Clock, IO, I) => Unit): Unit =
     protos.append(IProtocol(chiselTypeOf(io), meth, gen))
-  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (IO, I,O) => Unit): Unit =
+  def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (Clock, IO, I,O) => Unit): Unit =
     protos.append(IOProtocol(chiselTypeOf(io), meth, gen))
 
   // replace default chisel assert
@@ -71,10 +72,18 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     def poke(value: T): Unit = {
       x := value
     }
+    def peek(): T = x
     def expect(value: T): Unit = {
       val w = Wire(Bool()).suggestName("expect")
       w := x === value
       annotate(new ChiselAnnotation { override def toFirrtl = ExpectAnnotation(w.toTarget) })
+    }
+  }
+
+  implicit class testableClock(x: Clock) {
+    def step(): Unit = {
+      val w = Wire(Bool()).suggestName("step")
+      annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
     }
   }
 
@@ -89,14 +98,8 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     w
   }
 
-
   val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
   def mapping(gen: (IM, SM) => Unit): Unit = maps.append(gen)
-
-  def step(): Unit = {
-    val w = Wire(Bool()).suggestName("step")
-    annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
-  }
 
   implicit class comparableVec[T <: UInt](x: Vec[T]) {
     def ===(y: Vec[T]): Bool = {
@@ -104,6 +107,12 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
       require(x.length == y.length)
       x.zip(y).map{ case (a, b) => a === b}.reduceLeft[Bool]{ case (a,b) => a && b }
     }
+  }
+
+  def do_while(cond: => Bool, max: Int)(block: => Unit) = {
+    require(max > 0, "Loop bounds must be greater zero!")
+    require(max < 1024, "We currently do not support larger loop bounds!")
+    throw new NotImplementedError("TODO: loops")
   }
 }
 

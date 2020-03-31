@@ -25,24 +25,23 @@ class Multiplier extends UntimedModule {
 }
 
 class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(impl, spec) {
-  def mulProtocol(dut: PCPIModule, op: String, rs1: BigInt, rs2: BigInt, rd: BigInt): Unit = {
-    val instr = "0000001" + "0000000000" + op + "00000" + "0110011"
-    require(instr.length == 32)
+  def mulProtocol(io: PCPI, clock: Clock, op: String, rs1: UInt, rs2: UInt, rd: UInt): Unit = {
+    val instr = ("b" + "0000001" + "0000000000" + op + "00000" + "0110011").U
 
-    dut.io.valid.poke(true.B)
-    dut.io.insn.poke(("b" + instr).U)
-    dut.io.rs1.poke(rs1.U)
-    dut.io.rs2.poke(rs2.U)
-    dut.io.wr.expect(false.B)
-    dut.io.ready.expect(false.B)
-    dut.clock.step()
-    while(!dut.io.ready.peek().litToBoolean) {
-      dut.clock.step()
+    io.valid.poke(true.B)
+    io.insn.poke(instr)
+    io.rs1.poke(rs1)
+    io.rs2.poke(rs2)
+    io.wr.expect(false.B)
+    io.ready.expect(false.B)
+    clock.step()
+    do_while(!io.ready.peek(), max=20) {
+      clock.step()
     }
-    dut.io.rd.expect(rd.U)
-    dut.io.wr.expect(true.B)
-    dut.io.valid.poke(false.B)
-    dut.clock.step()
+    io.rd.expect(rd)
+    io.wr.expect(true.B)
+    io.valid.poke(false.B)
+    clock.step()
   }
 
   val MUL    = "000" // lower 32bits
@@ -50,10 +49,10 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
   val MULHU  = "011" // upper 32bits unsigned x unsigned
   val MULHSU = "010" // upper 32bits   signed x unsigned
 
-  protocol(spec.mul)(impl.io) { (dut, in, out) =>    mulProtocol(dut, MUL, in.a, in.b, out) }
-  protocol(spec.mulh)(impl.io) { (dut, in, out) =>   mulProtocol(dut, MULH, in.a, in.b, out) }
-  protocol(spec.mulhu)(impl.io) { (dut, in, out) =>  mulProtocol(dut, MULHU, in.a, in.b, out) }
-  protocol(spec.mulhsu)(impl.io) { (dut, in, out) => mulProtocol(dut, MULHSU, in.a, in.b, out) }
+  protocol(spec.mul)(impl.io) { (clock, dut, in, out) =>    mulProtocol(dut, clock, MUL, in.a, in.b, out) }
+  protocol(spec.mulh)(impl.io) { (clock, dut, in, out) =>   mulProtocol(dut, clock, MULH, in.a, in.b, out) }
+  protocol(spec.mulhu)(impl.io) { (clock, dut, in, out) =>  mulProtocol(dut, clock, MULHU, in.a, in.b, out) }
+  protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
 }
 
 class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(impl, spec) {

@@ -78,7 +78,7 @@ object Elaboration {
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, PendingInputNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
-      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate() })
+      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate(clock) })
       val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
       val int = new ProtocolInterpreter
       new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
