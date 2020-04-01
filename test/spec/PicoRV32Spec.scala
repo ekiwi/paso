@@ -3,6 +3,7 @@ package spec
 import chisel3._
 import paso._
 import impl._
+import org.scalatest._
 import paso.chisel.Elaboration
 import paso.verification.VerificationProblem
 
@@ -62,7 +63,7 @@ class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(imp
 }
 
 
-class PicoRV32Spec {
+class PicoRV32Spec extends FlatSpec {
   val p = Elaboration[PicoRV32Mul, Multiplier](new PicoRV32Mul(), new Multiplier, (impl, spec) => new MulInductive(impl, spec))
   VerificationProblem.verify(p)
 }
