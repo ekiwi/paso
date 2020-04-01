@@ -4,14 +4,15 @@
 
 package paso
 import chisel3._
-import chisel3.experimental.{ChiselAnnotation, annotate}
+import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 
 import scala.collection.mutable
 
 case class MethodGenerator(name: String, guard: Option[() => Bool], body: MethodBody) {
   def generate(): Unit = {
-    body.generate()
+    assert(name.nonEmpty)
+    body.generate(name + "_")
     val guard_cond = guard.map(_()).getOrElse(true.B)
     annotate(new ChiselAnnotation { override def toFirrtl = GuardAnnotation(guard_cond.toTarget) })
     guard_cond.suggestName("guard")
@@ -31,31 +32,31 @@ case class IMethod[I <: Data](inputType: I, gen: MethodGenerator)
 case class OMethod[O <: Data](outputType: O, gen: MethodGenerator)
 case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator)
 
-trait MethodBody { def generate(): Unit }
+trait MethodBody { def generate(prefix: String): Unit }
 trait MethodBodyHelper {
-  protected def makeInput[T <: Data](t: T): T = {
-    val i = Wire(Input(t))
+  protected def makeInput[T <: Data](t: T, prefix: String): T = {
+    val i = IO(Input(t)).suggestName(prefix + "inputs")
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(i.toTarget, true) })
     i
   }
-  protected def makeOutput[T <: Data](t: T): T = {
-    val o = Wire(Output(t))
+  protected def makeOutput[T <: Data](t: T, prefix: String): T = {
+    val o = IO(Output(t)).suggestName(prefix + "outputs")
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(o.toTarget, false) })
     o
   }
 }
 
 case class NMethodBody(impl: () => Unit) extends MethodBody {
-  override def generate(): Unit = impl()
+  override def generate(prefix: String): Unit = impl()
 }
 case class IMethodBody[I <: Data](inputType: I, impl: I => Unit) extends MethodBody with MethodBodyHelper {
-  override def generate(): Unit = impl(makeInput(inputType))
+  override def generate(prefix: String): Unit = impl(makeInput(inputType, prefix))
 }
 case class OMethodBody[O <: Data](outputType: O, impl: O => Unit) extends MethodBody with MethodBodyHelper {
-  override def generate(): Unit = impl(makeOutput(outputType))
+  override def generate(prefix: String): Unit = impl(makeOutput(outputType, prefix))
 }
 case class IOMethodBody[I <: Data, O <: Data](inputType: I, outputType: O, impl: (I, O) => Unit) extends MethodBody with MethodBodyHelper {
-  override def generate(): Unit = impl(makeInput(inputType), makeOutput(outputType))
+  override def generate(prefix: String): Unit = impl(makeInput(inputType, prefix), makeOutput(outputType, prefix))
 }
 
 trait MethodParent { def addMethod(m: MethodGenerator): Unit }

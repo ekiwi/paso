@@ -402,7 +402,7 @@ object AsSIntSemantics extends UnOpZeroArgSemantics {
     case ClockType => Some(SIntType(IntWidth(1)))
     case _ => None
   }
-  override def compileCon(w1: Int, wr: Int, signed: Boolean) : ConFun = ???
+  override def compileCon(w1: Int, wr: Int, signed: Boolean) : ConFun = e => e
   override protected def compileSym(w1: Int, wr: Int, signed: Boolean) : SymFun = e1 => e1
 }
 

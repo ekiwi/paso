@@ -13,11 +13,10 @@ import uclid.smt
 
 trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
   val prefix: String = ""
-  protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + "inputs") }.toMap
-  protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + "outputs") }.toMap
+  protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + target.ref) }.toMap
+  protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + target.ref) }.toMap
   protected lazy val renameIOs = methodInputs ++ methodOutputs
   override def onReference(r: Reference): smt.Expr = {
-    assert(methodInputs.size < 2 && methodOutputs.size < 2, "TODO: deal with bundles")
     val ref = super.onReference(r)
     renameIOs.get(r.name).map(smt.Symbol(_, ref.typ)).getOrElse(ref)
   }

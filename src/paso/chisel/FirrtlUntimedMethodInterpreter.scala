@@ -29,7 +29,7 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
       NamedExpr(smt.Symbol(name, tpe), stateUpdates.getOrElse(name, smt.Symbol(name, tpe)))
     }
     // find input types
-    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, wires(from)) }
+    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, inputs(from)) }
     val outputs = outputExpr.map{ case(name, expr) => NamedExpr(smt.Symbol(name, expr.typ), expr) }
     MethodSemantics(guard=guard, updates = updates.toSeq, outputs = outputs.toSeq, inputs = ins.toSeq)
   }
