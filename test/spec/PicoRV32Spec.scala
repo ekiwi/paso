@@ -36,7 +36,7 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
     io.wr.expect(false.B)
     io.ready.expect(false.B)
     clock.step()
-    do_while(!io.ready.peek(), max=20) {
+    do_while(!io.ready.peek(), max=70) {
       clock.step()
     }
     io.valid.poke(false.B)
