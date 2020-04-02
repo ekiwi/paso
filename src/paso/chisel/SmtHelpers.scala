@@ -37,7 +37,7 @@ trait SmtHelpers {
     val w = bv_expr.typ.asInstanceOf[smt.BitVectorType].width
     val e = width - w
     require(e >= 0)
-    if(e == 0) expr else app(op(w, e), bv_expr)
+    if(e == 0) expr else app(op(width, e), bv_expr)
   }
   def zext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVZeroExtOp(w, e))
   def sext(expr: smt.Expr, width: Int): smt.Expr = ext(expr, width, (w, e) => smt.BVSignExtOp(w, e))
