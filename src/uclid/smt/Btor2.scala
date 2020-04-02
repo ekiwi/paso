@@ -124,16 +124,21 @@ abstract class ModelChecker {
     btorWrite.close()
 
     // execute model checker
-    val resultFileName = fileName + ".out"
     val cmd = makeArgs(kMax, Some(fileName)).mkString(" ")
-    //print(cmd)
-    val ret = (cmd #> new File(resultFileName)).!
-    //println(s" -> $ret")
+    val stdout = mutable.ArrayBuffer[String]()
+    val stderr = mutable.ArrayBuffer[String]()
+    val ret = cmd ! ProcessLogger(stdout.append(_), stderr.append(_))
+    if(stderr.nonEmpty) { println(s"ERROR: ${stderr.mkString("\n")}") }
 
-    // read result file
-    val ff = Source.fromFile(resultFileName)
-    val res = ff.getLines().toSeq
-    ff.close()
+    // write stdout to file for debugging
+    val res: Seq[String] = stdout
+    val resultFileName = fileName + ".out"
+    val stdoutWrite = new PrintWriter(resultFileName)
+    res.foreach(l => stdoutWrite.println(l))
+    stdoutWrite.close()
+
+    //print(cmd)
+    //println(s" -> $ret")
 
     // check if it starts with sat
     if(isFail(ret, res)) {
