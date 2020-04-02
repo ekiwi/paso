@@ -4,7 +4,9 @@
 
 package paso.verification
 
+import paso.chisel.SMTSimplifier
 import uclid.smt
+
 import scala.collection.mutable
 
 class ProtocolInterpreter {
@@ -53,21 +55,26 @@ class ProtocolInterpreter {
 
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = {
+    println(s"SET: $lhs := $rhs")
     val iPhase = enterInputPhase()
-    val I_not_A = isConstraintNotMapping(rhs)
-    if(I_not_A) iPhase.edges.foreach{_.I.append(eq(lhs, rhs))}
-    else        iPhase.edges.foreach{_.A.append(eq(lhs, rhs))}
+    val simple_rhs = SMTSimplifier.simplify(rhs) // use the SMT Simplifier for constant prop
+    val I_not_A = isConstraintNotMapping(simple_rhs)
+    if(I_not_A) iPhase.edges.foreach{_.I.append(eq(lhs, simple_rhs))}
+    else        iPhase.edges.foreach{_.A.append(eq(lhs, simple_rhs))}
   }
 
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = {
+    println(s"EXPECT: $lhs == $rhs")
     val oPhase = finishInputPhase()
-    val O_not_R = isConstraintNotMapping(rhs)
-    if(O_not_R) oPhase.edges.foreach{_.O.append(eq(lhs, rhs))}
-    else        oPhase.edges.foreach{_.R.append(eq(lhs, rhs))}
+    val simple_rhs = SMTSimplifier.simplify(rhs) // use the SMT Simplifier for constant prop
+    val O_not_R = isConstraintNotMapping(simple_rhs)
+    if(O_not_R) oPhase.edges.foreach{_.O.append(eq(lhs, simple_rhs))}
+    else        oPhase.edges.foreach{_.R.append(eq(lhs, simple_rhs))}
   }
 
   private def finishInputPhase(): OutputPhase = {
     val new_phase  = phase match {
+      case IdlePhase(_) => enterInputPhase() ; finishInputPhase()
       case InputPhase(edges) =>
         // finish input phase
         val out_edges = edges.map { in =>
@@ -78,6 +85,7 @@ class ProtocolInterpreter {
         }
         OutputPhase(out_edges)
       case o : OutputPhase => o
+      case other => throw new RuntimeException(s"Unexpected phase: $other")
     }
     phase = new_phase
     // after finishing the input phase we are always in a output phase
@@ -100,6 +108,7 @@ class ProtocolInterpreter {
   }
 
   def onStep(): Unit = {
+    println("STEP")
     phase match {
       case IdlePhase(_) =>
         enterInputPhase()
