@@ -112,7 +112,16 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   def do_while(cond: => Bool, max: Int)(block: => Unit) = {
     require(max > 0, "Loop bounds must be greater zero!")
     require(max < 1024, "We currently do not support larger loop bounds!")
-    throw new NotImplementedError("TODO: loops")
+    unroll(cond, max, block)
+  }
+
+  private def unroll(cond: => Bool, max: Int, body: => Unit): Unit = if(max > 0) {
+    when(cond) {
+      body
+      unroll(cond, max-1, body)
+    }
+  } else {
+    // ???
   }
 }
 
