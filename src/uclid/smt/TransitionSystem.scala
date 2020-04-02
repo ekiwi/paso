@@ -130,6 +130,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       case s: Symbol => data(bvSymbolToDataIndex(s))
       case OperatorApplication(EqualityOp, List(a, b)) if a.typ.isArray => arrayEq(a, b)
       case OperatorApplication(InequalityOp, List(a, b)) if a.typ.isArray => arrayIneq(a, b)
+      case OperatorApplication(BVConcatOp(_), List(a, b)) => BitVectorAndBoolSemantics.concat(eval(a), eval(b), b.typ.asInstanceOf[BitVectorType].width)
       case OperatorApplication(op, List(a)) => BitVectorAndBoolSemantics.unary(op, eval(a))
       case OperatorApplication(op, List(a, b)) => BitVectorAndBoolSemantics.binary(op, eval(a), eval(b))
       case OperatorApplication(op, List(a,b,c)) => BitVectorAndBoolSemantics.ternary(op, eval(a), eval(b), eval(c))
@@ -346,12 +347,16 @@ object BitVectorAndBoolSemantics {
     case BVGEUOp(_) => bool(a >= b)
     case BVGTUOp(_) => bool(a > b)
     case BVAddOp(w) => (a + b) & mask(w)
+    case BVMulOp(w) => (a * b) & mask(w)
     case BVSubOp(w) => (a + flipBits(b, w) + 1) & mask(w)
     case BVAndOp(_) | ConjunctionOp => a & b
     case BVOrOp(_) | DisjunctionOp => a | b
     case BVXorOp(_) => a ^ b
     case ImplicationOp => flipBits(a, 1) | b
     case other => throw new RuntimeException(s"Unsupported binary operation $other.")
+  }
+  def concat(a: BigInt, b: BigInt, bWidth: Int): BigInt = {
+    a << bWidth | b
   }
   def ternary(op: Operator, a: BigInt, b: BigInt, c: BigInt): BigInt = op match {
     case ITEOp => if(a == 1) b else if(a == 0) c else throw new RuntimeException(s"Invalid value for bool: $a")
