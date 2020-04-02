@@ -4,6 +4,9 @@
 
 package paso.verification
 
+import java.io.FileWriter
+import scala.sys.process._
+
 import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
 import uclid.smt.ConjunctionOp
@@ -188,5 +191,14 @@ object VerificationGraphToDot extends SmtHelpers {
       |  $connections
       |}
       |""".stripMargin
+  }
+}
+
+object ShowDot {
+  def apply(src: String, fileName: String = "test.dot"): Unit = {
+    val ff = new FileWriter(fileName)
+    ff.write(src)
+    ff.close()
+    s"xdot $fileName"!!
   }
 }

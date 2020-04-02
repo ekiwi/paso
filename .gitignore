@@ -20,3 +20,4 @@
 # temporary files
 test.btor
 test.btor.out
+test.dot
