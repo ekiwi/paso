@@ -4,7 +4,7 @@
 
 package paso.verification
 
-import paso.chisel.SmtHelpers
+import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
 import uclid.smt.ConjunctionOp
 
@@ -152,5 +152,41 @@ trait HasSolver {
     val res = solver.check()
     solver.pop()
     res
+  }
+}
+
+object VerificationGraphToDot extends SmtHelpers {
+  type Arrows = Seq[(VerificationNode, VerificationNode, String)]
+
+  private def visit(node: PendingInputNode): Arrows = node.next.flatMap(visit(_, node))
+  private def visit(node: PendingOutputNode): Arrows = node.next.flatMap(visit(_, node))
+  private def mkMsg(constraints: Seq[smt.Expr], mappings: Seq[smt.Expr]): String = {
+    (constraints ++ mappings).map(SMTSimplifier.simplify).mkString(", ")
+  }
+  private def visit(edge: InputEdge, parent: VerificationNode): Arrows = {
+    val msg = mkMsg(edge.constraints, edge.mappings)
+    Seq((parent, edge.next, msg)) ++ visit(edge.next)
+  }
+  private def visit(edge: OutputEdge, parent: VerificationNode): Arrows = {
+    val msg = mkMsg(edge.constraints, edge.mappings)
+    Seq((parent, edge.next, msg)) ++ visit(edge.next)
+  }
+
+  def apply(name: String, graph: PendingInputNode): String = {
+    val arrows = visit(graph)
+    val edges = arrows.flatMap(a => Set(a._1, a._2)).toSet
+    val edgeToId = edges.zipWithIndex.toMap
+    val edgeIds = edgeToId.values
+
+    val nodes = edgeIds.map(i => s"$i [shape=point]").mkString("\n")
+    val connections = arrows.map(a => s"""${edgeToId(a._1)} -> ${edgeToId(a._2)} [label="${a._3}"]""").mkString("\n")
+
+    s"""
+      |digraph $name {
+      |  rankdir="LR";
+      |  $nodes
+      |  $connections
+      |}
+      |""".stripMargin
   }
 }
