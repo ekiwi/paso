@@ -96,8 +96,9 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
     mulWaiting := mulCounter(6) === 1.U
   }
 
-  io.wr := RegNext(mulFinish, init = false.B)
-  io.ready := RegNext(mulFinish, init = false.B)
+  val mulFinishDelay = RegNext(mulFinish, init = false.B)
+  io.wr := mulFinishDelay
+  io.ready := mulFinishDelay
   val rdBuffer = Reg(chiselTypeOf(io.rd))
   when(mulFinish) { rdBuffer := Mux(instrAnyMulH, state.rd >> 32, state.rd) }
   io.rd := rdBuffer

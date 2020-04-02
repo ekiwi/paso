@@ -59,6 +59,7 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
 class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(impl, spec) {
   invariances { dut =>
     assert(dut.mulWaiting)
+    assert(!dut.mulFinishDelay)
   }
 }
 
