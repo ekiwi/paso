@@ -13,13 +13,14 @@ class ProtocolInterpreter {
   private trait Phase {}
   private case class IdlePhase(states: Seq[MPendingInputNode]) extends Phase
   private case class InputPhase(edges: Seq[MInputEdge]) extends Phase
-  private case class OutputPhase(edges: Seq[MOutputEdge]) extends Phase
+  private case class OutputPhase(edges: Seq[MOutputEdge], prev: Seq[MPendingOutputNode]) extends Phase
   private val _init = MPendingInputNode(mutable.ArrayBuffer())
   private var phase: Phase = IdlePhase(Seq(_init))
   private def inIdlePhase: Boolean = phase.isInstanceOf[IdlePhase]
   private def inInputPhase: Boolean = phase.isInstanceOf[InputPhase]
   private def inOutputPhase: Boolean = phase.isInstanceOf[OutputPhase]
   private def eq(a: smt.Expr, b: smt.Expr): smt.Expr = smt.OperatorApplication(smt.EqualityOp, List(a,b))
+  private def not(e: smt.Expr): smt.Expr = smt.OperatorApplication(smt.NegationOp, List(e))
   /** Keeps track of which bits of a variable have been mapped */
   private val mappedBits = mutable.HashMap[String, BigInt]()
   //private def isNewMapping() // TODO
@@ -54,6 +55,43 @@ class ProtocolInterpreter {
   }
 
 
+  def onWhen(cond: smt.Expr, visitTrue: () => Unit, visitFalse: () => Unit): Unit = {
+    val oPhase = finishInputPhase()
+    def copyPhase(e: smt.Expr): OutputPhase = {
+      val simpl = SMTSimplifier.simplify(e)
+      val states = oPhase.prev.map(s => s.copy(next = s.next.map(e => e.copy(O = e.O ++ Seq(simpl)))))
+      val edges = states.flatMap(_.next)
+      OutputPhase(edges, states)
+    }
+
+    // generate a true Phase and a false Phase
+    val originalStates = oPhase.prev
+    val truePhase = copyPhase(cond)
+    val falsePhase = copyPhase(not(cond))
+
+    // execute both sides of the branch
+    phase = truePhase
+    println(s"WHEN $cond")
+    visitTrue()
+    val newTruePhase = finishInputPhase()
+    phase = falsePhase
+    println(s"WHEN ${not(cond)}")
+    visitFalse()
+    val newFalsePhase = finishInputPhase()
+
+    // merge: this relies on the fact that no new states can be added and Seq is ordered
+    assert(newTruePhase.prev.length == newFalsePhase.prev.length)
+    val states = originalStates.zip(newTruePhase.prev).zip(newFalsePhase.prev).map { case ((st, sTrue), sFalse) =>
+      // edges in sTrue and sFalse should be mutually exclusive
+      st.next.clear()
+      st.next ++= sTrue.next ++ sFalse.next
+      st
+    }
+    val edges = states.flatMap(_.next)
+    phase = OutputPhase(edges, states)
+  }
+
+
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = {
     println(s"SET: $lhs := $rhs")
     val iPhase = enterInputPhase()
@@ -77,13 +115,13 @@ class ProtocolInterpreter {
       case IdlePhase(_) => enterInputPhase() ; finishInputPhase()
       case InputPhase(edges) =>
         // finish input phase
-        val out_edges = edges.map { in =>
+        val out_states = edges.map { in =>
           val state = MPendingOutputNode(mutable.ArrayBuffer(MOutputEdge()))
           assert(in.next.isEmpty)
           in.next = Some(state)
-          state.next.head
+          state
         }
-        OutputPhase(out_edges)
+        OutputPhase(out_states.map(_.next.head), out_states)
       case o : OutputPhase => o
       case other => throw new RuntimeException(s"Unexpected phase: $other")
     }
@@ -99,7 +137,8 @@ class ProtocolInterpreter {
         val edges = states.map { st => st.next.append(MInputEdge()) ; st.next.head }
         InputPhase(edges)
       case in : InputPhase => in
-      case OutputPhase(_) => throw new RuntimeException("A step is required before sending inputs.")
+      case OutputPhase(_, _) =>
+        throw new RuntimeException("A step is required before sending inputs.")
     }
     phase = new_phase
     // after finishing the input phase we are always in a output phase
@@ -116,7 +155,7 @@ class ProtocolInterpreter {
       case InputPhase(_) =>
         finishInputPhase()
         onStep()
-      case OutputPhase(edges) =>
+      case OutputPhase(edges, _) =>
         val states = edges.map { out =>
           val state = MPendingInputNode(mutable.ArrayBuffer())
           assert(out.next.isEmpty)

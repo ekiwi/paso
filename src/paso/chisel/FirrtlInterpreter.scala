@@ -45,7 +45,7 @@ class FirrtlInterpreter extends SmtHelpers {
   val regs = mutable.HashMap[String, smt.Type]()
   val mems = mutable.HashMap[String, smt.Type]()
   val wires = mutable.HashMap[String, smt.Type]()
-  private val cond_stack = mutable.Stack[smt.Expr]()
+  protected val cond_stack = mutable.Stack[smt.Expr]()
   def pathCondition: smt.Expr = cond_stack.foldLeft[smt.Expr](smt.BooleanLit(true))((a,b) => app(smt.ConjunctionOp, a, b))
 
   def isInput(name: String): Boolean = inputs.contains(name)

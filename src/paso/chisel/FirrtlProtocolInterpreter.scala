@@ -6,8 +6,7 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
-import firrtl.ir.Reference
-import paso.verification.{ProtocolInterpreter}
+import paso.verification.ProtocolInterpreter
 import paso.{ExpectAnnotation, MethodIOAnnotation, StepAnnotation}
 import uclid.smt
 
@@ -16,7 +15,7 @@ trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
   protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + target.ref) }.toMap
   protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + target.ref) }.toMap
   protected lazy val renameIOs = methodInputs ++ methodOutputs
-  override def onReference(r: Reference): smt.Expr = {
+  override def onReference(r: ir.Reference): smt.Expr = {
     val ref = super.onReference(r)
     renameIOs.get(r.name).map(smt.Symbol(_, ref.typ)).getOrElse(ref)
   }
@@ -31,6 +30,20 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
   override def defWire(name: String, tpe: ir.Type): Unit = {
     if(steps.contains(name)) { interpreter.onStep() }
     super.defWire(name, tpe)
+  }
+
+  override def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
+    def visitTrue() {
+      cond_stack.push(cond)
+      onStmt(tru)
+      cond_stack.pop() ;
+    }
+    def visitFalse() {
+      cond_stack.push(app(smt.NegationOp, cond))
+      onStmt(fals)
+      cond_stack.pop()
+    }
+    interpreter.onWhen(cond, visitTrue, visitFalse)
   }
 
   override def onConnect(name: String, expr: smt.Expr): Unit = {
