@@ -37,7 +37,7 @@ object Elaboration {
   private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
     val st = CircuitState(tup._1, ChirrtlForm, tup._2, None)
     // TODO: we would like to lower bundles but not vecs ....
-    val st_no_bundles = passes.LowerTypes.execute(st)
+    val st_no_bundles = passes.LowerTypes.runTransform(st)
     (st_no_bundles.circuit, st_no_bundles.annotations)
   }
   private val lowFirrtlCompiler = new LowFirrtlCompiler
