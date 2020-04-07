@@ -14,15 +14,15 @@ class Multiplier extends UntimedModule {
   val mul = fun("mul").in(new Args).out(UInt(32.W)){ (in, out) =>
     out := in.a * in.b
   }
-//  val mulh = fun("mulh").in(new Args).out(UInt(32.W)){ (in, out) =>
-//    out := (in.a.asSInt() * in.b.asSInt()).asUInt()(63,32)
-//  }
-//  val mulhu = fun("mulhu").in(new Args).out(UInt(32.W)){ (in, out) =>
-//    out := (in.a * in.b)(63,32)
-//  }
-//  val mulhsu = fun("mulhsu").in(new Args).out(UInt(32.W)){ (in, out) =>
-//    out := (in.a.asSInt() * ("b0".U ## in.b).asSInt()).asUInt()(63,32)
-//  }
+  val mulh = fun("mulh").in(new Args).out(UInt(32.W)){ (in, out) =>
+    out := (in.a.asSInt() * in.b.asSInt()).asUInt()(63,32)
+  }
+  val mulhu = fun("mulhu").in(new Args).out(UInt(32.W)){ (in, out) =>
+    out := (in.a * in.b)(63,32)
+  }
+  val mulhsu = fun("mulhsu").in(new Args).out(UInt(32.W)){ (in, out) =>
+    out := (in.a.asSInt() * ("b0".U ## in.b).asSInt()).asUInt()(63,32)
+  }
 }
 
 class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(impl, spec) {
@@ -52,10 +52,9 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
   val MULHSU = "010" // upper 32bits   signed x unsigned
 
   protocol(spec.mul)(impl.io) { (clock, dut, in, out) =>    mulProtocol(dut, clock, MUL, in.a, in.b, out) }
-  // TODO: uncomment once the merging algorithm is fixed
-//  protocol(spec.mulh)(impl.io) { (clock, dut, in, out) =>   mulProtocol(dut, clock, MULH, in.a, in.b, out) }
-//  protocol(spec.mulhu)(impl.io) { (clock, dut, in, out) =>  mulProtocol(dut, clock, MULHU, in.a, in.b, out) }
-//  protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
+  protocol(spec.mulh)(impl.io) { (clock, dut, in, out) =>   mulProtocol(dut, clock, MULH, in.a, in.b, out) }
+  protocol(spec.mulhu)(impl.io) { (clock, dut, in, out) =>  mulProtocol(dut, clock, MULHU, in.a, in.b, out) }
+  protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
 }
 
 class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(impl, spec) {
