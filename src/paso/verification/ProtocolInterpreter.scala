@@ -122,10 +122,10 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
   private def makeGraph(method: String, states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): PendingInputNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
 
-    val (inConst, inMap, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
+    val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
 
     val outputs = states.map { st =>
-      val (outConst, outMap, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
+      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
       val next = children.get(st).map(c => makeGraph(method, c, children, None, outBits)).getOrElse(PendingInputNode())
       OutputEdge(outConst ++ st.pathCondition.toSeq, outMap, Set(method), next)
     }
