@@ -7,6 +7,7 @@ package paso.chisel
 import uclid.smt
 
 
+
 trait SmtHelpers {
   def bool_to_bv(b: smt.Expr): smt.Expr = b match {
     case smt.BooleanLit(value) => smt.BitVectorLit(if(value) 1 else 0, 1)
@@ -54,4 +55,12 @@ trait SmtHelpers {
   def forall(vars: Seq[smt.Symbol], e: smt.Expr): smt.Expr = vars.foldRight(e)((vv, e) => app(smt.ForallOp(List(vv), List()), e))
   val tru = smt.BooleanLit(true)
   val fals = smt.BooleanLit(false)
+  def getBits(typ: smt.Type) = typ match {
+    case smt.BoolType => 1
+    case smt.BitVectorType(w) => w
+  }
+}
+
+object SmtHelper extends SmtHelpers {
+
 }
