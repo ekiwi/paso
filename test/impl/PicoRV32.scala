@@ -76,7 +76,8 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
 
   val mulCounter = Reg(UInt(7.W))
   val mulWaiting = RegInit(true.B)
-  val mulFinish = RegNext(!mulWaiting && mulCounter(6))
+  // this register isn't resent in the original core
+  val mulFinish = RegNext(!mulWaiting && mulCounter(6), init=false.B)
   when(mulWaiting) {
     when(instrRs1Signed) { state.rs1 := io.rs1.asSInt().pad(64).asUInt() }
       .otherwise         { state.rs1 := io.rs1 }
