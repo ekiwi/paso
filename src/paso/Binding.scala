@@ -12,37 +12,27 @@ import scala.collection.mutable
 
 trait Protocol {
   def methodName: String
-  def generate(clock: Clock): Unit
+  def generate(prefix: String, clock: Clock): Unit
 }
-trait ProtocolHelper {
-  protected def makeInput[T <: Data](t: T): T = {
-    val i = IO(Input(t)).suggestName("in")
-    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(i.toTarget, true) })
-    i
-  }
-  protected def makeOutput[T <: Data](t: T): T = {
-    val o = IO(Output(t)).suggestName("out")
-    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(o.toTarget, false) })
-    o
-  }
+trait ProtocolHelper extends MethodBodyHelper {
   protected def io[IO <: Data](ioType: IO): IO = IO(Flipped(ioType)).suggestName("io")
 }
 case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit) extends Protocol with ProtocolHelper {
   override def methodName = meth.gen.name
-  override def generate(clock: Clock): Unit = impl(clock, io(ioType))
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType))
 }
 case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType))
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType, prefix))
 }
 case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType))
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType, prefix))
 }
 case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
-  override def generate(clock: Clock): Unit = {
-    impl(clock, io(ioType), makeInput(meth.inputType), makeOutput(meth.outputType))
+  override def generate(prefix: String, clock: Clock): Unit = {
+    impl(clock, io(ioType), makeInput(meth.inputType, prefix), makeOutput(meth.outputType, prefix))
   }
 }
 
