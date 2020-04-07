@@ -22,8 +22,6 @@ case class ProtocolState(
 }
 
 
-
-
 class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers {
   protected var activeStates: Seq[ProtocolState] = Seq(ProtocolState("0"))
   protected var stateCounter: Int = 1
@@ -69,13 +67,17 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 
     // visit true branch
     activeStates = trueFalseStates(0)
+    //println(s"WHEN $cond (${activeStates})")
     visitTrue()
     val finalTrueStates = activeStates
+    //println(s" -> (${activeStates})")
 
     // visit false branch
     activeStates = trueFalseStates(1)
+    //println(s"WHEN !$cond (${activeStates})")
     visitFalse()
     val finalFalseStates = activeStates
+    //println(s" -> (${activeStates})")
 
     // combine
     activeStates = finalTrueStates ++ finalFalseStates
@@ -83,6 +85,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
     case s: smt.Symbol =>
+      //println(s"SET $lhs := $rhs (${activeStates})")
       val simpleRhs = SMTSimplifier.simplify(rhs)
       activeStates = activeStates.map(set(_, s, simpleRhs))
     case other => throw new RuntimeException(s"Cannot assign to $other")
@@ -90,24 +93,29 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
     case s: smt.Symbol =>
+      //println(s"EXPECT $lhs = $rhs (${activeStates})")
       val simpleRhs = SMTSimplifier.simplify(rhs)
       activeStates = activeStates.map(expect(_, s, simpleRhs))
     case other => throw new RuntimeException(s"Cannot read from $other")
   }
 
   def onStep(): Unit = {
+    //println(s"STEP (${activeStates})")
     activeStates = activeStates.map(step)
   }
 
   ///////// State Tree to Graph
   type State = ProtocolState
-  private def reverseConnectivity(states: Iterable[State]): (Map[State, Iterable[State]], Seq[State]) = {
-    if(states.isEmpty) return (Map(), Seq())
+  private def merge[K,V](a: Map[K, Set[V]],b: Map[K, Set[V]]): Map[K, Set[V]] = {
+    (a.toSeq ++ b.toSeq).groupBy(_._1).mapValues(_.flatMap(_._2).toSet)
+  }
+  private def reverseConnectivity(states: Iterable[State]): (Map[State, Set[State]], Set[State]) = {
+    if(states.isEmpty) return (Map(), Set())
     // TODO: this method is probably suboptimal, visiting asymptotically more nodes than necessary
-    val parentToChildren = states.filter(_.parent.isDefined).groupBy(_.parent.get)
-    val roots = states.filter(_.parent.isEmpty).toSeq
+    val parentToChildren = states.filter(_.parent.isDefined).groupBy(_.parent.get).mapValues(_.toSet)
+    val roots = states.filter(_.parent.isEmpty).toSet
     val (parentMap, parentRoots) = reverseConnectivity(parentToChildren.keys)
-    (parentToChildren ++ parentMap, roots ++ parentRoots)
+    (merge(parentToChildren, parentMap), roots | parentRoots)
   }
 
   private def makeGraph(method: String, states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): PendingInputNode = {
@@ -118,7 +126,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
     val outputs = states.map { st =>
       val (outConst, outMap, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
       val next = children.get(st).map(c => makeGraph(method, c, children, None, outBits)).getOrElse(PendingInputNode())
-      OutputEdge(outConst, outMap, Set(method), next)
+      OutputEdge(outConst ++ st.pathCondition.toSeq, outMap, Set(method), next)
     }
 
     val outNode = PendingOutputNode(outputs.toSeq)
