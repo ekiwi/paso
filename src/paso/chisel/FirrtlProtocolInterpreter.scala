@@ -53,7 +53,7 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
         interpreter.onExpect(lhs, rhs)
       case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
     } else if(name.startsWith("io_") && isOutput(name)) {
-      interpreter.onSet(smt.Symbol(name, outputs(name)), expr)
+      interpreter.onSet(smt.Symbol(name, outputs(name)), expr, sticky=true)
     }
     super.onConnect(name, expr)
   }

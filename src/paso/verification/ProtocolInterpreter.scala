@@ -28,11 +28,12 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
   protected def getStateName: String = { val i = stateCounter ; stateCounter += 1; i.toString }
 
   ///////// Single State Update Functions
-  def set(state: ProtocolState, input: smt.Symbol, expr: smt.Expr): ProtocolState = {
+  def set(state: ProtocolState, input: smt.Symbol, expr: smt.Expr, sticky: Boolean): ProtocolState = {
     if (enforceNoInputAfterOutput) {
       assert(state.outputs.isEmpty, s"Cannot assign to input $input := $expr after calling expect and before calling step")
     }
-    state.copy(inputs = state.inputs + (input -> expr))
+    val stickyInput = if(sticky) state.stickyInput + input else state.stickyInput - input
+    state.copy(inputs = state.inputs + (input -> expr), stickyInput=stickyInput)
   }
 
   def expect(state: ProtocolState, output: smt.Symbol, expr: smt.Expr): ProtocolState =
@@ -83,11 +84,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
     activeStates = finalTrueStates ++ finalFalseStates
   }
 
-  def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
+  def onSet(lhs: smt.Expr, rhs: smt.Expr, sticky: Boolean = false): Unit = lhs match {
     case s: smt.Symbol =>
       //println(s"SET $lhs := $rhs (${activeStates})")
       val simpleRhs = SMTSimplifier.simplify(rhs)
-      activeStates = activeStates.map(set(_, s, simpleRhs))
+      activeStates = activeStates.map(set(_, s, simpleRhs, sticky))
     case other => throw new RuntimeException(s"Cannot assign to $other")
   }
 
