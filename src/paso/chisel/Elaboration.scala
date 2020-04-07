@@ -87,7 +87,8 @@ object Elaboration {
       //println(s"Protocol for: ${p.methodName}")
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate(clock) })
       val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
-      val int = new ProtocolInterpreter
+      val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
+      //println(ff.serialize)
       new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
       (p.methodName, int.getGraph(p.methodName, methods(p.methodName).guard))
     }
