@@ -4,12 +4,132 @@
 
 package paso.verification
 
-import paso.chisel.SMTSimplifier
+import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
 
 import scala.collection.mutable
 
-class ProtocolInterpreter {
+
+case class ProtocolState(
+  parent: Option[ProtocolState] = None,        // prior protocol state
+  inputs: Map[smt.Symbol, smt.Expr] = Map(),   // expressions that are applied to the inputs of the DUV
+  outputs: Map[smt.Symbol, smt.Expr] = Map(),  // expected outputs of the DUV
+  stickyInput: Set[smt.Symbol] = Set(),        // "sticky" inputs retain their value after a step
+  mappedBits: Map[smt.Symbol, BigInt] = Map(), // tracks which bits of arguments and return arguments have already been mapped
+  pathCondition: Option[smt.Expr] = None       // path condition from the current step, should only depend on outputs
+  )
+
+
+
+class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers {
+  protected var activeStates: Seq[ProtocolState] = Seq(ProtocolState())
+
+  ///////// Single State Update Functions
+  def set(state: ProtocolState, input: smt.Symbol, expr: smt.Expr): ProtocolState = {
+    if (enforceNoInputAfterOutput) {
+      assert(state.outputs.isEmpty, s"Cannot assign to input $input := $expr after calling expect and before calling step")
+    }
+    state.copy(inputs = state.inputs + (input -> expr))
+  }
+
+  def expect(state: ProtocolState, output: smt.Symbol, expr: smt.Expr): ProtocolState =
+    state.copy(outputs = state.outputs + (output -> expr))
+
+  def fork(state: ProtocolState, cond: smt.Expr): Seq[ProtocolState] = {
+    // TODO: check if path condition is sat and prune if it is not
+    val tru = state.pathCondition.map(and(_, cond)).getOrElse(cond)
+    val fals = state.pathCondition.map(and(_, not(cond))).getOrElse(not(cond))
+    Seq(state.copy(pathCondition = Some(tru)), state.copy(pathCondition = Some(fals)))
+  }
+
+  def step(state: ProtocolState): ProtocolState = {
+    // TODO: find newly mapped bits
+    val mappedBits = state.mappedBits
+
+    // copy sticky inputs to next state
+    val inputs = state.stickyInput.toIterator.flatMap(i => state.inputs.get(i).map(i -> _)).toMap
+
+    ProtocolState(
+      parent = Some(state),
+      inputs = inputs,
+      outputs = Map(),
+      stickyInput = state.stickyInput,
+      mappedBits = mappedBits,
+      pathCondition = None
+    )
+  }
+
+
+  ///////// Callbacks
+  def onWhen(cond: smt.Expr, visitTrue: () => Unit, visitFalse: () => Unit): Unit = {
+    val simpleCond = SMTSimplifier.simplify(cond)
+    val trueFalseStates = activeStates.map(fork(_, simpleCond)).transpose
+
+    // visit true branch
+    activeStates = trueFalseStates(0)
+    visitTrue()
+    val finalTrueStates = activeStates
+
+    // visit false branch
+    activeStates = trueFalseStates(1)
+    visitFalse()
+    val finalFalseStates = activeStates
+
+    // combine
+    activeStates = finalTrueStates ++ finalFalseStates
+  }
+
+  def onSet(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
+    case s: smt.Symbol => activeStates.map(set(_, s, rhs))
+    case other => throw new RuntimeException(s"Cannot assign to $other")
+  }
+
+  def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
+    case s: smt.Symbol => activeStates.map(expect(_, s, rhs))
+    case other => throw new RuntimeException(s"Cannot read from $other")
+  }
+
+  def onStep(): Unit = {
+    val newStates = activeStates.map(step)
+    activeStates = newStates
+  }
+
+  ///////// State Tree to Graph
+  type State = ProtocolState
+  private def reverseConnectivity(states: Iterable[State]): (Map[State, Iterable[State]], Seq[State]) = {
+    val parentToChildren = states.filter(_.parent.isDefined).groupBy(_.parent.get)
+    val roots = states.filter(_.parent.isEmpty).toSeq
+    val (parentMap, parentRoots) = reverseConnectivity(parentToChildren.keys)
+    (parentToChildren ++ parentMap, roots ++ parentRoots)
+  }
+
+  private def makeGraph(state: State, children: Map[State, Iterable[State]], guard: Option[smt.Expr]): PendingInputNode = {
+    
+
+  }
+
+  def getGraph(method: String, guard: smt.Expr): PendingInputNode = {
+    checkFinalStates(activeStates)
+
+    // reverse connectivity
+    val (children, roots) = reverseConnectivity(activeStates)
+    assert(roots.length == 1, s"Expected to find exactly one starting state, not: $roots")
+
+
+
+    // add method guard to the constraints for the first edge
+    // --> the first edge should only be executed if our system is in the correct state
+    if(guard != smt.BooleanLit(true)) { _init.next.foreach(_.I.append(guard)) }
+    _init.toImmutable(method)
+  }
+
+  def checkFinalStates(states: Iterable[ProtocolState]) = {
+    println("TODO: do some sanity checks like: are all arguments mapped on all paths?")
+  }
+
+}
+
+class OldProtocolInterpreter {
   private trait Phase {}
   private case class IdlePhase(states: Seq[MPendingInputNode]) extends Phase
   private case class InputPhase(edges: Seq[MInputEdge]) extends Phase
