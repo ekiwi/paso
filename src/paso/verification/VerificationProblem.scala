@@ -50,9 +50,8 @@ object VerificationProblem {
 
 
 
-class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelpers with HasSolver {
-  override val solverName: String = "yices2"
-  val solver = new smt.SMTLIB2Interface(List("yices-smt2"))
+class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelpers {
+  override val solverName: String = "btormc"
 
 
   private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
