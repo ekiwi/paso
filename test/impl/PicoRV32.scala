@@ -44,7 +44,7 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
   val instrRs2Signed = instrMulH
 
   // control logic
-  val doWait = RegNext(instrAnyMul)
+  val doWait = RegNext(instrAnyMul, init=false.B) // this register isn't resent in the original core
   io.doWait := doWait
   val doWaitBuffer = RegNext(doWait)
   val mulStart = doWait && !doWaitBuffer // rising edge

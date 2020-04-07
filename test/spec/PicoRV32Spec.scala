@@ -63,6 +63,7 @@ class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(imp
     assert(dut.mulWaiting)
     assert(!dut.mulFinishDelay)
     assert(!dut.mulFinish)
+    assert(!dut.doWait)
   }
 }
 
