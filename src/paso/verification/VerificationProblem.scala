@@ -58,6 +58,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
     val check = new BoundedCheckBuilder(p.impl)
 
+    //ShowDot(VerificationGraphToDot("proto", proto))
+
     // assume that reset is inactive
     VerificationTask.findReset(p.impl.inputs).foreach(r => check.assume(not(r)))
     // assume that invariances hold in the initial state
