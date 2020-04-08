@@ -62,6 +62,9 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     def poke(value: T): Unit = {
       x := value
     }
+    def poke(value: DontCare.type): Unit = {
+      x := value
+    }
     def peek(): T = x
     def expect(value: T): Unit = {
       val w = Wire(Bool()).suggestName("expect")
