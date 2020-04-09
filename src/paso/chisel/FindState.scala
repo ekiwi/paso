@@ -29,8 +29,8 @@ case class FindState(c: ir.Circuit) {
     case other => other.foreachStmt(onStmt(prefix, _))
   }
   def mkBitVec(value: BigInt, tpe: ir.Type): smt.Expr = tpe match {
-    case ir.UIntType(ir.IntWidth(w)) => smt.BitVectorLit(value, w.toInt)
-    case ir.SIntType(ir.IntWidth(w)) => smt.BitVectorLit(value, w.toInt)
+    case ir.UIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(value, w.toInt) else smt.BooleanLit(value != 0)
+    case ir.SIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(value, w.toInt) else smt.BooleanLit(value != 0)
   }
   def run(): Seq[State] = {
     onStmt("", mods(c.main).body)
