@@ -109,6 +109,9 @@ class FirrtlInterpreter extends SmtHelpers {
     onStmt(fals)
     cond_stack.pop()
   }
+  def onIsInvalid(expr: smt.Expr): Unit = {
+    throw new RuntimeException(s"TODO: $expr is invalid")
+  }
 
   // extends expression to width
   def onExpr(e: ir.Expression, width: Int): smt.Expr =
@@ -211,7 +214,7 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.Connect(_, loc, expr) =>
       onConnect(loc, expr)
     case ir.IsInvalid(_, expr) =>
-      throw new RuntimeException("TODO: deal with invalids")
+      onIsInvalid(onExpr(expr))
       //refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
     case ir.EmptyStmt =>
     case other =>

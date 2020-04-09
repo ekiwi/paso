@@ -92,6 +92,16 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
     case other => throw new RuntimeException(s"Cannot assign to $other")
   }
 
+  /** mark an input as don't care */
+  def onUnSet(lhs: smt.Symbol): Unit = {
+    def unset(state: ProtocolState): ProtocolState = {
+      val stickyInput = state.stickyInput - lhs
+      val inputs = state.inputs - lhs
+      state.copy(inputs=inputs, stickyInput=stickyInput)
+    }
+    activeStates = activeStates.map(unset)
+  }
+
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
     case s: smt.Symbol =>
       //println(s"EXPECT $lhs = $rhs (${activeStates})")

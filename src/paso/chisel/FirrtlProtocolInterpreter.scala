@@ -9,6 +9,7 @@ import firrtl.ir
 import paso.verification.ProtocolInterpreter
 import paso.{ExpectAnnotation, MethodIOAnnotation, StepAnnotation}
 import uclid.smt
+import uclid.smt.Expr
 
 trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
   val prefix: String = ""
@@ -56,5 +57,11 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
       interpreter.onSet(smt.Symbol(name, outputs(name)), expr, sticky=true)
     }
     super.onConnect(name, expr)
+  }
+
+  override def onIsInvalid(expr: Expr): Unit = expr match {
+    case s @ smt.Symbol(name, typ) =>
+      assert(name.startsWith("io_") && isOutput(name), f"Unexpected signal $name : $typ")
+      interpreter.onUnSet(s)
   }
 }
