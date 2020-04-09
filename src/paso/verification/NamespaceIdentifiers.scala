@@ -34,7 +34,7 @@ object NamespaceIdentifiers {
   def apply(untimed: UntimedModel, prefix: String): (UntimedModel, Sub, Map[String, String]) = {
     val fullPrefix = prefix + untimed.name + "."
 
-    val stateSubs: SymSub = untimed.state.prefix(fullPrefix).toMap
+    val stateSubs: SymSub = untimed.state.map(_.sym).prefix(fullPrefix).toMap
     def rename(name: String, s: MethodSemantics): MethodSemantics = {
       val subs: SymSub = (s.inputs ++ s.outputs.map(_.sym)).prefix(fullPrefix + name + ".").toMap ++ stateSubs
       MethodSemantics(substituteSmt(s.guard, subs), s.updates.map(renameNamed(_, subs)), s.outputs.map(renameNamed(_, subs)), s.inputs.map(subs))
@@ -45,9 +45,8 @@ object NamespaceIdentifiers {
 
     val renamed_untimed = UntimedModel(
       name = fullPrefix.dropRight(1),
-      state = untimed.state.map(stateSubs),
+      state = untimed.state.map(st => st.copy(sym = stateSubs(st.sym))), // we assume that all inits are constant
       methods = untimed.methods.map{ case (name, s) => (name,  rename(name, s))},
-      init = untimed.init.map(renameNamed(_, stateSubs))
     )
 
     // substitutions for protocols
@@ -55,7 +54,7 @@ object NamespaceIdentifiers {
       sem.inputs.map{ i => i.copy(id = name + "." + i.id) } ++
         sem.outputs.map{ case NamedExpr(sym, _) => sym.copy(id = name + "." + sym.id) }
     }
-    val subs : SymSub = (untimed.state ++ args).prefix(fullPrefix).toMap
+    val subs : SymSub = (untimed.state.map(_.sym) ++ args).prefix(fullPrefix).toMap
     val method_subs = untimed.methods.map{case (name, _) => name -> name} // TODO: should this be prefixed or not?
     (renamed_untimed, subs, method_subs)
   }

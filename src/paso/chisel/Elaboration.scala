@@ -148,9 +148,20 @@ object Elaboration {
       meth.name -> semantics
     }.toMap
 
-    val spec_smt_state = spec_state.map{ st => smt.Symbol(st.name, firrtlToSmtType(st.tpe)) }
-    val init = spec_state.collect{ case State(name, tpe, Some(init)) => NamedExpr(smt.Symbol(name, firrtlToSmtType(tpe)), init) }
-    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, init = init)
+    def toSymbol(name: String, tpe: ir.Type): smt.Symbol = smt.Symbol(name, firrtlToSmtType(tpe))
+    def defaultInitVec(tpe: ir.VectorType): smt.Expr = tpe.tpe match {
+      case t : ir.GroundType => smt.ConstArray(defaultInitGround(t), firrtlToSmtType(tpe).asInstanceOf[smt.ArrayType])
+    }
+    def defaultInitGround(tpe: ir.GroundType): smt.Expr = tpe match {
+      case ir.UIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(0, w.toInt) else smt.BooleanLit(false)
+      case ir.SIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(0, w.toInt) else smt.BooleanLit(false)
+    }
+    val spec_smt_state = spec_state.map {
+      case State(name, tpe, Some(init)) => smt.State(toSymbol(name, tpe), Some(init))
+      case State(name, tpe : ir.VectorType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitVec(tpe)))
+      case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
+    }
+    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
     Spec(sp.get, spec_state, untimed_model)
   }
 

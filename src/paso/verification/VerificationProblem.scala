@@ -180,8 +180,8 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_states = p.impl.states.map(_.sym)
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)} )
-    val spec_states = p.untimed.state
-    val spec_init_const = conjunction(p.untimed.init.map{i => eq(i.sym, i.expr)})
+    val spec_states = p.untimed.state.map(_.sym)
+    val spec_init_const = conjunction(p.untimed.state.map{st => eq(st.sym, st.init.get)})
     val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
 
     // TODO: ideas on how to get solver to verify mappings
@@ -211,8 +211,8 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
 }
 
 class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
-  override val solverName: String = "z3"
-  val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+  override val solverName: String = "yices2"
+  val solver = new YicesInterface
 
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
