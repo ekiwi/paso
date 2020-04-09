@@ -64,7 +64,9 @@ case class prefixNames(prefixes: Set[String]) {
 
   private def onCommand(com: Command): Command = com match {
     case DefPrim(info, id, op, args @_*) => DefPrim(info, id, op, args.map(onArg):_*)
-    case Connect(info, loc, exp) => Connect(info, onNode(loc), exp)
+    case Connect(info, loc, exp) => Connect(info, onNode(loc), onArg(exp))
+    case WhenBegin(info, pred) => WhenBegin(info, onArg(pred))
+    case ConnectInit(info, loc, exp) => ConnectInit(info, onNode(loc), onArg(exp))
     case other => other
   }
 
