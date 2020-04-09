@@ -115,6 +115,10 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
   }
 }
 
+class RefEqHashMap[A <: AnyRef, B] extends scala.collection.mutable.HashMap[A, B] {
+  protected override def elemEquals(key1: A, key2: A): Boolean = (key1 eq key2)
+}
+
 class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
 
   def run(proto: PendingInputNode): Seq[(VerificationEdge, smt.Symbol, Int)] = {
@@ -122,7 +126,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
     finalEdges
   }
 
-  private val edges = mutable.HashMap[VerificationEdge, smt.Symbol]()
+  private val edges = new RefEqHashMap[VerificationEdge, smt.Symbol]()
   private def edgeSymbol(i: VerificationEdge): smt.Symbol = edges.getOrElseUpdate(i, {
     smt.Symbol(s"${i.getClass.getSimpleName}_${edges.size}", smt.BoolType)
   })
