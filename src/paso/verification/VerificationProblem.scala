@@ -174,38 +174,46 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
 }
 
 class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
-  override val solverName: String = "z3"
-  val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+  override val solverName: String = "yices2"
+  //val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
+  val solver = new YicesInterface
 
   override protected def execute(p: VerificationProblem): Unit = {
+    if(p.mapping.isEmpty) return // early return for empty mapping
     val impl_states = p.impl.states.map(_.sym)
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)} )
     val spec_states = p.untimed.state.map(_.sym)
     val spec_init_const = conjunction(p.untimed.state.map{st => eq(st.sym, st.init.get)})
     val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
 
-    // TODO: ideas on how to get solver to verify mappings
-    // 1.) try to merge array comparisons (if all locations are compared, just compare the whole array)
-    // 2.) try to do static slicing in order to check independent state mappings independently
-    // 3.) identify bitwise, bijective mappings that don't impose any constraints; if the initial value is also
-    //     unconstrained -> no need to call the solver
+    // The mapping check gets a lot easier because we require the untimed model to have all states initialized
+    // to a concrete value, thus eliminating all quantifiers. (the non general solution)
+    val use_general_solution = false
+    if(use_general_solution) {
+      try {
+        // forall initial states of the implementation there exists an initial state in the specification for which the mapping holds
+        val unmappable_impl = SMTSimplifier.simplify(and(impl_init_const, forall(spec_states, not(and(spec_init_const, mapping_const)))))
 
-    try {
-      // forall initial states of the implementation there exists an initial state in the specification for which the mapping holds
-      val unmappable_impl = SMTSimplifier.simplify(and(impl_init_const, forall(spec_states, not(and(spec_init_const, mapping_const)))))
+        val impl_res = check(unmappable_impl)
+        assert(impl_res.isFalse, s"Found an implementation initial state for which there is no mapping: $impl_res")
 
-      val impl_res = check(unmappable_impl)
-      assert(impl_res.isFalse, s"Found an implementation initial state for which there is no mapping: $impl_res")
+        // forall initial states of the specification there exists an initial state in the implementation for which the mapping holds
+        val unmappable_spec = SMTSimplifier.simplify(and(spec_init_const, forall(impl_states, not(and(impl_init_const, mapping_const)))))
 
-      // forall initial states of the specification there exists an initial state in the implementation for which the mapping holds
-      val unmappable_spec = SMTSimplifier.simplify(and(spec_init_const, forall(impl_states, not(and(impl_init_const, mapping_const)))))
+        val spec_res = check(unmappable_spec)
+        assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
+      } catch {
+        case e: uclid.Utils.AssertionError =>
+          assert(e.getMessage.contains("unknown"))
+          println(s"WARNING: cannot prove mapping correct: $solverName returned unknown")
+      }
+    } else {
+      // With only a single initial specification state we need to show that for all initial implementation
+      // states the mapping holds. We turn the universal into a existential query through the standard negation.
+      val query = SMTSimplifier.simplify(and(and(impl_init_const, spec_init_const), not(mapping_const)))
+      val res = check(query)
+      assert(res.isFalse, s"Found a implementation initial state for which there is no mapping: $res")
 
-      val spec_res = check(unmappable_spec)
-      assert(spec_res.isFalse, s"Found a specification initial state for which there is no mapping: $spec_res")
-    } catch {
-      case e: uclid.Utils.AssertionError =>
-        assert(e.getMessage.contains("unknown"))
-        println(s"WARNING: cannot prove mapping correct: $solverName returned unknown")
     }
   }
 }
