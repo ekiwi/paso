@@ -69,9 +69,10 @@ class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {
     while(!io.ready.peek().litToBoolean) {
       clock.step()
     }
-    io.valid.poke(false.B)
     io.rd.expect(rd)
     io.wr.expect(true.B)
+    clock.step()
+    io.valid.poke(false.B)
     clock.step()
   }
 
