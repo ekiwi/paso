@@ -22,7 +22,6 @@ class CustomFirrtlCompiler extends Compiler {
 }
 
 
-
 object Elaboration {
   private def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
     val chiselCircuit = Driver.elaborate(gen)
@@ -142,9 +141,16 @@ object Elaboration {
       val comb_ports = spec_module.ports ++ getMain(raw_firrtl).ports
       val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)), spec_name)
 
+      // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
+      val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)
+
       // compile combined module down to low firrtl
-      val (ff, annos) = toLowFirrtl(comb_c, raw_annos)
+      val (ff, annos) = toLowFirrtl(comb_c_fixed, raw_annos)
+
+      // println(ff.serialize)
+
       val semantics = new FirrtlUntimedMethodInterpreter(ff, annos).run().getSemantics
+      //val semantics = MethodSemantics(smt.BooleanLit(true), Seq(), Seq(), Seq())
       meth.name -> semantics
     }.toMap
 
