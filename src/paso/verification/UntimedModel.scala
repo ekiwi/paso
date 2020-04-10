@@ -7,5 +7,6 @@ package paso.verification
 import uclid.smt
 
 case class NamedExpr(sym: smt.Symbol, expr: smt.Expr)
-case class MethodSemantics(guard: smt.Expr, updates: Seq[NamedExpr], outputs: Seq[NamedExpr], inputs: Seq[smt.Symbol])
+case class NamedGuardedExpr(sym: smt.Symbol, expr: smt.Expr, guard: smt.Expr)
+case class MethodSemantics(guard: smt.Expr, updates: Seq[NamedExpr], outputs: Seq[NamedGuardedExpr], inputs: Seq[smt.Symbol])
 case class UntimedModel(name: String, state: Seq[smt.State], methods: Map[String, MethodSemantics])

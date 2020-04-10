@@ -68,6 +68,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     // compute the results of all methods
     val method_state_subs = methods.map { case (name, sem) =>
       sem.outputs.foreach{ o => check.define(o.sym, o.expr) }
+      sem.outputs.foreach{ o => check.define(smt.Symbol(o.sym.id + ".valid", smt.BoolType), o.guard) }
       sem.updates.suffix(s".$name").foreach{ o => check.define(o.sym, o.expr) }
       name -> sem.updates.map(_.sym).map(s => s -> s.copy(id = s.id + s".$name"))
     }

@@ -37,10 +37,13 @@ object NamespaceIdentifiers {
     val stateSubs: SymSub = untimed.state.map(_.sym).prefix(fullPrefix).toMap
     def rename(name: String, s: MethodSemantics): MethodSemantics = {
       val subs: SymSub = (s.inputs ++ s.outputs.map(_.sym)).prefix(fullPrefix + name + ".").toMap ++ stateSubs
-      MethodSemantics(substituteSmt(s.guard, subs), s.updates.map(renameNamed(_, subs)), s.outputs.map(renameNamed(_, subs)), s.inputs.map(subs))
+      MethodSemantics(substituteSmt(s.guard, subs), s.updates.map(renameNamed(_, subs)), s.outputs.map(renameGuardedNamed(_, subs)), s.inputs.map(subs))
     }
     def renameNamed(n: NamedExpr, subs: SymSub): NamedExpr = {
       NamedExpr(subs(n.sym), expr = substituteSmt(n.expr, subs))
+    }
+    def renameGuardedNamed(n: NamedGuardedExpr, subs: SymSub): NamedGuardedExpr = {
+      NamedGuardedExpr(subs(n.sym), expr = substituteSmt(n.expr, subs), guard = substituteSmt(n.guard, subs))
     }
 
     val renamed_untimed = UntimedModel(
@@ -52,7 +55,8 @@ object NamespaceIdentifiers {
     // substitutions for protocols
     val args = untimed.methods.flatMap{case (name, sem) =>
       sem.inputs.map{ i => i.copy(id = name + "." + i.id) } ++
-        sem.outputs.map{ case NamedExpr(sym, _) => sym.copy(id = name + "." + sym.id) }
+        sem.outputs.flatMap{ case NamedGuardedExpr(sym, _,_) => Seq(sym.copy(id = name + "." + sym.id) ,
+          smt.Symbol(name + "." + sym.id + ".valid", smt.BoolType))}
     }
     val subs : SymSub = (untimed.state.map(_.sym) ++ args).prefix(fullPrefix).toMap
     val method_subs = untimed.methods.map{case (name, _) => name -> name} // TODO: should this be prefixed or not?

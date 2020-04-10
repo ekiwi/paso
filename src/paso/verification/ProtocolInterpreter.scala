@@ -140,10 +140,10 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
       return PendingInputNode()
     }
 
-    val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
+    val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits, false)
 
     val outputs = states.map { st =>
-      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
+      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits, true)
       val next = children.get(st).map(c => makeGraph(method, c, children, None, outBits)).getOrElse(PendingInputNode())
       OutputEdge(outConst ++ st.pathCondition.toSeq, outMap, Set(method), next)
     }
@@ -173,7 +173,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
   /**
    * If an argument has been mapped before, it now only serves as a constraint.
    */
-  private def findMappingsAndConstraints(eq: Iterable[RangeEquality], mappedBits: BitMap): (Seq[smt.Expr], Seq[smt.Expr], BitMap) = {
+  private def findMappingsAndConstraints(eq: Iterable[RangeEquality], mappedBits: BitMap, withGuards: Boolean): (Seq[smt.Expr], Seq[smt.Expr], BitMap) = {
     if(eq.isEmpty) return (Seq(), Seq(), mappedBits)
 
     val newBits = mutable.HashMap(mappedBits.toSeq: _*)
@@ -182,7 +182,8 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
       case c: ConstantEq => Seq(None, Some(c.toExpr()))
       case a: ArgumentEq =>
         if(isMapping(a.argRange, newBits)) {
-          Seq(Some(a.toExpr()), None)
+          val e = if(withGuards) a.toGuardedExpr() else a.toExpr()
+          Seq(Some(e), None)
         } else {
           Seq(None, Some(a.toExpr()))
         }
@@ -243,6 +244,10 @@ case class ConstantEq(range: Range, value: BigInt) extends  RangeEquality {
 }
 case class ArgumentEq(range: Range, argRange: Range) extends RangeEquality {
   override def toExpr(): smt.Expr = smt.OperatorApplication(smt.EqualityOp, List(range.toExpr(), argRange.toExpr()))
+  def toGuardedExpr(): smt.Expr = {
+    val guard = smt.Symbol(argRange.sym.id + ".valid", smt.BoolType)
+    smt.OperatorApplication(smt.ImplicationOp, List(guard, toExpr()))
+  }
 }
 
 class OldProtocolInterpreter {
