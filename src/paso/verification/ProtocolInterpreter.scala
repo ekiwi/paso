@@ -12,6 +12,7 @@ import scala.collection.mutable
 
 case class ProtocolState(
   name: String = "",                           // for debugging
+  isEmpty: Boolean = true,                     // new states are empty until the first set/expect
   parent: Option[ProtocolState] = None,        // prior protocol state
   inputs: Map[smt.Symbol, smt.Expr] = Map(),   // expressions that are applied to the inputs of the DUV
   outputs: Map[smt.Symbol, smt.Expr] = Map(),  // expected outputs of the DUV
@@ -33,17 +34,18 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
       assert(state.outputs.isEmpty, s"Cannot assign to input $input := $expr after calling expect and before calling step")
     }
     val stickyInput = if(sticky) state.stickyInput + input else state.stickyInput - input
-    state.copy(inputs = state.inputs + (input -> expr), stickyInput=stickyInput)
+    state.copy(isEmpty = false, inputs = state.inputs + (input -> expr), stickyInput=stickyInput)
   }
 
   def expect(state: ProtocolState, output: smt.Symbol, expr: smt.Expr): ProtocolState =
-    state.copy(outputs = state.outputs + (output -> expr))
+    state.copy(isEmpty = false, outputs = state.outputs + (output -> expr))
 
   def fork(state: ProtocolState, cond: smt.Expr): Seq[ProtocolState] = {
     // TODO: check if path condition is sat and prune if it is not
     val tru = state.pathCondition.map(and(_, cond)).getOrElse(cond)
     val fals = state.pathCondition.map(and(_, not(cond))).getOrElse(not(cond))
-    Seq(state.copy(name=getStateName, pathCondition = Some(tru)), state.copy(name=getStateName, pathCondition = Some(fals)))
+    Seq(state.copy(isEmpty = false, name=getStateName, pathCondition = Some(tru)),
+        state.copy(isEmpty = false, name=getStateName, pathCondition = Some(fals)))
   }
 
   def step(state: ProtocolState): ProtocolState = {
@@ -52,6 +54,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 
     ProtocolState(
       name = getStateName,
+      isEmpty = true,
       parent = Some(state),
       inputs = inputs,
       outputs = Map(),
@@ -131,6 +134,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 
   private def makeGraph(method: String, states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): PendingInputNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
+    // empty states should not be included in the graph
+    if(states.head.isEmpty) {
+      assert(states.forall(_.isEmpty))
+      return PendingInputNode()
+    }
 
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
 
