@@ -15,7 +15,7 @@ import paso.verification.VerificationProblem
 class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedModule {
   require(depth > 0)
   require(isPow2(depth))
-  val mem = Reg(Vec(depth, dataType))
+  val mem = Mem(depth, dataType)
   val count = RegInit(UInt((log2Ceil(depth) + 1).W), 0.U)
   val read = RegInit(UInt(log2Ceil(depth).W), 0.U)
   val full = count === depth.U
