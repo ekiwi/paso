@@ -16,9 +16,9 @@ trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
   protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + target.ref) }.toMap
   protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + target.ref) }.toMap
   protected lazy val renameIOs = methodInputs ++ methodOutputs
-  override def onReference(r: ir.Reference): smt.Expr = {
+  override def onReference(r: ir.Reference): Value = {
     val ref = super.onReference(r)
-    renameIOs.get(r.name).map(smt.Symbol(_, ref.typ)).getOrElse(ref)
+    renameIOs.get(r.name).map(name => Value(smt.Symbol(name, ref.typ))).getOrElse(ref)
   }
 }
 
@@ -33,33 +33,33 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
     super.defWire(name, tpe)
   }
 
-  override def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
+  override def onWhen(cond: Value, tru: ir.Statement, fals: ir.Statement): Unit = {
     def visitTrue() {
-      cond_stack.push(cond)
+      cond_stack.push(cond.get)
       onStmt(tru)
       cond_stack.pop() ;
     }
     def visitFalse() {
-      cond_stack.push(app(smt.NegationOp, cond))
+      cond_stack.push(app(smt.NegationOp, cond.get))
       onStmt(fals)
       cond_stack.pop()
     }
-    interpreter.onWhen(cond, visitTrue, visitFalse)
+    interpreter.onWhen(cond.get, visitTrue, visitFalse)
   }
 
-  override def onConnect(name: String, expr: smt.Expr): Unit = {
-    if(expects.contains(name)) expr match {
+  override def onConnect(name: String, expr: Value): Unit = {
+    if(expects.contains(name)) expr.get match {
       case smt.OperatorApplication(smt.EqualityOp, List(lhs, rhs)) =>
         assert(isInput(lhs))
         interpreter.onExpect(lhs, rhs)
       case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
     } else if(name.startsWith("io_") && isOutput(name)) {
-      interpreter.onSet(smt.Symbol(name, outputs(name)), expr, sticky=true)
+      interpreter.onSet(smt.Symbol(name, outputs(name)), expr.get, sticky=true)
     }
     super.onConnect(name, expr)
   }
 
-  override def onIsInvalid(expr: Expr): Unit = expr match {
+  override def onIsInvalid(expr: Value): Unit = expr.get match {
     case s @ smt.Symbol(name, typ) =>
       assert(name.startsWith("io_") && isOutput(name), f"Unexpected signal $name : $typ")
       interpreter.onUnSet(s)

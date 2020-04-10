@@ -28,8 +28,8 @@ class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) e
     case other => Seq(Assertion(simp(guard), simp(other)))
   }
 
-  override def onAssert(expr: smt.Expr): Unit = {
-    val e = substituteSmt(mergeArrayEquality(expr), vecAsMem)
+  override def onAssert(expr: Value): Unit = {
+    val e = substituteSmt(mergeArrayEquality(expr.get), vecAsMem)
     asserts ++= makeAsserts(pathCondition, e)
   }
 

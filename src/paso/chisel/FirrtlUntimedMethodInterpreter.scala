@@ -34,8 +34,8 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     MethodSemantics(guard=guard, updates = updates.toSeq, outputs = outputs.toSeq, inputs = ins.toSeq)
   }
 
-  override def onAssign(name: String, expr: smt.Expr): Unit = {
-    val simp_expr = SMTSimplifier.simplify(expr)
+  override def onAssign(name: String, expr: Value): Unit = {
+    val simp_expr = SMTSimplifier.simplify(expr.get)
     if(guards.contains(name)) {
       guard = simp_expr
     } else if(regs.contains(name) || mems.contains(name)) {

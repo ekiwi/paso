@@ -38,8 +38,14 @@ object firrtlToSmtType {
 }
 
 class FirrtlInterpreter extends SmtHelpers {
-  val refs = mutable.HashMap[String, smt.Expr]()
-  val connections = mutable.HashMap[String, Seq[(smt.Expr, smt.Expr)]]()
+  case class Value(e: smt.Expr, valid: smt.Expr = tru) {
+    def isValid: Boolean = valid == tru
+    def map(foo: smt.Expr => smt.Expr): Value = copy(e = foo(e))
+    def get: smt.Expr = { assert(isValid, s"expected value that was trivially valid, not: validif($valid, $e)") ; e}
+    def typ: smt.Type = e.typ
+  }
+  val refs = mutable.HashMap[String, Value]()
+  val connections = mutable.HashMap[String, Seq[(smt.Expr, Value)]]()
   val inputs = mutable.HashMap[String, smt.Type]()
   val outputs = mutable.HashMap[String, smt.Type]()
   val regs = mutable.HashMap[String, smt.Type]()
@@ -78,17 +84,17 @@ class FirrtlInterpreter extends SmtHelpers {
   def onType(t: ir.Type): smt.Type = firrtlToSmtType(t)
 
   // most important to customize
-  def onAssign(name: String, expr: smt.Expr): Unit = {}
-  def onReference(r: ir.Reference): smt.Expr = refs(r.name)
-  def onSubfield(r: ir.SubField): smt.Expr = refs(r.serialize)
-  def onSubAccess(array: smt.Expr, index: ir.Expression): smt.Expr = {
-    val indexWidth = array.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
-    select(array, onExpr(index, indexWidth))
+  def onAssign(name: String, expr: Value): Unit = {}
+  def onReference(r: ir.Reference): Value = refs(r.name)
+  def onSubfield(r: ir.SubField): Value = refs(r.serialize)
+  def onSubAccess(array: Value, index: ir.Expression): Value= {
+    val indexWidth = array.get.typ.asInstanceOf[smt.ArrayType].inTypes.head.asInstanceOf[smt.BitVectorType].width
+    val ii = onExpr(index, indexWidth)
+    Value(select(array.get, ii.get))
   }
-  def getInvalid(width: Int): smt.Expr = if(width == 1) smt.BooleanLit(false) else smt.BitVectorLit(0, width)
   private def defX(name: String, tpe: smt.Type, registry: mutable.HashMap[String, smt.Type]): Unit = {
     require(!refs.contains(name))
-    refs(name) = smt.Symbol(name, tpe)
+    refs(name) = Value(smt.Symbol(name, tpe))
     connections(name) = Seq()
     registry(name) = tpe
   }
@@ -96,34 +102,34 @@ class FirrtlInterpreter extends SmtHelpers {
   def defReg(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), regs)
   def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
     defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
-  def defNode(name: String, value: smt.Expr): Unit = {
+  def defNode(name: String, value: Value): Unit = {
     onAssign(name, value)
     require(!refs.contains(name))
     refs(name) = value
   }
-  def onWhen(cond: smt.Expr, tru: ir.Statement, fals: ir.Statement): Unit = {
-    cond_stack.push(cond)
+  def onWhen(cond: Value, tru: ir.Statement, fals: ir.Statement): Unit = {
+    cond_stack.push(cond.get)
     onStmt(tru)
     cond_stack.pop()
-    cond_stack.push(app(smt.NegationOp, cond))
+    cond_stack.push(app(smt.NegationOp, cond.get))
     onStmt(fals)
     cond_stack.pop()
   }
-  def onIsInvalid(expr: smt.Expr): Unit = {
+  def onIsInvalid(expr: Value): Unit = {
     throw new RuntimeException(s"TODO: $expr is invalid")
   }
 
   // extends expression to width
-  def onExpr(e: ir.Expression, width: Int): smt.Expr =
-    if(isSigned(e.tpe)) sext(onExpr(e), width) else zext(onExpr(e), width)
+  def onExpr(e: ir.Expression, width: Int): Value =
+    if(isSigned(e.tpe)) onExpr(e).map(sext(_, width)) else onExpr(e).map(zext(_, width))
 
   // extends expressions to be the same length
-  def onExpr(e1: ir.Expression, e2: ir.Expression): Tuple2[smt.Expr, smt.Expr] = {
+  def onExpr(e1: ir.Expression, e2: ir.Expression): Tuple2[Value, Value] = {
     require(isSigned(e1.tpe) == isSigned(e2.tpe), s"$e1 : ${e1.tpe} vs $e2 : ${e2.tpe}")
     val (s1, s2) = (onExpr(e1), onExpr(e2))
     val width = Seq(getWidth(s1.typ), getWidth(s2.typ)).max
-    if(isSigned(e1.tpe)) (sext(s1, width), sext(s2, width))
-    else (zext(s1, width), zext(s2, width))
+    if(isSigned(e1.tpe)) (s1.map(sext(_, width)), s2.map(sext(_, width)))
+    else (s1.map(zext(_, width)), s2.map(zext(_, width)))
   }
 
   private def onLiteral(value: BigInt, width: Int): smt.Expr = {
@@ -131,28 +137,27 @@ class FirrtlInterpreter extends SmtHelpers {
     if(width == 1) smt.BooleanLit(value != 0) else smt.BitVectorLit(value, width)
   }
 
-  def onExpr(e: ir.Expression): smt.Expr = e match {
+  def onExpr(e: ir.Expression): Value = e match {
     case r: ir.Reference => onReference(r)
     case firrtl.WRef(name, tpe, _, _) => onReference(ir.Reference(name, tpe))
     case r: ir.SubField => onSubfield(r)
     case firrtl.WSubField(expr, name, tpe, _) => onSubfield(ir.SubField(expr, name, tpe))
-    case ir.SubIndex(expr, value, _) => select(onExpr(expr), value)
-    case firrtl.WSubIndex(expr, value, tpe, _) => select(onExpr(expr), value)
+    case ir.SubIndex(expr, value, _) => onExpr(expr).map(select(_, value))
+    case firrtl.WSubIndex(expr, value, tpe, _) => onExpr(expr).map(select(_, value))
     // TODO: handle out of bounds accesses gracefully
     case ir.SubAccess(expr, index, tpe) => onSubAccess(onExpr(expr), index)
     case firrtl.WSubAccess(expr, index, tpe, _) => onSubAccess(onExpr(expr), index)
     case ir.Mux(cond, tval, fval, _) =>
       val args = onExpr(tval, fval)
-      ite(onExpr(cond, 1), args._1, args._2)
+      Value(ite(onExpr(cond, 1).e, args._1.get, args._2.get))
     case ir.ValidIf(cond, value, tpe) =>
-      val sv = onExpr(value)
-      ite(onExpr(cond, 1), sv, getInvalid(getWidth(sv.typ)))
-    case ir.UIntLiteral(value, width) => onLiteral(value, getWidth(width))
-    case ir.SIntLiteral(value, width) => onLiteral(value, getWidth(width))
+      onExpr(value).copy(valid = onExpr(cond).get)
+    case ir.UIntLiteral(value, width) => Value(onLiteral(value, getWidth(width)))
+    case ir.SIntLiteral(value, width) => Value(onLiteral(value, getWidth(width)))
     case ir.DoPrim(op, Seq(a, b), Seq(), tpe) =>
-      BinOpCompiler.compile(op, a.tpe, b.tpe, tpe)._2(onExpr(a), onExpr(b))
+      Value(BinOpCompiler.compile(op, a.tpe, b.tpe, tpe)._2(onExpr(a).get, onExpr(b).get))
     case ir.DoPrim(op, Seq(a), consts, tpe) =>
-      UnOpCompiler.compile(op, a.tpe, tpe, consts)._2(onExpr(a))
+      Value(UnOpCompiler.compile(op, a.tpe, tpe, consts)._2(onExpr(a).get))
     case ir.DoPrim(op, args, consts, tpe) =>
       throw new NotImplementedError(s"TODO: DoPrim($op, $args, $consts, $tpe)")
     case _ : ir.FixedLiteral =>
@@ -161,24 +166,24 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new NotImplementedError(s"TODO: implement $other")
   }
 
-  def onConnect(lhs: String, rhs: smt.Expr): Unit = {
+  def onConnect(lhs: String, rhs: Value): Unit = {
     onAssign(lhs, rhs)
     if(!isIO(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, rhs))
     }
   }
-  def onConnect(lhs: String, index: Int, rhs: smt.Expr): Unit = {
+  def onConnect(lhs: String, index: Int, rhs: Value): Unit = {
     //println(s"$lhs[$index] := $rhs")
-    val st = store(smt.Symbol(lhs, rhs.typ), index, rhs)
+    val st = Value(store(smt.Symbol(lhs, rhs.typ), index, rhs.get))
     onAssign(lhs, st)
     if(!isIO(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
-  def onConnect(lhs: String, index: smt.Expr, rhs: smt.Expr): Unit = {
+  def onConnect(lhs: String, index: Value, rhs: Value): Unit = {
     //println(s"$lhs[$index] := $rhs")
     val typ = smt.ArrayType(List(index.typ), rhs.typ)
-    val st = store(smt.Symbol(lhs, typ), index, rhs)
+    val st = Value(store(smt.Symbol(lhs, typ), index.get, rhs.get))
     onAssign(lhs, st)
     if(!isIO(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
@@ -235,7 +240,7 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
       val tpe = onType(p.tpe)
-      refs(p.name) = smt.Symbol(p.name, tpe)
+      refs(p.name) = Value(smt.Symbol(p.name, tpe))
       if(isInput(p)) inputs(p.name) = tpe else outputs(p.name) = tpe
     }
   }
@@ -257,9 +262,9 @@ class PasoFirrtlInterpreter(circuit: ir.Circuit, val annos: Seq[Annotation]) ext
 
   def run(): this.type = { onModule(mod) ; this }
 
-  def onAssert(expr: smt.Expr): Unit = {}
+  def onAssert(expr: Value): Unit = {}
 
-  override def onConnect(lhs: String, rhs: smt.Expr): Unit = {
+  override def onConnect(lhs: String, rhs: Value): Unit = {
     if(asserts.contains(lhs)) onAssert(rhs)
     super.onConnect(lhs, rhs)
   }
