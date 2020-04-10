@@ -152,18 +152,13 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
   }
 
   private def visit(state: PendingOutputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
-    // output constraints
-    val O = state.next.map{ e => conjunction(e.constraints) }
+    // output constraints (for outputs tha mappings can be interpreted as constraints
+    val O = state.next.map{ e => conjunction(e.constraints ++ e.mappings) }
     // assert that one of the possible output edges is used
     check.assertAt(ii, implies(guard, disjunction(O)))
 
     // the edge symbol is true, iff the edge is taken
     state.next.zip(O).foreach { case (edge, const) => check.assumeAt(ii, iff(edgeSymbol(edge), and(guard, const))) }
-
-    // map return arguments only if output constraints match
-    state.next.collect { case e if e.mappings.nonEmpty =>
-      check.assumeAt(ii, implies(edgeSymbol(e), conjunction(e.mappings)))
-    }
 
     // visit next states
     state.next.foreach { e => visit(e.next, ii + 1, guard = edgeSymbol(e)) }
