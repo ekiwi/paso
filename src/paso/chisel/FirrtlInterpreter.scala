@@ -70,6 +70,8 @@ class FirrtlInterpreter extends SmtHelpers {
   def getWidth(t: ir.Type): Int = t match {
     case ir.SIntType(w) => getWidth(w)
     case ir.UIntType(w) => getWidth(w)
+    case ir.ClockType => 1
+    case ir.ResetType => 1
     case other => throw new RuntimeException(s"$other has no width")
   }
   def getWidth(w: ir.Width): Int = w match {
@@ -92,16 +94,39 @@ class FirrtlInterpreter extends SmtHelpers {
     val ii = onExpr(index, indexWidth)
     Value(select(array.get, ii.get))
   }
-  private def defX(name: String, tpe: smt.Type, registry: mutable.HashMap[String, smt.Type]): Unit = {
+  private def defX(name: String, tpe: smt.Type, registry: Option[mutable.HashMap[String, smt.Type]]): Unit = {
     require(!refs.contains(name))
     refs(name) = Value(smt.Symbol(name, tpe))
     connections(name) = Seq()
-    registry(name) = tpe
+    registry.foreach(r => r(name) = tpe)
   }
-  def defWire(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), wires)
-  def defReg(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), regs)
-  def defMem(name: String, tpe: ir.Type, depth: BigInt): Unit =
-    defX(name, smt.ArrayType(List(smt.BitVectorType(log2Ceil(depth))), onType(tpe)), mems)
+  def defWire(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), Some(wires))
+  def defReg(name: String, tpe: ir.Type): Unit = defX(name, onType(tpe), Some(regs))
+  def defMem(m: ir.DefMemory): Unit = {
+    val addrWidth = log2Ceil(m.depth)
+    val isPowerOf2 = BigInt(1) << addrWidth == m.depth
+    assert(isPowerOf2)
+    assert(m.readLatency == 0, "Please use Mem(...)")
+    assert(m.writeLatency == 1, "Please use Mem(...)")
+    assert(m.readwriters.isEmpty, "TODO: maybe deal with read and write port")
+    val dataType = onType(m.dataType)
+    val addrType = smt.BitVectorType(addrWidth)
+    m.readers.foreach { r =>
+      defX(m.name + "." + r + ".data", dataType, None)
+      defX(m.name + "." + r + ".addr", addrType, None)
+      defX(m.name + "." + r + ".en", smt.BoolType, None)
+      defX(m.name + "." + r + ".clk", smt.BoolType, None)
+    }
+    m.writers.foreach { w =>
+      defX(m.name + "." + w + ".data", dataType, None)
+      defX(m.name + "." + w + ".addr", addrType, None)
+      defX(m.name + "." + w + ".en", smt.BoolType, None)
+      defX(m.name + "." + w + ".clk", smt.BoolType, None)
+      defX(m.name + "." + w + ".mask", smt.BoolType, None)
+    }
+    defX(m.name, smt.ArrayType(List(addrType), dataType), Some(mems))
+  }
+
   def defNode(name: String, value: Value): Unit = {
     onAssign(name, value)
     require(!refs.contains(name))
@@ -193,8 +218,8 @@ class FirrtlInterpreter extends SmtHelpers {
   private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
     case ir.Reference(name, tpe) => onConnect(name, onExpr(rhs, getWidth(tpe)))
     case firrtl.WRef(name, tpe, _, _) => onConnect(name, onExpr(rhs, getWidth(tpe)))
-    case sub : ir.SubField => onConnect(sub.expr.serialize, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubField => onConnect(sub.expr.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : ir.SubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
+    case sub : firrtl.WSubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
     case sub : ir.SubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
     case sub : firrtl.WSubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
     case sub : ir.SubAccess => onConnect(sub.expr.serialize, onExpr(sub.index), onExpr(rhs, getWidth(sub.tpe)))
@@ -207,7 +232,7 @@ class FirrtlInterpreter extends SmtHelpers {
     case ir.DefRegister(_, name, tpe, _, _, _) => defReg(name, tpe)
     case _ : ir.DefInstance =>
       throw new NotImplementedError("TODO: handle instances")
-    case ir.DefMemory(_, name, tpe, depth, _,  _, _,_,_,_) => defMem(name, tpe, depth)
+    case m : ir.DefMemory => defMem(m)
     case ir.DefNode(_, name, value) =>
       defNode(name, onExpr(value))
     case ir.Conditionally(_, cond, tru, fals) =>
