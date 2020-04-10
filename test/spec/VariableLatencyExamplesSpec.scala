@@ -78,6 +78,7 @@ class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity
     }
 
     dut.dataOut.expect(out)
+    clock.step()
   }
   protocol(spec.idle)(impl.io) { (clock, dut) =>
     dut.start.poke(false.B)
@@ -103,6 +104,7 @@ class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: Id
     }
 
     dut.dataOut.expect(out)
+    clock.step()
   }
   protocol(spec.idle)(impl.io) { (clock, dut, out) =>
     dut.start.poke(false.B)
