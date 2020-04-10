@@ -83,22 +83,18 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
   val invs = new mutable.ArrayBuffer[IM => Unit]()
   def invariances(gen: IM => Unit): Unit = invs.append(gen)
 
-  implicit def memToVec[T <: Data](m: Mem[T]): Vec[T] = {
-    val w = Wire(Vec(m.length.toInt, m.t)).suggestName(m.pathName.replace('.', '_'))
-    annotate(new ChiselAnnotation {
-      override def toFirrtl = MemToVecAnnotation(w.toTarget, m.toTarget, m.length, m.t.getWidth)
-    })
-    w
-  }
 
   val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
   def mapping(gen: (IM, SM) => Unit): Unit = maps.append(gen)
 
-  implicit class comparableVec[T <: UInt](x: Vec[T]) {
-    def ===(y: Vec[T]): Bool = {
+  implicit class comparableMem[T <: UInt](x: Mem[T]) {
+    def ===(y: Mem[T]): Bool = {
       require(x.length > 0)
       require(x.length == y.length)
-      x.zip(y).map{ case (a, b) => a === b}.reduceLeft[Bool]{ case (a,b) => a && b }
+      val w = Wire(Bool()).suggestName(s"eq($x, $y)")
+      dontTouch(w)
+      annotate(new ChiselAnnotation { override def toFirrtl = new MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget) })
+      w
     }
   }
 
@@ -131,5 +127,9 @@ case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotatio
 }
 
 case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
