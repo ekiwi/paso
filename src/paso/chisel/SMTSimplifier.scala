@@ -169,6 +169,7 @@ class SMTSimplifier private() {
           FunctionApplication(simplify(e), args.map(simplify))
         case Lambda(ids, e) => Lambda(ids, simplify(e))
         case DefineFun(id, args, e) => DefineFun(id, args, simplify(e))
+        case c : ConstArray => c
         case other => throw new RuntimeException(s"Unexpected expression: $other")
       }
 
