@@ -148,14 +148,8 @@ object Checker extends SmtHelpers with HasSolver {
 }
 
 trait HasSolver {
-  val solver: smt.Context
-  def check(e: smt.Expr): smt.SolverResult = {
-    solver.push()
-    solver.assert(e)
-    val res = solver.check()
-    solver.pop()
-    res
-  }
+  val solver: Solver
+  def check(e: smt.Expr): smt.SolverResult = solver.check(e)
 }
 
 object VerificationGraphToDot extends SmtHelpers {

@@ -170,9 +170,8 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
 }
 
 class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
-  override val solverName: String = "yices2"
-  //val solver = new smt.SMTLIB2Interface(List("z3", "-in"))
-  val solver = new YicesInterface
+  val solver = new CVC4Interface
+  override val solverName: String = solver.name
 
   override protected def execute(p: VerificationProblem): Unit = {
     if(p.mapping.isEmpty) return // early return for empty mapping
@@ -215,8 +214,8 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
 }
 
 class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
-  override val solverName: String = "yices2"
-  val solver = new YicesInterface
+  val solver = new CVC4Interface
+  override val solverName: String = solver.name
 
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
