@@ -136,18 +136,22 @@ class FirrtlInterpreter extends SmtHelpers {
     assert(cons.head._1 == tru, "TODO: support path conditions other than true")
     Some(cons.head._2.map(SMTSimplifier.simplify))
   }
+  def getMemReadExpressions(): Map[smt.Expr, smt.Expr] = {
+    mems.values.flatMap { m =>
+      val mem = smt.Symbol(m.name, m.typ)
+      // check read ports to make sure they are enabled
+      m.readers.map { r =>
+        val dataSym: smt.Expr = smt.Symbol(m.name + "." + r + ".data", m.typ.asInstanceOf[smt.ArrayType].outType)
+        val addr = getSimplifiedFinalValue(m.name + "." + r + ".addr").get
+        val en = getSimplifiedFinalValue(m.name + "." + r + ".en").get
+        assert(en.get == tru, "Currently we require reads to always be enabled!")
+        dataSym -> select(mem, addr.get)
+      }
+    }.toMap
+  }
   def getMemUpdates(name: String): smt.Expr = {
     assert(mems.contains(name))
     val m = mems(name)
-
-    // check read ports to make sure they are enabled
-    m.readers.foreach { r =>
-      println("TODO: resolve data reads")
-      val addr = getSimplifiedFinalValue(m.name + "." + r + ".addr").get
-      val en = getSimplifiedFinalValue(m.name + "." + r + ".en").get
-      assert(en.get == tru, "Currently we require reads to always be enabled!")
-
-    }
 
     // generate updates from write ports
     val writes = m.writers.map { w =>

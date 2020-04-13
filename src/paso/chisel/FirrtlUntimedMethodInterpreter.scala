@@ -6,7 +6,7 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
-import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr}
+import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr, substituteSmt}
 import paso.{GuardAnnotation, MethodIOAnnotation}
 import uclid.smt
 
@@ -25,20 +25,24 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     // find guard
     val guard = getSimplifiedFinalValue(guards.head).map(_.get).getOrElse(tru)
 
+    //
+    val memReads = getMemReadExpressions()
+    def substituteReads(e: smt.Expr): smt.Expr = substituteSmt(e, memReads)
+
     // collect outputs
     val outputs = methodOutputs.values.map { o =>
       assert(connections.contains(o), s"Output $o was never assigned!")
-      val value = getSimplifiedFinalValue(o).get
+      val value = getSimplifiedFinalValue(o).get.map(substituteReads)
       NamedGuardedExpr(smt.Symbol(o, value.typ), value.e, guard=value.valid)
     }
 
     // collect state updates
     val regUpdates = regs.map { case (name, tpe) =>
-      val value = getSimplifiedFinalValue(name).getOrElse(Value(smt.Symbol(name, tpe)))
+      val value = getSimplifiedFinalValue(name).getOrElse(Value(smt.Symbol(name, tpe))).map(substituteReads)
       NamedExpr(smt.Symbol(name, tpe), value.get)
     }
     val memUpdates = mems.values.map { m =>
-      NamedExpr(smt.Symbol(m.name, m.typ), getMemUpdates(m.name))
+      NamedExpr(smt.Symbol(m.name, m.typ), substituteReads(getMemUpdates(m.name)))
     }
 
     // find input types
