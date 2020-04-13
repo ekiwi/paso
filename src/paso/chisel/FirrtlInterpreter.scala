@@ -49,7 +49,8 @@ class FirrtlInterpreter extends SmtHelpers {
   val inputs = mutable.HashMap[String, smt.Type]()
   val outputs = mutable.HashMap[String, smt.Type]()
   val regs = mutable.HashMap[String, smt.Type]()
-  val mems = mutable.HashMap[String, smt.Type]()
+  case class Mem(name: String, typ: smt.Type, readers: Seq[String], writers: Seq[String])
+  val mems = mutable.HashMap[String, Mem]()
   val wires = mutable.HashMap[String, smt.Type]()
   protected val cond_stack = mutable.Stack[smt.Expr]()
   def pathCondition: smt.Expr = cond_stack.foldLeft[smt.Expr](smt.BooleanLit(true))((a,b) => app(smt.ConjunctionOp, a, b))
@@ -124,7 +125,45 @@ class FirrtlInterpreter extends SmtHelpers {
       defX(m.name + "." + w + ".clk", smt.BoolType, None)
       defX(m.name + "." + w + ".mask", smt.BoolType, None)
     }
-    defX(m.name, smt.ArrayType(List(addrType), dataType), Some(mems))
+    val typ = smt.ArrayType(List(addrType), dataType)
+    defX(m.name, typ, None)
+    mems(m.name) = Mem(m.name, typ, m.readers, m.writers)
+  }
+  def getSimplifiedFinalValue(signal: String): Option[Value] = {
+    val cons = connections.getOrElse(signal, refs.get(signal).map { r => Seq((tru, r)) }.getOrElse(return None))
+    assert(cons.nonEmpty, s"No connections to $signal")
+    assert(cons.length == 1, "TODO: support multiple connections (remember last connect semantics)")
+    assert(cons.head._1 == tru, "TODO: support path conditions other than true")
+    Some(cons.head._2.map(SMTSimplifier.simplify))
+  }
+  def getMemUpdates(name: String): smt.Expr = {
+    assert(mems.contains(name))
+    val m = mems(name)
+
+    // check read ports to make sure they are enabled
+    m.readers.foreach { r =>
+      println("TODO: resolve data reads")
+      val addr = getSimplifiedFinalValue(m.name + "." + r + ".addr").get
+      val en = getSimplifiedFinalValue(m.name + "." + r + ".en").get
+      assert(en.get == tru, "Currently we require reads to always be enabled!")
+
+    }
+
+    // generate updates from write ports
+    val writes = m.writers.map { w =>
+      val data = getSimplifiedFinalValue(m.name + "." + w + ".data").get
+      val addr = getSimplifiedFinalValue(m.name + "." + w + ".addr").get
+      val en = getSimplifiedFinalValue(m.name + "." + w + ".en").get
+      val mask = getSimplifiedFinalValue(m.name + "." + w + ".mask").get
+      assert(mask.get == tru, "Currently we require the write mask to always be true!")
+      (en.get, addr.get, data.get)
+    }
+
+    assert(writes.length < 2, "TODO: deal with write-write conflicts")
+    writes.foldLeft[smt.Expr](smt.Symbol(m.name, m.typ)) { case (mem, (en, addr, data)) =>
+      val update = store(mem, addr, data)
+      if(en == tru) update else ite(en, update, mem)
+    }
   }
 
   def defNode(name: String, value: Value): Unit = {
@@ -193,7 +232,7 @@ class FirrtlInterpreter extends SmtHelpers {
 
   def onConnect(lhs: String, rhs: Value): Unit = {
     onAssign(lhs, rhs)
-    if(!isIO(lhs)) {
+    if(!isInput(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, rhs))
     }
   }
@@ -201,7 +240,7 @@ class FirrtlInterpreter extends SmtHelpers {
     //println(s"$lhs[$index] := $rhs")
     val st = Value(store(smt.Symbol(lhs, rhs.typ), index, rhs.get))
     onAssign(lhs, st)
-    if(!isIO(lhs)) {
+    if(!isInput(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
@@ -210,7 +249,7 @@ class FirrtlInterpreter extends SmtHelpers {
     val typ = smt.ArrayType(List(index.typ), rhs.typ)
     val st = Value(store(smt.Symbol(lhs, typ), index.get, rhs.get))
     onAssign(lhs, st)
-    if(!isIO(lhs)) {
+    if(!isInput(lhs)) {
       connections(lhs) = connections(lhs) ++ Seq((pathCondition, st))
     }
   }
@@ -265,13 +304,19 @@ class FirrtlInterpreter extends SmtHelpers {
       throw new NotImplementedError("We don't deal with bundles here, use the LowerTypes pass to get rid of them.")
     } else {
       val tpe = onType(p.tpe)
-      refs(p.name) = Value(smt.Symbol(p.name, tpe))
-      if(isInput(p)) inputs(p.name) = tpe else outputs(p.name) = tpe
+      if(isInput(p)) {
+        defX(p.name, tpe, Some(inputs))
+      }  else {
+        defX(p.name, tpe, Some(outputs))
+      }
     }
   }
 
+  def onEnterBody(): Unit = {}
+
   def onModule(m: ir.Module): Unit = {
     m.ports.foreach(onPort)
+    onEnterBody()
     onStmt(m.body)
   }
 }
