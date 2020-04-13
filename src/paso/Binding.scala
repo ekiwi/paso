@@ -93,7 +93,9 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
       require(x.length == y.length)
       val w = Wire(Bool()).suggestName(s"eq($x, $y)")
       dontTouch(w)
-      annotate(new ChiselAnnotation { override def toFirrtl = new MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget) })
+      val depth = x.length
+      val width = x.t.getWidth
+      annotate(new ChiselAnnotation { override def toFirrtl = new MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget, depth, width) })
       w
     }
   }
@@ -130,6 +132,6 @@ case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, dep
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
-case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
