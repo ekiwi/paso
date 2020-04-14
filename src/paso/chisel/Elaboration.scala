@@ -53,15 +53,21 @@ object Elaboration {
       ir.Port(NoInfo, impl.name + "." + st.name, ir.Input, st.tpe)
     } ++ spec_state.map { st =>
       ir.Port(NoInfo, spec.name + "." + st.name, ir.Input, st.tpe)
-    }
+    } ++ Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
     val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports, body=ir.EmptyStmt)
 
     maps.flatMap { m =>
       val mod = elaborateInContextOfModule(impl, spec, "map", {() => m(impl, spec)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
+
+      // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
+      val c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(c)
+
       //val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
-      val elaborated = toHighFirrtl(c, mod._2)
+      println(c_fixed.serialize)
+      val elaborated = toHighFirrtl(c_fixed, mod._2)
+      println(elaborated._1.serialize)
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
   }
@@ -69,14 +75,16 @@ object Elaboration {
   private def elaborateInvariances[IM <: RawModule](impl: IM, impl_state: Seq[State], invs: Seq[IM => Unit]): Seq[Assertion] = {
     val inv_ports = impl_state.map { st =>
       ir.Port(NoInfo, st.name, ir.Input, st.tpe)
-    }
+    } ++ Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
     val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports, body=ir.EmptyStmt)
 
     invs.flatMap { ii =>
       val mod = elaborateInContextOfModule(impl, {() => ii(impl)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
-      val elaborated = lowerTypes(toHighFirrtl(c, mod._2))
+      // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
+      val c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(c)
+      val elaborated = lowerTypes(toHighFirrtl(c_fixed, mod._2))
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
   }
