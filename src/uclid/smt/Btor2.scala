@@ -227,6 +227,8 @@ object Btor2Serializer {
       case BVExtractOp(hi, lo) => line(s"slice ${t(typ)} ${s(a)} $hi $lo")
       case BVZeroExtOp(_, by) => line(s"uext ${t(typ)} ${s(a)} $by")
       case BVSignExtOp(_, by) => line(s"sext ${t(typ)} ${s(a)} $by")
+      case q: ForallOp => throw new NotImplementedError(s"btor2 does not support quantifiers!: $q")
+      case q: ExistsOp => throw new NotImplementedError(s"btor2 does not support quantifiers!: $q")
       case other => throw new NotImplementedError(s"TODO: implement conversion for $other")
     }
 
