@@ -37,7 +37,7 @@ object firrtlToSmtType {
   }
 }
 
-class FirrtlInterpreter extends SmtHelpers {
+class FirrtlInterpreter extends SMTHelpers {
   case class Value(e: smt.Expr, valid: smt.Expr = tru) {
     def isValid: Boolean = valid == tru
     def map(foo: smt.Expr => smt.Expr): Value = copy(e = foo(e))

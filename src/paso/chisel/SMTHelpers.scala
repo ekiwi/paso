@@ -8,13 +8,13 @@ import uclid.smt
 
 
 
-trait SmtHelpers {
-  def bool_to_bv(b: smt.Expr): smt.Expr = b match {
+trait SMTHelpers {
+  def boolToBitVec(b: smt.Expr): smt.Expr = b match {
     case smt.BooleanLit(value) => smt.BitVectorLit(if(value) 1 else 0, 1)
     case other => ite(other, smt.BitVectorLit(1,1), smt.BitVectorLit(0,1))
   }
-  def as_bv(e: smt.Expr): smt.Expr = e.typ match {
-    case smt.BoolType => bool_to_bv(e)
+  def asBitVec(e: smt.Expr): smt.Expr = e.typ match {
+    case smt.BoolType => boolToBitVec(e)
     case smt.BitVectorType(_) => e
     case other => throw new RuntimeException(s"$other cannot be converted to a bitvector")
   }
@@ -35,7 +35,7 @@ trait SmtHelpers {
     smt.ArrayStoreOperation(array, List(smt.BitVectorLit(index, arrayIndexBits(array))), value)
   }
   def ext(expr: smt.Expr, width: Int, op: (Int, Int) => smt.Operator) = {
-    val bv_expr = as_bv(expr)
+    val bv_expr = asBitVec(expr)
     val w = bv_expr.typ.asInstanceOf[smt.BitVectorType].width
     val e = width - w
     require(e >= 0)
@@ -68,6 +68,4 @@ trait SmtHelpers {
   }
 }
 
-object SmtHelper extends SmtHelpers {
-
-}
+object SMTHelper extends SMTHelpers {}

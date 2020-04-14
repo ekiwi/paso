@@ -4,7 +4,7 @@
 
 package paso.verification
 
-import paso.chisel.{SMTSimplifier, SmtHelper, SmtHelpers}
+import paso.chisel.{SMTSimplifier, SMTHelper, SMTHelpers}
 import uclid.smt
 
 import scala.collection.mutable
@@ -23,7 +23,7 @@ case class ProtocolState(
 }
 
 
-class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers {
+class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers {
   protected var activeStates: Seq[ProtocolState] = Seq(ProtocolState("0"))
   protected var stateCounter: Int = 1
   protected def getStateName: String = { val i = stateCounter ; stateCounter += 1; i.toString }
@@ -230,7 +230,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SmtHelpers
 }
 
 case class Range(sym: smt.Symbol, hi: Int, lo: Int) {
-  def symBits: Int = SmtHelper.getBits(sym.typ)
+  def symBits: Int = SMTHelper.getBits(sym.typ)
   def isFullRange: Boolean = lo == 0 && hi == (symBits - 1)
   def toExpr(): smt.Expr = if(isFullRange) sym else smt.OperatorApplication(smt.BVExtractOp(hi=hi,lo=lo), List(sym))
   def width: Int = hi - lo + 1

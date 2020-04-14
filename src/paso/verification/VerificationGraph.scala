@@ -7,11 +7,11 @@ package paso.verification
 import java.io.FileWriter
 import scala.sys.process._
 
-import paso.chisel.{SMTSimplifier, SmtHelpers}
+import paso.chisel.{SMTSimplifier, SMTHelpers}
 import uclid.smt
 import uclid.smt.ConjunctionOp
 
-object VerificationGraph extends SmtHelpers {
+object VerificationGraph extends SMTHelpers {
   lazy val solver = new smt.SMTLIB2Interface(List("yices-smt2"))
   private def isFinalState(n: PendingInputNode): Boolean = n.next.isEmpty
 
@@ -140,7 +140,7 @@ object VerificationGraph extends SmtHelpers {
 
 }
 
-object Checker extends SmtHelpers with HasSolver {
+object Checker extends SMTHelpers with HasSolver {
   val solver = new YicesInterface
   def isSat(e: smt.Expr): Boolean = check(e).isTrue
   def isUnsat(e: smt.Expr): Boolean = check(e).isFalse
@@ -152,7 +152,7 @@ trait HasSolver {
   def check(e: smt.Expr): smt.SolverResult = solver.check(e)
 }
 
-object VerificationGraphToDot extends SmtHelpers {
+object VerificationGraphToDot extends SMTHelpers {
   type Arrows = Seq[(VerificationNode, VerificationNode, String)]
 
   private def visit(node: PendingInputNode): Arrows = node.next.flatMap(visit(_, node))

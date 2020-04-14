@@ -7,7 +7,7 @@
 
 package paso.verification
 
-import paso.chisel.{SMTSimplifier, SmtHelpers}
+import paso.chisel.{SMTSimplifier, SMTHelpers}
 import uclid.smt
 import uclid.smt.Expr
 
@@ -31,10 +31,10 @@ case class InputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr]
 case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode) extends VerificationEdge
 
 trait Assertion { def toExpr: smt.Expr }
-case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion with SmtHelpers {
+case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion with SMTHelpers {
   override def toExpr: Expr = implies(guard, pred)
 }
-case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: smt.Expr, pred: smt.Expr) extends Assertion with SmtHelpers {
+case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: smt.Expr, pred: smt.Expr) extends Assertion with SMTHelpers {
   override def toExpr: Expr = {
     val max = 1 << getBits(variable.typ)
     val isFullRange = start == 0 && end == max
@@ -65,7 +65,7 @@ object VerificationProblem {
 
 
 
-class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelpers {
+class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelpers {
   override val solverName: String = "btormc"
 
 
@@ -135,7 +135,7 @@ class RefEqHashMap[A <: AnyRef, B] extends scala.collection.mutable.HashMap[A, B
   protected override def elemEquals(key1: A, key2: A): Boolean = (key1 eq key2)
 }
 
-class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
+class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
 
   def run(proto: PendingInputNode): Seq[(VerificationEdge, smt.Symbol, Int)] = {
     visit(proto, ii = 0, guard = tru)
@@ -184,7 +184,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
   }
 }
 
-class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
+class VerifyMapping extends VerificationTask with SMTHelpers with HasSolver {
   val solver = new CVC4Interface(quantifierFree = false)
   override val solverName: String = solver.name
 
@@ -228,7 +228,7 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
   }
 }
 
-class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
+class VerifyBaseCase extends VerificationTask with SMTHelpers with HasSolver {
   val solver = new CVC4Interface
   override val solverName: String = solver.name
 
