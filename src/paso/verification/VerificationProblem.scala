@@ -7,7 +7,7 @@
 
 package paso.verification
 
-import paso.chisel.{SMTSimplifier, SMTHelpers}
+import paso.chisel.{SMTHelper, SMTHelpers, SMTSimplifier}
 import uclid.smt
 import uclid.smt.Expr
 
@@ -31,17 +31,19 @@ case class InputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr]
 case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode) extends VerificationEdge
 
 trait Assertion { def toExpr: smt.Expr }
-case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion with SMTHelpers {
-  override def toExpr: Expr = implies(guard, pred)
+case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion {
+  override def toExpr: Expr = SMTHelper.implies(guard, pred)
 }
-case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: smt.Expr, pred: smt.Expr) extends Assertion with SMTHelpers {
+case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: smt.Expr, pred: smt.Expr) extends Assertion {
   override def toExpr: Expr = {
-    val max = 1 << getBits(variable.typ)
+    val max = 1 << SMTHelper.getBits(variable.typ)
     val isFullRange = start == 0 && end == max
     val g = if(isFullRange) { guard } else {
-      and(guard, and(cmpConst(smt.BVGEUOp, variable, start), cmpConst(smt.BVLEUOp, variable, end-1)))
+      val lower = SMTHelper.cmpConst(smt.BVGEUOp, variable, start)
+      val upper = SMTHelper.cmpConst(smt.BVLEUOp, variable, end-1)
+      SMTHelper.and(guard, SMTHelper.and(lower, upper))
     }
-    forall(Seq(variable), implies(g, pred))
+    SMTHelper.forall(Seq(variable), SMTHelper.implies(g, pred))
   }
 }
 
