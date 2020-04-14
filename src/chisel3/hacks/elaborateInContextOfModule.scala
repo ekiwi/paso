@@ -36,12 +36,14 @@ case class prefixNames(prefixes: Set[String]) {
     override def toTarget = ???
     override def toAbsoluteTarget = ???
     override def getRef: Arg = ref
+    override def getOptionRef: Option[Arg] = Some(ref)
   }
 
   private def onNode(node: Node): Node = {
     val new_ref: Arg = node.id.getRef match {
       case a: Slot => onArg(a)
       case a: Index => onArg(a)
+      case m: ModuleIO => Ref(s"${m.mod.getRef.name}.${m.name}")
       case r: Ref =>
         val pathName = node.id.pathName
         val parentPathName = node.id.parentPathName
@@ -67,6 +69,8 @@ case class prefixNames(prefixes: Set[String]) {
     case Connect(info, loc, exp) => Connect(info, onNode(loc), onArg(exp))
     case WhenBegin(info, pred) => WhenBegin(info, onArg(pred))
     case ConnectInit(info, loc, exp) => ConnectInit(info, onNode(loc), onArg(exp))
+    case p : DefMemPort[Data] =>
+      p.copy(source = onNode(p.source), index = onArg(p.index), clock = onArg(p.clock))
     case other => other
   }
 
