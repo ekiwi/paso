@@ -50,17 +50,17 @@ object Elaboration {
   // TODO: add support for implementations and untimed models that contain actual Vecs
   //       currently we use the VectorType as a placeholder for memories....
   private def stateToPort(state: Iterable[State], prefix: String): Iterable[ir.Port] =
-    state.collect { case State(name, tpe, _) => ir.Port(NoInfo, prefix + "." + name, ir.Input, tpe) }
+    state.collect { case State(name, tpe, _) => ir.Port(NoInfo, prefix + name, ir.Input, tpe) }
   private def collectMemTypes(state: Iterable[State], prefix: String): Iterable[(String, ir.VectorType)] =
-    state.collect{ case State(name, tpe: ir.VectorType, _) => prefix + "." + name -> tpe }
+    state.collect{ case State(name, tpe: ir.VectorType, _) => prefix + name -> tpe }
 
   private def elaborateMappings[IM <: RawModule, SM <: UntimedModule](
       impl: IM, impl_state: Seq[State],
       spec: SM, spec_state: Seq[State], maps: Seq[(IM, SM) => Unit]): Seq[Assertion] = {
-    val map_ports = stateToPort(impl_state, impl.name) ++ stateToPort(spec_state, spec.name) ++
+    val map_ports = stateToPort(impl_state, impl.name + ".") ++ stateToPort(spec_state, spec.name + ".") ++
       Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
     val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports.toSeq, body=ir.EmptyStmt)
-    val memTypes = (collectMemTypes(impl_state, impl.name) ++ collectMemTypes(spec_state, spec.name)).toMap
+    val memTypes = (collectMemTypes(impl_state, impl.name + ".") ++ collectMemTypes(spec_state, spec.name + ".")).toMap
 
     maps.flatMap { m =>
       val mod = elaborateInContextOfModule(impl, spec, "map", {() => m(impl, spec)})
@@ -76,19 +76,16 @@ object Elaboration {
   }
 
   private def elaborateInvariances[IM <: RawModule](impl: IM, impl_state: Seq[State], invs: Seq[IM => Unit]): Seq[Assertion] = {
-    val inv_ports = stateToPort(impl_state, impl.name) ++ Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
+    val inv_ports = stateToPort(impl_state, "") ++ Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
     val inv_mod = ir.Module(NoInfo, name = "i", ports=inv_ports.toSeq, body=ir.EmptyStmt)
-    val memTypes = collectMemTypes(impl_state, impl.name).toMap
+    val memTypes = collectMemTypes(impl_state, "").toMap
 
     invs.flatMap { ii =>
       val mod = elaborateInContextOfModule(impl, {() => ii(impl)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
-      // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
-      //val c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(c)
-
+      // HACK: replace all read ports (and inferred ports b/c yolo) with vector accesses
       val c_fixed = ReplaceMemReadWithVectorAccess(memTypes)(c)
-
       val elaborated = lowerTypes(toHighFirrtl(c_fixed, mod._2))
       new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
     }
