@@ -14,12 +14,10 @@ object NamespaceIdentifiers {
     val protocols = p.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
     VerificationProblem(
       impl=impl, untimed=untimed, protocols=protocols,
-      invariances = p.invariances.map(apply(_, subs)),
-      mapping = p.mapping.map(apply(_, subs))
+      invariances = p.invariances.map(substituteSmt(_, subs)),
+      mapping = p.mapping.map(substituteSmt(_, subs))
     )
   }
-
-  def apply(a: Assertion, subs: Sub): Assertion = Assertion(substituteSmt(a.guard, subs), substituteSmt(a.pred, subs))
 
   def apply(node: PendingInputNode, subs: Sub, sm: Map[String, String]): PendingInputNode = PendingInputNode(node.next.map(apply(_, subs, sm)))
   def apply(node: PendingOutputNode, subs: Sub, sm: Map[String, String]): PendingOutputNode = PendingOutputNode(node.next.map(apply(_, subs, sm)))
@@ -98,6 +96,10 @@ object substituteSmt {
     case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)), value = apply(s.value, map))
     case other => throw new NotImplementedError(s"TODO: deal with $other")
   }})
-  def apply[E <: smt.Expr](a: Assertion, map: Map[smt.Expr, E]): Assertion =
-    Assertion(guard = apply(a.guard, map), pred = apply(a.pred, map))
+  def apply[E <: smt.Expr](a: Assertion, map: Map[smt.Expr, E]): Assertion = a match {
+    case BasicAssertion(guard, pred) =>
+      BasicAssertion(substituteSmt(guard, map), substituteSmt(pred, map))
+    case ForAllAssertion(variable, start, end, guard, pred) =>
+      ForAllAssertion(variable, start, end, substituteSmt(guard, map), substituteSmt(pred, map))
+  }
 }

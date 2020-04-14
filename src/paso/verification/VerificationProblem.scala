@@ -9,6 +9,8 @@ package paso.verification
 
 import paso.chisel.{SMTSimplifier, SmtHelpers}
 import uclid.smt
+import uclid.smt.Expr
+
 import scala.collection.mutable
 
 // things that need to be verified:
@@ -28,7 +30,20 @@ case class PendingOutputNode(next: Seq[OutputEdge] = Seq()) extends Verification
 case class InputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingOutputNode) extends VerificationEdge
 case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode) extends VerificationEdge
 
-case class Assertion(guard: smt.Expr, pred: smt.Expr)
+trait Assertion { def toExpr: smt.Expr }
+case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion with SmtHelpers {
+  override def toExpr: Expr = implies(guard, pred)
+}
+case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: smt.Expr, pred: smt.Expr) extends Assertion with SmtHelpers {
+  override def toExpr: Expr = {
+    val max = 1 << getBits(variable.typ)
+    val isFullRange = start == 0 && end == max
+    val g = if(isFullRange) { guard } else {
+      and(guard, and(cmpConst(smt.BVGEUOp, variable, start), cmpConst(smt.BVLEUOp, variable, end-1)))
+    }
+    forall(Seq(variable), implies(g, pred))
+  }
+}
 
 case class VerificationProblem(
                                 impl: smt.TransitionSystem,
@@ -62,9 +77,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
     // assume that reset is inactive
     VerificationTask.findReset(p.impl.inputs).foreach(r => check.assume(not(r)))
     // assume that invariances hold in the initial state
-    p.invariances.foreach(i => check.assumeAt(0, implies(i.guard, i.pred)))
+    p.invariances.foreach(i => check.assumeAt(0, i.toExpr))
     // assume that the mapping function holds in the initial state
-    p.mapping.foreach(m => check.assumeAt(0, implies(m.guard, m.pred)))
+    p.mapping.foreach(m => check.assumeAt(0, m.toExpr))
     // compute the results of all methods
     val method_state_subs = methods.map { case (name, sem) =>
       sem.outputs.foreach{ o => check.define(o.sym, o.expr) }
@@ -81,8 +96,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SmtHelper
       assert(edge.methods.size == 1)
       // substitute any references to the state of the untimed model with the result of applying the method
       val subs: Map[smt.Expr, smt.Expr] = method_state_subs(edge.methods.head).toMap
-      p.invariances.foreach(i => check.assertAt(step, implies(taken, implies(i.guard, i.pred))))
-      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, implies(m.guard, m.pred))))
+      p.invariances.foreach(i => check.assertAt(step, implies(taken, i.toExpr)))
+      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, m.toExpr)))
     }
 
     val sys = check.getCombinedSystem
@@ -170,7 +185,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SmtHelpers {
 }
 
 class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
-  val solver = new CVC4Interface
+  val solver = new CVC4Interface(quantifierFree = false)
   override val solverName: String = solver.name
 
   override protected def execute(p: VerificationProblem): Unit = {
@@ -179,7 +194,7 @@ class VerifyMapping extends VerificationTask with SmtHelpers with HasSolver {
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)} )
     val spec_states = p.untimed.state.map(_.sym)
     val spec_init_const = conjunction(p.untimed.state.map{st => eq(st.sym, st.init.get)})
-    val mapping_const = conjunction(p.mapping.map{ a => implies(a.guard, a.pred) })
+    val mapping_const = conjunction(p.mapping.map(_.toExpr))
 
     // The mapping check gets a lot easier because we require the untimed model to have all states initialized
     // to a concrete value, thus eliminating all quantifiers. (the non general solution)
@@ -219,7 +234,7 @@ class VerifyBaseCase extends VerificationTask with SmtHelpers with HasSolver {
 
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
-    val inv_const = conjunction(p.invariances.map{ a => implies(a.guard, a.pred) })
+    val inv_const = conjunction(p.invariances.map(_.toExpr))
 
     // make sure invariances hold after reset
     val hold = SMTSimplifier.simplify(implies(impl_init_const, inv_const))

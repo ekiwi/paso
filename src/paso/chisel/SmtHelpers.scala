@@ -18,6 +18,7 @@ trait SmtHelpers {
     case smt.BitVectorType(_) => e
     case other => throw new RuntimeException(s"$other cannot be converted to a bitvector")
   }
+  def getBitType(bits: Int): smt.Type = if(bits < 2) smt.BoolType else smt.BitVectorType(bits)
   def app(op: smt.Operator, exprs: smt.Expr*) = smt.OperatorApplication(op, exprs.toList)
   def arrayIndexBits(array: smt.Expr): Int = {
     require(array.typ.isArray)
@@ -58,6 +59,12 @@ trait SmtHelpers {
   def getBits(typ: smt.Type) = typ match {
     case smt.BoolType => 1
     case smt.BitVectorType(w) => w
+  }
+  def cmpConst(op: Int => smt.BoolResultOp, a: smt.Expr, b: BigInt): smt.Expr = {
+    val w = getBits(a.typ)
+    assert(w > 1, "TODO: support bools")
+    val bb = smt.BitVectorLit(b, w)
+    app(op(w), a, bb)
   }
 }
 
