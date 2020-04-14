@@ -30,9 +30,12 @@ class YicesInterface extends Solver  {
   }
 }
 
-class CVC4Interface extends Solver  {
+class CVC4Interface(quantifierFree: Boolean = true) extends Solver  {
   override val name = "cvc4"
-  protected override val ctx = new smt.SMTLIB2Interface(List("cvc4", "--incremental", "--produce-models"))
+  protected override val ctx = new smt.SMTLIB2Interface(List("cvc4", "--incremental", "--produce-models", "--lang", "smt2")) {
+    if(quantifierFree) writeCommand("(set-logic QF_AUFBV)")
+    else writeCommand("(set-logic AUFBV)")
+  }
 }
 
 class Z3Interface extends Solver  {
