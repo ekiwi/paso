@@ -42,6 +42,8 @@ class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) e
     asserts ++= makeAsserts(pathCondition, e)
   }
 
+  override def onIsInvalid(expr: Value): Unit = {} // ignore invalids
+
   /* this deals with the fact that Chisel expands comparisons between Vec into element wise comparisons */
   // old dead code that was used when arrays were expanded to vectors
   private def mergeArrayEquality(e: smt.Expr): smt.Expr = {

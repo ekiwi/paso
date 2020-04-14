@@ -2,10 +2,11 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.chisel
+package paso.chisel.passes
 
 import firrtl.ir
 import uclid.smt
+
 import scala.collection.mutable
 
 case class State(name: String, tpe: ir.Type, init: Option[smt.Expr] = None)

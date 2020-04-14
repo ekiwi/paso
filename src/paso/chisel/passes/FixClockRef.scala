@@ -1,4 +1,4 @@
-package paso.chisel
+package paso.chisel.passes
 
 import firrtl.{CDefMPort, ir}
 
