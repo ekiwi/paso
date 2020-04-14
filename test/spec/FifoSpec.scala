@@ -83,7 +83,11 @@ class CircularBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extend
   mapping { (impl, spec) =>
     assert(spec.count === impl.cnt)
     assert(spec.read === impl.rdPtr)
-    assert(spec.mem === impl.entries)
+    forall(0 until impl.depth) { ii =>
+      when(spec.count > ii) {
+        assert(impl.entries(ii) === spec.mem(ii))
+      }
+    }
   }
 
   invariances { dut =>

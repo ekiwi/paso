@@ -5,6 +5,7 @@ package paso
 
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
+import chisel3.util.log2Ceil
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 
 import scala.collection.mutable
@@ -95,9 +96,29 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
       dontTouch(w)
       val depth = x.length
       val width = x.t.getWidth
-      annotate(new ChiselAnnotation { override def toFirrtl = new MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget, depth, width) })
+      annotate(new ChiselAnnotation { override def toFirrtl = MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget, depth, width) })
       w
     }
+  }
+
+  def forall(range: Range)(block: UInt => Unit): Unit = {
+    require(range.step == 1, s"Only step size 1 supported: $range")
+    require(range.start >= 0 && range.end >= 0, s"Only positive ranges supported: $range")
+    require(range.start <= range.end)
+
+    // generate a wire to represent the universally quantified variable
+    val bits = log2Ceil(range.end)
+    val ii = Wire(UInt(bits.W)).suggestName(s"ii_${range.start}_to_${range.end-1}")
+    dontTouch(ii)
+    annotate(new ChiselAnnotation { override def toFirrtl = ForallStartAnnotation(ii.toTarget, range.start, range.end) })
+
+    // generate the block code once
+    block(ii)
+
+    // mark the end of the block (important: this only works if we do not run too many passes / optimizations)
+    val end = WireInit(false.B).suggestName("forall_end")
+    dontTouch(end)
+    annotate(new ChiselAnnotation { override def toFirrtl = ForallEndAnnotation(end.toTarget) })
   }
 
   def do_while(cond: => Bool, max: Int)(block: => Unit) = {
@@ -133,5 +154,13 @@ case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, dep
 }
 
 case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ForallStartAnnotation(target: ReferenceTarget, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ForallEndAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
