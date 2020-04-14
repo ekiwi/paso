@@ -85,7 +85,7 @@ class CircularBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extend
     assert(spec.read === impl.rdPtr)
     forall(0 until impl.depth) { ii =>
       when(spec.count > ii) {
-        assert(impl.entries(ii) === spec.mem(ii))
+        assert(impl.entries(ii + spec.read) === spec.mem(ii + spec.read))
       }
     }
   }
