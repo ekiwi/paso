@@ -76,12 +76,15 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
 
     //ShowDot(VerificationGraphToDot("proto", proto))
 
+    // eliminate quantifiers by expansion (only the invariances and mappings are expected to contain quantifiers)
+    def elim(e: smt.Expr): smt.Expr = SMTExpandQuantifiers(e)
+
     // assume that reset is inactive
     VerificationTask.findReset(p.impl.inputs).foreach(r => check.assume(not(r)))
     // assume that invariances hold in the initial state
-    p.invariances.foreach(i => check.assumeAt(0, i.toExpr))
+    p.invariances.foreach(i => check.assumeAt(0, elim(i.toExpr)))
     // assume that the mapping function holds in the initial state
-    p.mapping.foreach(m => check.assumeAt(0, m.toExpr))
+    p.mapping.foreach(m => check.assumeAt(0, elim(m.toExpr)))
     // compute the results of all methods
     val method_state_subs = methods.map { case (name, sem) =>
       sem.outputs.foreach{ o => check.define(o.sym, o.expr) }
@@ -98,8 +101,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
       assert(edge.methods.size == 1)
       // substitute any references to the state of the untimed model with the result of applying the method
       val subs: Map[smt.Expr, smt.Expr] = method_state_subs(edge.methods.head).toMap
-      p.invariances.foreach(i => check.assertAt(step, implies(taken, i.toExpr)))
-      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, m.toExpr)))
+      p.invariances.foreach(i => check.assertAt(step, implies(taken, elim(i.toExpr))))
+      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, elim(m.toExpr))))
     }
 
     val sys = check.getCombinedSystem
