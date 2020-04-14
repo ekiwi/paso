@@ -125,7 +125,7 @@ class FifoSpec extends FlatSpec {
   val width = 8
   val fixed = true
 
-  val p = Elaboration[CircularPointerFifo, UntimedFifo[UInt]](
+  val p = Elaboration()[CircularPointerFifo, UntimedFifo[UInt]](
     new CircularPointerFifo(depth = depth, width = width, fixed = fixed),
     new UntimedFifo(depth = depth, dataType = UInt(width.W)),
     (impl, spec) => new CircularBinding(impl, spec)
@@ -139,7 +139,7 @@ class ShiftFifoSpec extends FlatSpec {
   val width = 8
   val fixed = true
 
-  val p = Elaboration[ShiftRegisterFifo, UntimedFifo[UInt]](
+  val p = Elaboration()[ShiftRegisterFifo, UntimedFifo[UInt]](
     new ShiftRegisterFifo(depth = depth, width = width, fixed = fixed),
     new UntimedFifo(depth = depth, dataType = UInt(width.W)),
     (impl, spec) => new ShiftBinding(impl, spec)

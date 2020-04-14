@@ -121,12 +121,12 @@ class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: Identity
 
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
-    val p = Elaboration[RandomLatency, Identity](new RandomLatency, new Identity, (impl, spec) => new RandomLatencyInductive(impl, spec))
+    val p = Elaboration()[RandomLatency, Identity](new RandomLatency, new Identity, (impl, spec) => new RandomLatencyInductive(impl, spec))
     VerificationProblem.verify(p)
   }
 
   "RandomLatencyAndKeep module" should "refine its spec" in {
-    val p = Elaboration[RandomLatencyKeepOutput, IdentityAndKeep](new RandomLatencyKeepOutput, new IdentityAndKeep, (impl, spec) => new VariableLatencyKeepInductive(impl, spec))
+    val p = Elaboration()[RandomLatencyKeepOutput, IdentityAndKeep](new RandomLatencyKeepOutput, new IdentityAndKeep, (impl, spec) => new VariableLatencyKeepInductive(impl, spec))
     VerificationProblem.verify(p)
   }
 }

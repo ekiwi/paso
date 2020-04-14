@@ -69,6 +69,6 @@ class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(imp
 
 
 class PicoRV32Spec extends FlatSpec {
-  val p = Elaboration[PicoRV32Mul, Multiplier](new PicoRV32Mul(), new Multiplier, (impl, spec) => new MulInductive(impl, spec))
+  val p = Elaboration()[PicoRV32Mul, Multiplier](new PicoRV32Mul(), new Multiplier, (impl, spec) => new MulInductive(impl, spec))
   VerificationProblem.verify(p)
 }

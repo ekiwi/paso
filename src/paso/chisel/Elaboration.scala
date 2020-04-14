@@ -23,29 +23,56 @@ class CustomFirrtlCompiler extends Compiler {
 }
 
 
-object Elaboration {
+case class Elaboration() {
+  private var chiselElaborationTime = 0L
+  private var firrtlCompilerTime = 0L
   private def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
     val chiselCircuit = Driver.elaborate(gen)
     val annos = chiselCircuit.annotations.map(_.toFirrtl)
-    (Driver.toFirrtl(chiselCircuit), annos)
+    val endElaboration = System.nanoTime()
+    val r = (Driver.toFirrtl(chiselCircuit), annos)
+    val end = System.nanoTime()
+    chiselElaborationTime += endElaboration - start
+    firrtlCompilerTime += end - endElaboration
+    r
   }
   private val highFirrtlCompiler = new CustomFirrtlCompiler
   private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
     val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+    firrtlCompilerTime += System.nanoTime() - start
     (st.circuit, st.annotations)
   }
   private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
     val st = CircuitState(tup._1, ChirrtlForm, tup._2, None)
     // TODO: we would like to lower bundles but not vecs ....
+    val start = System.nanoTime()
     val st_no_bundles = firrtl.passes.LowerTypes.runTransform(st)
+    firrtlCompilerTime += System.nanoTime() - start
     (st_no_bundles.circuit, st_no_bundles.annotations)
   }
   private val lowFirrtlCompiler = new LowFirrtlCompiler
   private def toLowFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
     val st = lowFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+    firrtlCompilerTime += System.nanoTime() - start
     (st.circuit, st.annotations)
   }
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
+
+  private def elaborate(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
+    val r = elaborateInContextOfModule(ctx0, ctx1, name, gen)
+    chiselElaborationTime += System.nanoTime() - start
+    r
+  }
+  private def elaborate(ctx0: RawModule, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
+    val r = elaborateInContextOfModule(ctx0, gen)
+    chiselElaborationTime += System.nanoTime() - start
+    r
+  }
 
   // TODO: add support for implementations and untimed models that contain actual Vecs
   //       currently we use the VectorType as a placeholder for memories....
@@ -63,7 +90,7 @@ object Elaboration {
     val memTypes = (collectMemTypes(impl_state, impl.name + ".") ++ collectMemTypes(spec_state, spec.name + ".")).toMap
 
     maps.flatMap { m =>
-      val mod = elaborateInContextOfModule(impl, spec, "map", {() => m(impl, spec)})
+      val mod = elaborate(impl, spec, "map", {() => m(impl, spec)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
 
@@ -81,7 +108,7 @@ object Elaboration {
     val memTypes = collectMemTypes(impl_state, "").toMap
 
     invs.flatMap { ii =>
-      val mod = elaborateInContextOfModule(impl, {() => ii(impl)})
+      val mod = elaborate(impl, {() => ii(impl)})
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
       // HACK: replace all read ports (and inferred ports b/c yolo) with vector accesses
@@ -143,7 +170,7 @@ object Elaboration {
 
     val spec_module = getMain(main)
     val methods = sp.get.methods.map { meth =>
-      val (raw_firrtl, raw_annos) = elaborateInContextOfModule(sp.get, meth.generate)
+      val (raw_firrtl, raw_annos) = elaborate(sp.get, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw_firrtl).body
@@ -182,15 +209,35 @@ object Elaboration {
   }
 
   def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]): VerificationProblem = {
+    firrtlCompilerTime = 0L
+    chiselElaborationTime = 0L
+    val start = System.nanoTime()
 
     val implementation = elaborateImpl(impl)
+    val endImplementation = System.nanoTime()
     val untimed = elaborateSpec(spec)
+    val endUntimed = System.nanoTime()
 
     // elaborate the binding
     val binding = bind(implementation.mod, untimed.mod)
     val protos = elaborateProtocols(binding.protos, untimed.model.methods)
     val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, binding.maps)
     val invariances = elaborateInvariances(implementation.mod, implementation.state, binding.invs)
+    val endBinding = System.nanoTime()
+
+    if(true) {
+      val total = endBinding - start
+      val dImpl = endImplementation - start
+      val dUntimed = endUntimed - endImplementation
+      val dBinding = endBinding - endUntimed
+      def p(i: Long): Long = i * 100 / total
+      def ms(i: Long): Long = i / 1000 / 1000
+      println(s"Total Elaboration Time: ${ms(total)}ms")
+      println(s"${p(dImpl)}% RTL, ${p(dUntimed)}% Untimed Model, ${p(dBinding)}% Protocol and Invariances")
+      val other = total - firrtlCompilerTime - chiselElaborationTime
+      println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
+    }
+
 
     // combine into verification problem
     val prob = VerificationProblem(
