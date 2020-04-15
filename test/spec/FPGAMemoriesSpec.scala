@@ -1,0 +1,5 @@
+package spec
+
+class FPGAMemoriesSpec {
+
+}

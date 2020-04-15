@@ -144,8 +144,10 @@ class FirrtlInterpreter extends SMTHelpers {
         val dataSym: smt.Expr = smt.Symbol(m.name + "." + r + ".data", m.typ.asInstanceOf[smt.ArrayType].outType)
         val addr = getSimplifiedFinalValue(m.name + "." + r + ".addr").get
         val en = getSimplifiedFinalValue(m.name + "." + r + ".en").get
-        assert(en.get == tru, "Currently we require reads to always be enabled!")
-        dataSym -> select(mem, addr.get)
+        // assert(en.get == tru, s"Currently we require reads to always be enabled! ${en.get}")
+        if(en.get != tru) println(s"WARN: ${dataSym} might not always be enabled.")
+        if(!addr.isValid) println(s"WARN: ${dataSym} address might not always be enabled.")
+        dataSym -> select(mem, addr.e)
       }
     }.toMap
   }
