@@ -10,7 +10,7 @@ package impl
 import chisel3._
 import chisel3.util._
 
-case class MemSize(dataType: Bits, depth: BigInt) { def addrType: UInt = UInt(log2Ceil(depth).W) }
+case class MemSize(dataType: UInt, depth: BigInt) { def addrType: UInt = UInt(log2Ceil(depth).W) }
 case class MemData(size: MemSize, readPorts: Int, writePorts: Int)
 class ReadPort(val d: MemSize) extends Bundle {
   val addr = Input(d.addrType)
@@ -21,8 +21,8 @@ class WritePort(val d: MemSize) extends Bundle {
   val data = Input(d.dataType)
 }
 class MemoryIO(val d: MemData) extends Bundle {
-  val read = (0 until d.readPorts).map{ _ => new ReadPort(d.size) }
-  val write = (0 until d.writePorts).map{ _ => new WritePort(d.size) }
+  val read =  Vec(d.readPorts, new ReadPort(d.size))   //(0 until d.readPorts).map{ _ => new ReadPort(d.size) }
+  val write = Vec(d.writePorts, new WritePort(d.size)) //(0 until d.writePorts).map{ _ => new WritePort(d.size) }
 }
 abstract class FPGAMem extends Module { val io: MemoryIO ; def d: MemData = io.d }
 

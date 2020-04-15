@@ -3,7 +3,6 @@ package spec
 import chisel3._
 import chisel3.util._
 import paso._
-import impl._
 import org.scalatest._
 import paso.chisel.Elaboration
 import paso.verification.VerificationProblem
