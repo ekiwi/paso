@@ -93,6 +93,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
 
   // mutable state
   private val data = new mutable.ArraySeq[BigInt](inputs.size + states.size + outputs.size)
+  // TODO: fix memory initialization!
   private val memories = new mutable.ArraySeq[Memory](memCount)
 
   // mutable state indexing
@@ -172,6 +173,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private def getWidth(typ: Type): Int = typ match { case BoolType => 1 case BitVectorType(w) => w }
   private def getDepthAndWidth(typ: Type): (BigInt, Int) = typ match {
     case ArrayType(List(BitVectorType(w0)), BitVectorType(w1)) => ((BigInt(1) << w0) - 1, w1)
+    case ArrayType(List(BitVectorType(w0)), BoolType) => ((BigInt(1) << w0) - 1, 1)
   }
   def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], withVcd: Boolean) = {
     // initialize vcd
