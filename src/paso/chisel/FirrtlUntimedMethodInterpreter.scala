@@ -33,7 +33,7 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     val outputs = methodOutputs.values.map { o =>
       assert(connections.contains(o), s"Output $o was never assigned!")
       val value = getSimplifiedFinalValue(o).get.map(substituteReads)
-      NamedGuardedExpr(smt.Symbol(o, value.typ), value.e, guard=value.valid)
+      NamedGuardedExpr(smt.Symbol(o, value.typ), value.e, guard=substituteReads(value.valid))
     }
 
     // collect state updates
