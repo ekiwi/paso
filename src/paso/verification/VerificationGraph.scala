@@ -25,10 +25,6 @@ object VerificationGraph extends SMTHelpers {
   }
 
   // combine two edges into all three combinations
-  private def combineEdges[E <: VerificationEdge](a: E, b: E): (E, E, E) = (a, b) match {
-    case (a: InputEdge, b: InputEdge) => val (x,y,z) = combineEdges(a, b) ; (x.asInstanceOf[E], y.asInstanceOf[E], z.asInstanceOf[E])
-    case (a: OutputEdge, b: OutputEdge) => val (x,y,z) = combineEdges(a, b) ; (x.asInstanceOf[E], y.asInstanceOf[E], z.asInstanceOf[E])
-  }
   private def combineEdges(a: InputEdge, b: InputEdge): (InputEdge, InputEdge, InputEdge) = (
     // a /\ b
     InputEdge(a.constraints ++ b.constraints, a.mappings ++ b.mappings, a.methods | b.methods, merge(a.next, b.next)),
@@ -36,14 +32,6 @@ object VerificationGraph extends SMTHelpers {
     InputEdge(a.constraints ++ not(b.constraints), a.mappings, a.methods, a.next),
     // a~ /\ b
     InputEdge(not(a.constraints) ++ b.constraints, b.mappings, b.methods, b.next)
-  )
-  private def combineEdges(a: OutputEdge, b: OutputEdge): (OutputEdge, OutputEdge, OutputEdge) = (
-    // a /\ b
-    OutputEdge(a.constraints ++ b.constraints, a.mappings ++ b.mappings, a.methods | b.methods, merge(a.next, b.next)),
-    // a /\ ~b
-    OutputEdge(a.constraints ++ not(b.constraints), a.mappings, a.methods, a.next),
-    // a~ /\ b
-    OutputEdge(not(a.constraints) ++ b.constraints, b.mappings, b.methods, b.next)
   )
 
   // returns old or new edge plus remaining edge that needs to be merged
