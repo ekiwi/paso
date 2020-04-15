@@ -89,11 +89,11 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private val outputs = sys.outputs.zipWithIndex.map{ case ((name, expr), index) => index -> Symbol(name, expr.typ) }
   private val regStates = sys.states.zipWithIndex.filter(!_._1.sym.typ.isArray)
   private val memStates = sys.states.zipWithIndex.filter(_._1.sym.typ.isArray)
+  private val allStates = sys.states.zipWithIndex
   private val memCount = memStates.size
 
   // mutable state
   private val data = new mutable.ArraySeq[BigInt](inputs.size + states.size + outputs.size)
-  // TODO: fix memory initialization!
   private val memories = new mutable.ArraySeq[Memory](memCount)
 
   // mutable state indexing
@@ -190,28 +190,29 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       Some(vv)
     }
 
-    // initialize registers
-    regStates.foreach { case (state, ii) =>
-      val value = state.init match {
-        case Some(init) => eval(init)
-        case None => regInit(ii)
+    // initialize registers and memories in order (this ensures that they are topologically sorted by their init dependencies)
+    allStates.foreach { case (state, ii) =>
+      if(state.sym.typ.isArray) {
+        // init memory
+        val value = state.init match {
+          case Some(init) => evalArray(init)
+          case None =>
+            if(memInit.contains(ii)) {
+              writesToMemory(arrayDepth(state.sym.typ), memInit(ii))
+            } else {
+              println(s"WARN: Initial value for ${state.sym} ($ii) is missing!")
+              Memory(randomSeq(arrayDepth(state.sym.typ)))
+            }
+        }
+        memories(memStateIdToArrayIndex(ii)) = value
+      } else {
+        // init register
+        val value = state.init match {
+          case Some(init) => eval(init)
+          case None => regInit(ii)
+        }
+        data(ii + stateOffset) = value
       }
-      data(ii + stateOffset) = value
-    }
-
-    // initialize memories
-    memStates.foreach { case (state, ii) =>
-      val value = state.init match {
-        case Some(init) => evalArray(init)
-        case None =>
-          if(memInit.contains(ii)) {
-            writesToMemory(arrayDepth(state.sym.typ), memInit(ii))
-          } else {
-            println(s"WARN: Initial value for ${state.sym} ($ii) is missing!")
-            Memory(randomSeq(arrayDepth(state.sym.typ)))
-          }
-      }
-      memories(memStateIdToArrayIndex(ii)) = value
     }
   }
 
