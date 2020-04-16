@@ -165,8 +165,10 @@ class LaForest2W4RInductive(impl: LVTMemory[ParallelWriteMem[SimulationMem], Sim
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ addr =>
       when(spec.valid(addr)) {
-        (0 until 4).foreach { bank =>
+        // write banks
+        (0 until 2).foreach { bank =>
           when(impl.lvt.mem(addr) === bank.U) {
+            // read banks
             assert(spec.mem(addr) === impl.banks(bank).banks(0).mem(addr))
             assert(spec.mem(addr) === impl.banks(bank).banks(1).mem(addr))
             assert(spec.mem(addr) === impl.banks(bank).banks(2).mem(addr))
