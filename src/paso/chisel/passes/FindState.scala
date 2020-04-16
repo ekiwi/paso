@@ -29,6 +29,8 @@ case class FindState(c: ir.Circuit) {
       state.append(State(prefix + name, ir.VectorType(tpe, depth.toInt)))
     case ir.DefInstance(_, name, module) if mods.contains(module) =>
       mods(module).body.foreachStmt(onStmt(prefix + name + ".", _))
+    case firrtl.WDefInstance(_, name, module, _) if mods.contains(module) =>
+      mods(module).body.foreachStmt(onStmt(prefix + name + ".", _))
     case other => other.foreachStmt(onStmt(prefix, _))
   }
   def mkBitVec(value: BigInt, tpe: ir.Type): smt.Expr = tpe match {
