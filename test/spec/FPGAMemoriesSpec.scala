@@ -46,7 +46,6 @@ class Mem1W1RProtocol[F <: FPGAMem](impl: F, spec: Untimed1W1RMemory) extends Bi
     dut.write.head.data.poke(DontCare)
     dut.read.head.addr.poke(DontCare)
     dut.read.head.data.expect(readData)
-    clock.step()
   }
 }
 
