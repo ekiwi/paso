@@ -10,7 +10,7 @@ import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
 import paso.chisel.passes.{FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
-import paso.verification.{Assertion, MethodSemantics, PendingInputNode, ProtocolInterpreter, UntimedModel, VerificationProblem}
+import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, StepNode, UntimedModel, VerificationProblem}
 import paso.{Binding, UntimedModule}
 import uclid.smt
 
@@ -118,7 +118,7 @@ case class Elaboration() {
     }
   }
 
-  private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, PendingInputNode)] = {
+  private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
       val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate(p.methodName + "_", clock) })

@@ -19,14 +19,14 @@ object NamespaceIdentifiers {
     )
   }
 
-  def apply(node: PendingInputNode, subs: Sub, sm: Map[String, String]): PendingInputNode = PendingInputNode(node.next.map(apply(_, subs, sm)))
-  def apply(node: PendingOutputNode, subs: Sub, sm: Map[String, String]): PendingOutputNode = PendingOutputNode(node.next.map(apply(_, subs, sm)))
-  def apply(edge: InputEdge, subs: Sub, sm: Map[String, String]): InputEdge =
-    InputEdge(edge.constraints.map(substituteSmt(_, subs)), edge.mappings.map(substituteSmt(_, subs)),
-      edge.methods.map(sm), apply(edge.next, subs, sm))
-  def apply(edge: OutputEdge, subs: Sub, sm: Map[String, String]): OutputEdge =
-    OutputEdge(edge.constraints.map(substituteSmt(_, subs)), edge.mappings.map(substituteSmt(_, subs)),
-      edge.methods.map(sm), apply(edge.next, subs, sm))
+  def apply(node: StepNode, subs: Sub, sm: Map[String, String]): StepNode =
+    StepNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm))
+  def apply(node: InputNode, subs: Sub, sm: Map[String, String]): InputNode =
+    InputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
+      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(substituteSmt(_, subs)))
+  def apply(node: OutputNode, subs: Sub, sm: Map[String, String]): OutputNode =
+    OutputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
+      node.constraints.map(substituteSmt(_, subs)))
 
 
   def apply(untimed: UntimedModel, prefix: String): (UntimedModel, Sub, Map[String, String]) = {

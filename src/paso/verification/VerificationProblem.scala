@@ -23,12 +23,20 @@ import scala.collection.mutable
 // (4)
 
 // Verification Graph
-trait VerificationEdge { val methods: Set[String] ; val next: VerificationNode }
-trait VerificationNode { val next: Seq[VerificationEdge] }
-case class PendingInputNode(next: Seq[InputEdge] = Seq()) extends VerificationNode
-case class PendingOutputNode(next: Seq[OutputEdge] = Seq()) extends VerificationNode
-case class InputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingOutputNode) extends VerificationEdge
-case class OutputEdge(constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr] = Seq(), methods: Set[String], next: PendingInputNode) extends VerificationEdge
+sealed trait VerificationNode {
+  val next: Seq[VerificationNode]
+  val methods: Set[String]
+  def isFinal: Boolean = next.isEmpty
+  def isBranchPoint: Boolean = next.length > 1
+}
+case class StepNode(next: Seq[InputNode], methods: Set[String]) extends VerificationNode
+case class InputNode(next: Seq[OutputNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr]= Seq()) extends VerificationNode {
+  lazy val constraintExpr: smt.Expr = SMTHelper.conjunction(constraints)
+  lazy val mappingExpr: smt.Expr = SMTHelper.conjunction(mappings)
+}
+case class OutputNode(next: Seq[StepNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq()) extends VerificationNode {
+  lazy val constraintExpr: smt.Expr = SMTHelper.conjunction(constraints)
+}
 
 trait Assertion { def toExpr: smt.Expr }
 case class BasicAssertion(guard: smt.Expr, pred: smt.Expr) extends Assertion {
@@ -50,7 +58,7 @@ case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: sm
 case class VerificationProblem(
                                 impl: smt.TransitionSystem,
                                 untimed: UntimedModel,
-                                protocols: Map[String, PendingInputNode],
+                                protocols: Map[String, StepNode],
                                 invariances: Seq[Assertion],
                                 mapping: Seq[Assertion]
 )
@@ -71,7 +79,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
   override val solverName: String = "btormc"
 
 
-  private def verifyMethods(p: VerificationProblem, proto: PendingInputNode, methods: Map[String, MethodSemantics]): Unit = {
+  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics]): Unit = {
     val check = new BoundedCheckBuilder(p.impl)
 
     //ShowDot(VerificationGraphToDot("proto", proto))
@@ -97,12 +105,11 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     val final_edges = new VerificationTreeEncoder(check).run(proto)
 
     // make sure that in the final states the mapping as well as the invariances hold
-    final_edges.foreach { case(edge, taken, step) =>
-      assert(edge.methods.size == 1)
+    final_edges.foreach { case FinalNode(ii, guard, method, isStep) =>
       // substitute any references to the state of the untimed model with the result of applying the method
-      val subs: Map[smt.Expr, smt.Expr] = method_state_subs(edge.methods.head).toMap
-      p.invariances.foreach(i => check.assertAt(step, implies(taken, elim(i.toExpr))))
-      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(step, implies(taken, elim(m.toExpr))))
+      val subs: Map[smt.Expr, smt.Expr] = method_state_subs(method).toMap
+      p.invariances.foreach(i => check.assertAt(ii, implies(guard, elim(i.toExpr))))
+      p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(ii, implies(guard, elim(m.toExpr))))
     }
 
     val sys = check.getCombinedSystem
@@ -140,55 +147,6 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
 
 class RefEqHashMap[A <: AnyRef, B] extends scala.collection.mutable.HashMap[A, B] {
   protected override def elemEquals(key1: A, key2: A): Boolean = (key1 eq key2)
-}
-
-class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
-
-  def run(proto: PendingInputNode): Seq[(VerificationEdge, smt.Symbol, Int)] = {
-    visit(proto, ii = 0, guard = tru)
-    finalEdges
-  }
-
-  private val edges = new RefEqHashMap[VerificationEdge, smt.Symbol]()
-  private def edgeSymbol(i: VerificationEdge): smt.Symbol = edges.getOrElseUpdate(i, {
-    smt.Symbol(s"${i.getClass.getSimpleName}_${edges.size}", smt.BoolType)
-  })
-
-  private val finalEdges = mutable.ArrayBuffer[(VerificationEdge, smt.Symbol, Int)]()
-
-  private def visit(state: PendingInputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
-    // input constraints
-    val I = state.next.map{ e => conjunction(e.constraints) }
-    // restrict input space to any available edge
-    check.assumeAt(ii, implies(guard, disjunction(I)))
-
-    // the edge symbol is true, iff the edge is taken
-    state.next.zip(I).foreach { case (edge, const) => check.assumeAt(ii, iff(edgeSymbol(edge), and(guard, const))) }
-
-    // map arguments only if input constraints match
-    state.next.collect { case e if e.mappings.nonEmpty =>
-      check.assumeAt(ii, implies(edgeSymbol(e), conjunction(e.mappings)))
-    }
-
-    // visit intermediate states
-    state.next.foreach { e => visit(e.next, ii, guard = edgeSymbol(e)) }
-  }
-
-  private def visit(state: PendingOutputNode, ii: Int, guard: smt.Expr): Unit = if(state.next.nonEmpty) {
-    // output constraints (for outputs tha mappings can be interpreted as constraints
-    val O = state.next.map{ e => conjunction(e.constraints ++ e.mappings) }
-    // assert that one of the possible output edges is used
-    check.assertAt(ii, implies(guard, disjunction(O)))
-
-    // the edge symbol is true, iff the edge is taken
-    state.next.zip(O).foreach { case (edge, const) => check.assumeAt(ii, iff(edgeSymbol(edge), and(guard, const))) }
-
-    // visit next states
-    state.next.foreach { e => visit(e.next, ii + 1, guard = edgeSymbol(e)) }
-
-    // remember final edges
-    finalEdges ++= state.next.filter(_.next.next.isEmpty).map(e => (e, edgeSymbol(e), ii + 1))
-  }
 }
 
 class VerifyMapping extends VerificationTask with SMTHelpers with HasSolver {

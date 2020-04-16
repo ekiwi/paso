@@ -132,35 +132,33 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
     (merge(parentToChildren, parentMap), roots | parentRoots)
   }
 
-  private def makeGraph(method: String, states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): PendingInputNode = {
+  private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): StepNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
-    // empty states should not be included in the graph
     if(states.head.isEmpty) {
       assert(states.forall(_.isEmpty))
-      return PendingInputNode()
+      return StepNode(Seq(), methods)
     }
 
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits, false)
 
     val outputs = states.map { st =>
       val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits, true)
-      val next = children.get(st).map(c => makeGraph(method, c, children, None, outBits)).getOrElse(PendingInputNode())
-      OutputEdge(outConst ++ st.pathCondition.toSeq, outMap, Set(method), next)
-    }
+      val next = children.get(st).map(c => makeGraph(methods, c, children, None, outBits)).toSeq
+      OutputNode(next, methods, outConst ++ st.pathCondition.toSeq ++ outMap)
+    }.toSeq
 
-    val outNode = PendingOutputNode(outputs.toSeq)
-    val inEdge = InputEdge(inConst ++ guard.toSeq, inMap, Set(method), outNode)
-    PendingInputNode(Seq(inEdge))
+    val inputs = Seq(InputNode(outputs, methods, inConst ++ guard.toSeq, inMap))
+    StepNode(inputs, methods)
   }
 
-  def getGraph(method: String, guard: smt.Expr): PendingInputNode = {
+  def getGraph(method: String, guard: smt.Expr): StepNode = {
     checkFinalStates(activeStates)
 
     val optGuard = if(guard == smt.BooleanLit(true)) { None } else { Some(guard) }
 
     // reverse connectivity
     val (children, roots) = reverseConnectivity(activeStates)
-    makeGraph(method, roots, children, optGuard, Map())
+    makeGraph(Set(method), roots, children, optGuard, Map())
   }
 
   def checkFinalStates(states: Iterable[ProtocolState]) = {
