@@ -217,9 +217,13 @@ class FirrtlInterpreter extends SMTHelpers {
     // TODO: handle out of bounds accesses gracefully
     case ir.SubAccess(expr, index, tpe) => onSubAccess(onExpr(expr), index)
     case firrtl.WSubAccess(expr, index, tpe, _) => onSubAccess(onExpr(expr), index)
-    case ir.Mux(cond, tval, fval, _) =>
+    case ir.Mux(c, tval, fval, _) =>
       val args = onExpr(tval, fval)
-      Value(ite(onExpr(cond, 1).e, args._1.get, args._2.get))
+      val cond = onExpr(c, 1).get
+      // shannon expansion
+      val valid = SMTSimplifier.simplify(or(and(cond, args._1.valid), and(not(cond), args._2.valid)))
+      val e = ite(cond, args._1.e, args._2.e)
+      Value(e, valid)
     case ir.ValidIf(cond, value, tpe) =>
       onExpr(value).copy(valid = onExpr(cond).get)
     case ir.UIntLiteral(value, width) => Value(onLiteral(value, getWidth(width)))
