@@ -65,6 +65,7 @@ class LVTMemory[B <: FPGAMem, L <: FPGAMem](size: MemSize, base: MemSize => B, m
   io.read.zip(lvt.io.read).zipWithIndex.foreach { case ((readOut, lvtRead), ii) =>
     lvtRead.addr := readOut.addr
     readOut.data := MuxLookup(lvtRead.data.asUInt(), DontCare, banks.zipWithIndex.map{case (m, jj) => jj.U -> m.io.read(ii).data })
+    banks.foreach{ _.io.read(ii).addr := readOut.addr }
   }
 }
 
