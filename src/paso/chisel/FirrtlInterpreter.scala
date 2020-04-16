@@ -159,10 +159,19 @@ class FirrtlInterpreter extends SMTHelpers {
     val writes = m.writers.map { w =>
       val data = getSimplifiedFinalValue(m.name + "." + w + ".data").get
       val addr = getSimplifiedFinalValue(m.name + "." + w + ".addr").get
-      val en = getSimplifiedFinalValue(m.name + "." + w + ".en").get
+      val en = getSimplifiedFinalValue(m.name + "." + w + ".en").get.get
+      val enSimpl = SMTSimplifier.simplify(en)
       val mask = getSimplifiedFinalValue(m.name + "." + w + ".mask").get
-      assert(mask.get == tru, "Currently we require the write mask to always be true!")
-      (en.get, addr.get, data.get)
+      // it is ok for data, addr and mask to be invalid when the write port is not enabled
+      def validWhenEnabled(v: Value) ={
+        val valid = SMTSimplifier.simplify(v.valid)
+        valid == tru || valid == enSimpl
+      }
+      assert(validWhenEnabled(mask))
+      assert(validWhenEnabled(addr))
+      assert(validWhenEnabled(data))
+      assert(mask.e == tru, "Currently we require the write mask to always be true!")
+      (enSimpl, addr.e, data.e)
     }
 
     assert(writes.length < 2, "TODO: deal with write-write conflicts")
