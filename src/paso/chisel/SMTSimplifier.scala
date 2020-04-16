@@ -273,7 +273,9 @@ trait FirrtlSymExecSimplifications extends SMTSimplifier {
     }
   }
 
-  override protected def simplifyITE(cond: Expr, a: Expr, b: Expr): Expr = (cond, a, b) match {
+  override protected def simplifyITE(cond: Expr, a: Expr, b: Expr): Expr =(cond, a, b) match {
+    case (c, BooleanLit(true), BooleanLit(false)) => c
+    case (c, BooleanLit(false), BooleanLit(true)) => simplifyNegationOp(c)
     // toBV(toBool(e)) pattern ITE(e == 1bv1, 1bv1, 0bv1) <=> e
     case(OperatorApplication(EqualityOp, List(e, BV1)), BV1, BV0) => e
     case _ => super.simplifyITE(cond, a, b)
