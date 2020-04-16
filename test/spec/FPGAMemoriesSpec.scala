@@ -185,6 +185,14 @@ class LaForest2W4RInductive(impl: LVTMemory[ParallelWriteMem[SimulationMem], Sim
   }
 }
 
+class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
+  mapping { (impl, spec) =>
+    forall(0 until impl.d.size.depth.toInt){ ii =>
+      when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
+    }
+  }
+}
+
 class FPGAMemoriesSpec extends FlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
@@ -200,6 +208,12 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
     def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
     val p = Elaboration()[ImplMem, Untimed2W4RMemory](makeLVTMem(data.size), new Untimed2W4RMemory(data.size), (impl, spec) => new LaForest2W4RInductive(impl, spec))
+    VerificationProblem.verify(p)
+  }
+
+  "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
+    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
+    val p = Elaboration()[SimulationMem, Untimed2W4RMemory](new SimulationMem(data), new Untimed2W4RMemory(data.size), (impl, spec) => new Simulation2W4RInductive(impl, spec))
     VerificationProblem.verify(p)
   }
 }
