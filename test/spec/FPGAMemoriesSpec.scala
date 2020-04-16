@@ -30,12 +30,10 @@ class Untimed1W1RMemory(size: MemSize) extends UntimedModule {
     val writeData = UInt(w.W)
   }
   val rw = fun("rw").in(new In(size.depth, size.dataType.getWidth)).out(size.dataType) { (in, readData) =>
-    when(valid(in.readAddr)) {
-      when(in.readAddr === in.writeAddr) {
-        readData := in.writeData
-      } .otherwise {
-        readData := mem(in.readAddr)
-      }
+    when(in.readAddr === in.writeAddr) {
+      readData := in.writeData
+    } .elsewhen(valid(in.readAddr)) {
+      readData := mem(in.readAddr)
     } .otherwise {
       readData := DontCare
     }
