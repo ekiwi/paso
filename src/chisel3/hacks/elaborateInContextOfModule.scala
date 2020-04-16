@@ -47,7 +47,8 @@ case class prefixNames(prefixes: Set[String]) {
       case r: Ref =>
         val pathName = node.id.pathName
         val parentPathName = node.id.parentPathName
-        if (prefixes.contains(parentPathName)) {
+        val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
+        if (prefixes.contains(parentPathNamePrefix)) {
           Ref(pathName)
         } else {
           r
