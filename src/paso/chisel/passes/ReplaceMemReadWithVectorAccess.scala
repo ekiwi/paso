@@ -11,7 +11,7 @@ import firrtl.ir.NoInfo
 case class ReplaceMemReadWithVectorAccess(memTypes: Map[String, ir.VectorType]) {
   private def replacePort(p: firrtl.CDefMPort): ir.Statement = {
     require(p.direction == firrtl.MRead || p.direction == firrtl.MInfer, s"Only read ports can be replaced not: ${p.direction}")
-    require(memTypes.contains(p.mem), s"Read port ${p.name} refers to unknown memory ${p.mem}: ${p.serialize}")
+    require(memTypes.contains(p.mem), s"Read port ${p.name} refers to unknown memory ${p.mem}: ${p.serialize}\nKnown Memories are: ${memTypes.keys.mkString(", ")}")
     val memTpe = memTypes(p.mem)
     val access = ir.SubAccess(ir.Reference(p.mem, memTpe), p.exps.head, memTpe.tpe)
     ir.DefNode(NoInfo, p.name, access)
