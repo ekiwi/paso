@@ -493,6 +493,7 @@ object Btor2Parser {
       op match {
         case "not" | "inc" | "dec" => OperatorApplication(NegationOp, List(expr))
         case "neg" => expr
+        case  "redand" | "redor" | "redxor" => expr
       }
     }
 
