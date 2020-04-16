@@ -174,7 +174,8 @@ class FirrtlInterpreter extends SMTHelpers {
       (enSimpl, addr.e, data.e)
     }
 
-    assert(writes.length < 2, "TODO: deal with write-write conflicts")
+    //assert(writes.length < 2, "TODO: deal with write-write conflicts")
+    if(writes.length >= 2) println("WARN: TODO: deal with write-write conflicts")
     writes.foldLeft[smt.Expr](smt.Symbol(m.name, m.typ)) { case (mem, (en, addr, data)) =>
       val update = store(mem, addr, data)
       if(en == tru) update else ite(en, update, mem)
