@@ -27,25 +27,25 @@ class MemoryIO(val d: MemData) extends Bundle {
 abstract class FPGAMem extends Module { val io: MemoryIO ; def d: MemData = io.d }
 
 /** multiple read ports through banking */
-class BankedMemory(size: MemSize, base: MemSize => FPGAMem, factor: Int) extends FPGAMem {
+class ParallelWriteMem[B <: FPGAMem](size: MemSize, base: MemSize => B, factor: Int) extends FPGAMem {
   require(factor > 0 && factor <= 32)
-  val mods = (0 until factor).map{_ => Module(base(size)) }
-  val io = IO(new MemoryIO(MemData(size, mods.head.d.readPorts * factor, mods.head.d.writePorts)))
+  val banks = (0 until factor).map{ _ => Module(base(size)) }
+  val io = IO(new MemoryIO(MemData(size, banks.head.d.readPorts * factor, banks.head.d.writePorts)))
 
   // connect write ports
-  mods.foreach(m => m.io.write.zip(io.write).foreach{case (a,b) => a <> b})
+  banks.foreach(m => m.io.write.zip(io.write).foreach{case (a,b) => a <> b})
   // connect read ports
-  val mod_read_ports = mods.flatMap(_.io.read)
+  val mod_read_ports = banks.flatMap(_.io.read)
   mod_read_ports.zip(io.read).foreach{case (a,b) => a <> b}
 }
 
 /** Live-Value-Table based memory
  *  see: http://fpgacpu.ca/multiport/FPGA2010-LaForest-Paper.pdf
  * */
-class LVTMemory(size: MemSize, base: MemSize => FPGAMem, makeLvt: MemData => FPGAMem, factor: Int) extends FPGAMem {
+class LVTMemory[B <: FPGAMem, L <: FPGAMem](size: MemSize, base: MemSize => B, makeLvt: MemData => L, factor: Int) extends FPGAMem {
   require(factor > 0 && factor <= 32)
-  val mods = (0 until factor).map{_ => Module(base(size)) }
-  val io = IO(new MemoryIO(MemData(size, mods.head.d.readPorts, mods.head.d.writePorts * factor)))
+  val banks = (0 until factor).map{ _ => Module(base(size)) }
+  val io = IO(new MemoryIO(MemData(size, banks.head.d.readPorts, banks.head.d.writePorts * factor)))
 
   // create the live-value table
   val lvtData = UInt(log2Ceil(factor).W)
@@ -58,13 +58,13 @@ class LVTMemory(size: MemSize, base: MemSize => FPGAMem, makeLvt: MemData => FPG
   }
 
   // connect write ports to banks
-  val mod_write_ports = mods.flatMap(_.io.write)
+  val mod_write_ports = banks.flatMap(_.io.write)
   mod_write_ports.zip(io.write).foreach{case (a,b) => a <> b}
 
   // retrieve values from correct bank
   io.read.zip(lvt.io.read).zipWithIndex.foreach { case ((readOut, lvtRead), ii) =>
     lvtRead.addr := readOut.addr
-    readOut.data := MuxLookup(lvtRead.data.asUInt(), DontCare, mods.zipWithIndex.map{case (m, jj) => jj.U -> m.io.read(ii) })
+    readOut.data := MuxLookup(lvtRead.data.asUInt(), DontCare, banks.zipWithIndex.map{case (m, jj) => jj.U -> m.io.read(ii).data })
   }
 }
 
