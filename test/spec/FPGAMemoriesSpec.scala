@@ -93,7 +93,12 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
 
   def read(addr: UInt, data: UInt, in: In): Unit = {
     when(addr === in.writeAddr0) {
-      data := in.writeData0
+      // if there is a write-write collision, the result is undefined
+      when(in.writeAddr0 === in.writeAddr1) {
+        data := DontCare
+      } .otherwise {
+        data := in.writeData0
+      }
     } .elsewhen(addr === in.writeAddr1) {
       data := in.writeData1
     } .elsewhen(valid(addr)) {
