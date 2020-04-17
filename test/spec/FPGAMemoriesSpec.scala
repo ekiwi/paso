@@ -6,7 +6,7 @@ package spec
 
 import chisel3._
 import chisel3.util._
-import impl.{ParallelWriteMem, FPGAMem, LVTMemory, MemData, MemSize, SimulationMem}
+import impl.{FPGAMem, LVTMemory, MemData, MemSize, ParallelWriteMem, SimulationMem, XorMemory}
 import paso._
 import org.scalatest._
 import paso.chisel.Elaboration
@@ -185,6 +185,25 @@ class LaForest2W4RInductive(impl: LVTMemory[ParallelWriteMem[SimulationMem], Sim
   }
 }
 
+class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
+                               spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
+  require(impl.d.writePorts == 2)
+  require(impl.d.readPorts == 4)
+
+  mapping { (impl, spec) =>
+    forall(0 until impl.d.size.depth.toInt){ addr =>
+      when(spec.valid(addr)) {
+        // read banks
+        (0 until 4).foreach { readBank =>
+          val data = impl.banks.map(_.banks(readBank).mem(addr)).reduce((a, b) => a ^ b)
+          assert(spec.mem(addr) === data)
+        }
+      }
+    }
+  }
+}
+
+
 class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ ii =>
@@ -208,6 +227,16 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
     def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
     val p = Elaboration()[ImplMem, Untimed2W4RMemory](makeLVTMem(data.size), new Untimed2W4RMemory(data.size), (impl, spec) => new LaForest2W4RInductive(impl, spec))
+    VerificationProblem.verify(p)
+  }
+
+  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" in {
+    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
+    type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
+    def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
+    def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
+    def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
+    val p = Elaboration()[ImplMem, Untimed2W4RMemory](makeXorMem(data), new Untimed2W4RMemory(data.size), (impl, spec) => new LaForest2W4RXorInductive(impl, spec))
     VerificationProblem.verify(p)
   }
 

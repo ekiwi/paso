@@ -69,6 +69,43 @@ class LVTMemory[B <: FPGAMem, L <: FPGAMem](size: MemSize, base: MemSize => B, m
   }
 }
 
+/**
+ * XOR based multi-port memory.
+ * see: http://fpgacpu.ca/multiport/TRETS2014-LaForest-Article.pdf
+ */
+class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem {
+  val readPortsPerBank = data.writePorts - 1 + data.readPorts
+  val banks = (0 until data.writePorts).map{_ => Module(base(MemData(data.size, readPortsPerBank, 1)))}
+  val io = IO(new MemoryIO(data))
+
+  // connect banks to write ports
+  banks.zip(io.write).zipWithIndex.foreach { case((targetBank, write), ii) =>
+    // find the corresponding read ports on all other banks
+    val others = banks.zipWithIndex.flatMap{ case(otherBank, jj) =>
+      if(jj == ii) None
+      else if(jj < ii) Some(otherBank.io.read(jj))
+      else Some(otherBank.io.read(jj-1))
+    }
+    // connect read port addresses
+    others.foreach(r => r.addr := write.addr)
+
+    // xor new and all old values
+    val data = (Seq(write.data) ++ others.map(_.data)).reduce((a,b) => a ^ b)
+    targetBank.io.write(0).addr := write.addr
+    targetBank.io.write(0).data := data
+  }
+
+  // connect banks to read ports
+  val readPortOffset = data.writePorts - 1
+  io.read.zipWithIndex.foreach { case (read, ii) =>
+    // read from all banks
+    banks.foreach(b => b.io.read(readPortOffset + ii).addr := read.addr)
+    val values = banks.map(b => b.io.read(readPortOffset + ii).data)
+    // return xor
+    read.data := values.reduce((a,b) => a ^ b)
+  }
+}
+
 class SimulationMem(data: MemData) extends FPGAMem {
   val io = IO(new MemoryIO(data))
   val mem = SyncReadMem(data.size.depth, data.size.dataType)
