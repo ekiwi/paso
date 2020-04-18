@@ -29,6 +29,33 @@ class CarrySaveState extends Bundle {
   val rdx = UInt(64.W)
 }
 
+class CarrySaveStep(carryChain: Int = 4) extends Module {
+  val io = IO(new Bundle {
+    val in = Input(new CarrySaveState)
+    val out = Output(new CarrySaveState)
+  })
+
+  val this_rs2 = Mux(io.in.rs1(0), io.in.rs2, 0.U)
+  // calculates rd + rdx + this_rs2
+  if(carryChain == 0) {
+    io.out.rdx := ((io.in.rd & io.in.rdx) | (io.in.rd & this_rs2) | (io.in.rdx & this_rs2)) << 1
+    io.out.rd := io.in.rd ^ io.in.rdx ^ this_rs2
+  } else {
+    val carry_res = (0 until 64 by carryChain).map { j =>
+      val (msb, lsb) = (j + carryChain - 1, j)
+      val tmp = io.in.rd(msb,lsb) +& io.in.rdx(msb,lsb) +& this_rs2(msb,lsb)
+      val carry = tmp(carryChain) ## 0.U((carryChain-1).W)
+      Seq(carry, tmp(carryChain-1,0))
+    }.transpose
+    io.out.rdx := carry_res(0).reverse.reduce((a,b) => a ## b) << 1
+    io.out.rd := carry_res(1).reverse.reduce((a,b) => a ## b)
+  }
+  io.out.rs1 := io.in.rs1 >> 1
+  io.out.rs2 := io.in.rs2 << 1
+}
+
+
+
 class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIModule {
   require(stepsAtOnce >= 1 && stepsAtOnce <= 31)
   require(carryChain == 0 || 64 % carryChain == 0)
@@ -49,30 +76,11 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
   val doWaitBuffer = RegNext(doWait)
   val mulStart = doWait && !doWaitBuffer // rising edge
 
-
-  // carry save
+  // carry save chain
   val state = Reg(new CarrySaveState)
-
-  var (next_rs1, next_rs2 , next_rd, next_rdx) = (state.rs1, state.rs2, state.rd, state.rdx)
-  (0 until stepsAtOnce).foreach { i =>
-    val this_rs2 = Mux(next_rs1(0), next_rs2, 0.U)
-    if(carryChain == 0) {
-      val next_rdt = next_rd ^ next_rdx ^ this_rs2
-      next_rdx = ((next_rd & next_rdx) | (next_rd & this_rs2) | (next_rdx & this_rs2)) << 1
-      next_rd = next_rdt
-    } else {
-      val carry_res = (0 until 64 by carryChain).map { j =>
-        val (msb, lsb) = (j + carryChain - 1, j)
-        val tmp = next_rd(msb,lsb) +& next_rdx(msb,lsb) +& this_rs2(msb,lsb)
-        val carry = tmp(carryChain) ## 0.U((carryChain-1).W)
-        Seq(carry, tmp(carryChain-1,0))
-      }.transpose
-      next_rdx = carry_res(0).reverse.reduce((a,b) => a ## b) << 1
-      next_rd = carry_res(1).reverse.reduce((a,b) => a ## b)
-    }
-    next_rs1 = next_rs1 >> 1
-    next_rs2 = next_rs2 << 1
-  }
+  val chain = Seq.tabulate(stepsAtOnce)(_ => Module(new CarrySaveStep(carryChain)))
+  chain.head.io.in := state
+  chain.iterator.sliding(2).withPartial(false).foreach { case Seq(a, b) => b.io.in := a.io.out }
 
   val mulCounter = Reg(UInt(7.W))
   val mulWaiting = RegInit(true.B)
@@ -89,10 +97,7 @@ class PicoRV32Mul(val stepsAtOnce: Int = 1, carryChain: Int = 4) extends PCPIMod
     mulCounter := Mux(instrAnyMulH, (63 - stepsAtOnce).U, (31 - stepsAtOnce).U)
     mulWaiting := !mulStart
   } .otherwise {
-    state.rs1 := next_rs1
-    state.rs2 := next_rs2
-    state.rd  := next_rd
-    state.rdx := next_rdx
+    state := chain.last.io.out
     mulCounter := mulCounter - stepsAtOnce.U
     mulWaiting := mulCounter(6) === 1.U
   }
