@@ -29,7 +29,7 @@ class TinyAES128 extends Module {
 
   val k = Seq(k0) ++ Seq.tabulate(9)(_ => Wire(UInt(128.W)))
   val s = Seq(s0) ++ Seq.tabulate(9)(_ => Wire(UInt(128.W)))
-  val kb = Seq.tabulate(9)(_ => Wire(UInt(128.W)))
+  val kb = Seq.tabulate(10)(_ => Wire(UInt(128.W)))
 
   val eOuts = k.drop(1) ++ Seq(Wire(UInt(128.W)))
   k.zip(eOuts).zip(kb).zip(StaticTables.rcon).zipWithIndex.foreach {
@@ -165,14 +165,14 @@ class IOBundle(inWidth: Int, outWidth: Int) extends Bundle {
 }
 
 class S4 extends Module {
-  val io = IO(new Bundle { val in = Input(UInt(32.W)) ; val out = UInt(32.W) })
+  val io = IO(new Bundle { val in = Input(UInt(32.W)) ; val out = Output(UInt(32.W)) })
   val S = Seq.tabulate(4)(_ => Module(new S))
   Utils.split(io.in, 4).zip(S).foreach { case (i, s) => s.io.in := i }
   io.out := S.map(_.io.out).reduce((a,b) => a ## b)
 }
 
 class T extends Module {
-  val io = IO(new Bundle { val in = UInt(8.W) ; val out = UInt(32.W) })
+  val io = IO(new Bundle { val in = Input(UInt(8.W)) ; val out = Output(UInt(32.W)) })
   val s0 = Module(new S)
   s0.io.in := io.in
   val s4 = Module(new xS)
@@ -181,11 +181,11 @@ class T extends Module {
 }
 
 class S extends Module {
-  val io = IO(new Bundle { val in = UInt(8.W) ; val out = UInt(8.W) })
+  val io = IO(new Bundle { val in = Input(UInt(8.W)) ; val out = Output(UInt(8.W)) })
   io.out := RegNext(VecInit(StaticTables.S.map(_.U(8.W)))(io.in))
 }
 class xS extends Module {
-  val io = IO(new Bundle { val in = UInt(8.W) ; val out = UInt(8.W) })
+  val io = IO(new Bundle { val in = Input(UInt(8.W)) ; val out = Output(UInt(8.W)) })
   io.out := RegNext(VecInit(StaticTables.xS.map(_.U(8.W)))(io.in))
 }
 
