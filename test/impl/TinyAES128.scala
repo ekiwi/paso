@@ -24,8 +24,6 @@ class TinyAES128 extends Module {
     val key = Input(UInt(128.W))
     val out = Output(UInt(128.W))
   })
-  val rcon = Seq(0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36)
-
   val s0 = RegNext(io.state ^ io.key)
   val k0 = RegNext(io.key)
 
@@ -34,7 +32,7 @@ class TinyAES128 extends Module {
   val kb = Seq.tabulate(9)(_ => Wire(UInt(128.W)))
 
   val eOuts = k.drop(1) ++ Seq(Wire(UInt(128.W)))
-  k.zip(eOuts).zip(kb).zip(rcon).zipWithIndex.foreach {
+  k.zip(eOuts).zip(kb).zip(StaticTables.rcon).zipWithIndex.foreach {
     case ((((in, out), outDelayed), rcon), ii) => ExpandKey128(rcon, in, out, outDelayed).suggestName(s"a$ii")
   }
 
@@ -184,14 +182,15 @@ class T extends Module {
 
 class S extends Module {
   val io = IO(new Bundle { val in = UInt(8.W) ; val out = UInt(8.W) })
-  io.out := RegNext(VecInit(SBoxTables.S.map(_.U(8.W)))(io.in))
+  io.out := RegNext(VecInit(StaticTables.S.map(_.U(8.W)))(io.in))
 }
 class xS extends Module {
   val io = IO(new Bundle { val in = UInt(8.W) ; val out = UInt(8.W) })
-  io.out := RegNext(VecInit(SBoxTables.xS.map(_.U(8.W)))(io.in))
+  io.out := RegNext(VecInit(StaticTables.xS.map(_.U(8.W)))(io.in))
 }
 
-object SBoxTables {
+object StaticTables {
+  val rcon = Seq(0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36)
   val S  = Seq(
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76, 0xca, 0x82, 0xc9,
     0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0, 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f,
