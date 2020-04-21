@@ -144,7 +144,34 @@ class AESSpec extends UntimedModule with AESHelperFunctions {
   }
 }
 
+class TinyAESProtocols(impl: TinyAES128, spec: AESSpec) extends Binding(impl, spec) {
+  protocol(spec.firstRound)(impl.io) { (clock, dut, in) =>
+    dut.key := in.key
+    dut.state := in.plainText
+    clock.step()
+  }
+  protocol(spec.midRound)(impl.io) { (clock, _) => clock.step() }
+  protocol(spec.finalRound)(impl.io) { (clock, dut, out) =>
+    clock.step()
+    dut.out.expect(out)
+  }
+}
 
-class TinyAESSpec {
+class TinyAESInductive(impl: TinyAES128, spec: AESSpec) extends TinyAESProtocols(impl, spec) {
+  mapping { (impl, spec) =>
+    (1 until 11).foreach { ii =>
+      when(spec.round === ii.U) {
+        assert(spec.cipherText === impl.s(ii - 1))
+        assert(spec.roundKey === impl.k(ii - 1))
+      }
+    }
+  }
+}
 
+
+class TinyAESSpec extends FlatSpec {
+  "TinyAES" should "refine its spec" in {
+    val p = Elaboration()[TinyAES128, AESSpec](new TinyAES128, new AESSpec, (impl, spec) => new TinyAESInductive(impl, spec))
+    VerificationProblem.verify(p)
+  }
 }
