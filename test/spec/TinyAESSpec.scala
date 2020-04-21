@@ -103,7 +103,8 @@ class AESSpec extends UntimedModule with AESHelperFunctions {
   }
 
   val midRound = fun("midRound").when(round > 0.U && round < 10.U) {
-    val encKey = expandKey128B(roundKey, StaticTables.rcon(10).U(8.W))
+    val rcon = VecInit(StaticTables.rcon.map(_.U(8.W)))(round - 1.U)
+    val encKey = expandKey128B(roundKey, rcon)
     val K0_4 = slice128To32(encKey)
     val S0_4 = slice128To32(cipherText)
 
@@ -118,7 +119,6 @@ class AESSpec extends UntimedModule with AESHelperFunctions {
     val z3 = p0(1) ^ p1(2) ^ p2(3) ^ p3(0) ^ K0_4(3)
 
     cipherText := z0 ## z1 ## z2 ## z3
-    val rcon = VecInit(StaticTables.rcon.map(_.U(8.W)))(round - 1.U)
     roundKey := expandKey128B(roundKey, rcon)
 
     round := round + 1.U
