@@ -105,7 +105,12 @@ class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem
     banks.foreach(b => b.io.read(readPortOffset + ii).addr := read.addr)
     val values = banks.map(b => b.io.read(readPortOffset + ii).data)
     // return xor
-    read.data := values.reduce((a,b) => a ^ b)
+    val data = values.reduce((a,b) => a ^ b)
+    // bypass
+    val bypasses = writeDelayed.zip(io.write).map{
+      case ((delayedData, _), write) => RegNext(write.addr === read.addr) -> delayedData
+    }
+    read.data := MuxCase(data, bypasses)
   }
 }
 
