@@ -78,20 +78,23 @@ class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem
   val banks = (0 until data.writePorts).map{_ => Module(base(MemData(data.size, readPortsPerBank, 1)))}
   val io = IO(new MemoryIO(data))
 
+  // delay write ports (this is necessary because reading takes one cycle and is required for the xor to work)
+  val writeDelayed = io.write.map(w => (RegNext(w.data), RegNext(w.addr)))
+
   // connect banks to write ports
-  banks.zip(io.write).zipWithIndex.foreach { case((targetBank, write), ii) =>
+  banks.zip(io.write).zip(writeDelayed).zipWithIndex.foreach { case (((targetBank, write), delayed), ii) =>
     // find the corresponding read ports on all other banks
     val others = banks.zipWithIndex.flatMap{ case(otherBank, jj) =>
       if(jj == ii) None
       else if(jj < ii) Some(otherBank.io.read(jj))
       else Some(otherBank.io.read(jj-1))
     }
-    // connect read port addresses
+    // connect read port addresses to latest write address
     others.foreach(r => r.addr := write.addr)
 
-    // xor new and all old values
-    val data = (Seq(write.data) ++ others.map(_.data)).reduce((a,b) => a ^ b)
-    targetBank.io.write(0).addr := write.addr
+    // in the next cycle: xor new and all old values
+    val data = (Seq(delayed._1) ++ others.map(_.data)).reduce((a,b) => a ^ b)
+    targetBank.io.write(0).addr := delayed._2
     targetBank.io.write(0).data := data
   }
 
