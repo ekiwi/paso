@@ -193,10 +193,21 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ addr =>
       when(spec.valid(addr)) {
-        // read banks
-        (0 until 4).foreach { readBank =>
-          val data = impl.banks.map(_.banks(readBank).mem(addr)).reduce((a, b) => a ^ b)
+        // if the address was recently written, the data is still in flight
+        when(addr === impl.writeDelayed(0)._2) {
+          assert(spec.mem(addr) === impl.writeDelayed(0)._1)
+        } .elsewhen(addr === impl.writeDelayed(1)._2) {
+          assert(spec.mem(addr) === impl.writeDelayed(1)._1)
+        } .otherwise {
+          val data = impl.banks.map(_.banks(0).mem(addr)).reduce((a, b) => a ^ b)
           assert(spec.mem(addr) === data)
+          // all read banks in a write bank have the same value
+          (0 until 2).foreach { writeBank =>
+            val value = impl.banks(writeBank).banks(0).mem(addr)
+            (1 until impl.readPortsPerBank).foreach { readBank =>
+              assert(impl.banks(writeBank).banks(readBank).mem(addr) === value)
+            }
+          }
         }
       }
     }
