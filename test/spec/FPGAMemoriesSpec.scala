@@ -196,8 +196,14 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
         // if the address was recently written, the data is still in flight
         when(addr === impl.writeDelayed(0)._2) {
           assert(spec.mem(addr) === impl.writeDelayed(0)._1)
+          val otherWriteBank = impl.banks(1).banks(0)
+          // TODO: support referring to output register of  SyncMems
+          assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
         } .elsewhen(addr === impl.writeDelayed(1)._2) {
           assert(spec.mem(addr) === impl.writeDelayed(1)._1)
+          val otherWriteBank = impl.banks(0).banks(0)
+          // TODO: support referring to output register of  SyncMems
+          assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
         } .otherwise {
           val data = impl.banks.map(_.banks(0).mem(addr)).reduce((a, b) => a ^ b)
           assert(spec.mem(addr) === data)

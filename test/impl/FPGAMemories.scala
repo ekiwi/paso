@@ -105,14 +105,7 @@ class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem
   io.read.zipWithIndex.foreach { case (read, ii) =>
     // read from all banks
     banks.foreach(b => b.io.read(readPortOffset + ii).addr := read.addr)
-    //val values = banks.map(b => b.io.read(readPortOffset + ii).data)
-
-    val values = banks.map{ b =>
-      // 0-delay bypass when the write address of the bank matches our read address
-      // this addresses the case where a read to an address directly follows a write to the same address
-      val doBypass = b.io.write(0).addr === read.addr
-      Mux(doBypass, b.io.write(0).data, b.io.read(readPortOffset + ii).data)
-    }
+    val values = banks.map(b => b.io.read(readPortOffset + ii).data)
 
     // return xor
     val data = values.reduce((a,b) => a ^ b)
