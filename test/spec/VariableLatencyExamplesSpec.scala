@@ -65,14 +65,14 @@ class RandomLatencyKeepOutput(maxLatency: Int = 4) extends RandomLatency(maxLate
 
 class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity) extends Binding(impl, spec) {
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
-    dut.start.poke(true.B)
-    dut.dataIn.poke(in)
+    dut.start.set(true.B)
+    dut.dataIn.set(in)
     dut.done.expect(false.B)
     clock.step()
 
-    dut.start.poke(false.B)
-    dut.dataIn.poke(DontCare)
-    do_while(!dut.done.peek(), max=4) {
+    dut.start.set(false.B)
+    dut.dataIn.set(DontCare)
+    do_while(!dut.done.get(), max=4) {
       clock.step()
     }
 
@@ -80,7 +80,7 @@ class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity
     clock.step()
   }
   protocol(spec.idle)(impl.io) { (clock, dut) =>
-    dut.start.poke(false.B)
+    dut.start.set(false.B)
     clock.step()
   }
 }
@@ -91,14 +91,14 @@ class RandomLatencyInductive(impl: RandomLatency, spec: Identity) extends Random
 
 class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: IdentityAndKeep) extends Binding(impl, spec) {
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
-    dut.start.poke(true.B)
-    dut.dataIn.poke(in)
+    dut.start.set(true.B)
+    dut.dataIn.set(in)
     dut.done.expect(false.B)
     clock.step()
 
-    dut.start.poke(false.B)
-    dut.dataIn.poke(DontCare)
-    do_while(!dut.done.peek(), max=4) {
+    dut.start.set(false.B)
+    dut.dataIn.set(DontCare)
+    do_while(!dut.done.get(), max=4) {
       clock.step()
     }
 
@@ -106,7 +106,7 @@ class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: Id
     clock.step()
   }
   protocol(spec.idle)(impl.io) { (clock, dut, out) =>
-    dut.start.poke(false.B)
+    dut.start.set(false.B)
     dut.dataOut.expect(out)
     clock.step()
   }

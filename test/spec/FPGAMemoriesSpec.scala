@@ -44,13 +44,13 @@ class Untimed1W1RMemory(size: MemSize) extends UntimedModule {
 
 class Mem1W1RProtocol[F <: FPGAMem](impl: F, spec: Untimed1W1RMemory) extends Binding(impl, spec) {
   protocol(spec.rw)(impl.io) { (clock, dut, in, readData) =>
-    dut.write.head.addr.poke(in.writeAddr)
-    dut.write.head.data.poke(in.writeData)
-    dut.read.head.addr.poke(in.readAddr)
+    dut.write.head.addr.set(in.writeAddr)
+    dut.write.head.data.set(in.writeData)
+    dut.read.head.addr.set(in.readAddr)
     clock.step()
-    dut.write.head.addr.poke(DontCare)
-    dut.write.head.data.poke(DontCare)
-    dut.read.head.addr.poke(DontCare)
+    dut.write.head.addr.set(DontCare)
+    dut.write.head.data.set(DontCare)
+    dut.read.head.addr.set(DontCare)
     dut.read.head.data.expect(readData)
   }
 }
@@ -132,27 +132,27 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
 class Mem2W4RProtocol[F <: FPGAMem](impl: F, spec: Untimed2W4RMemory) extends Binding(impl, spec) {
   protocol(spec.rw)(impl.io) { (clock, dut, in, out) =>
     // write
-    dut.write(0).addr.poke(in.writeAddr0)
-    dut.write(0).data.poke(in.writeData0)
-    dut.write(1).addr.poke(in.writeAddr1)
-    dut.write(1).data.poke(in.writeData1)
+    dut.write(0).addr.set(in.writeAddr0)
+    dut.write(0).data.set(in.writeData0)
+    dut.write(1).addr.set(in.writeAddr1)
+    dut.write(1).data.set(in.writeData1)
     //read
-    dut.read(0).addr.poke(in.readAddr0)
-    dut.read(1).addr.poke(in.readAddr1)
-    dut.read(2).addr.poke(in.readAddr2)
-    dut.read(3).addr.poke(in.readAddr3)
+    dut.read(0).addr.set(in.readAddr0)
+    dut.read(1).addr.set(in.readAddr1)
+    dut.read(2).addr.set(in.readAddr2)
+    dut.read(3).addr.set(in.readAddr3)
 
     clock.step()
 
     // invalidate inputs (TODO: add option to make pokes not stick!)
-    dut.write(0).addr.poke(DontCare)
-    dut.write(0).data.poke(DontCare)
-    dut.write(1).addr.poke(DontCare)
-    dut.write(1).data.poke(DontCare)
-    dut.read(0).addr.poke(DontCare)
-    dut.read(1).addr.poke(DontCare)
-    dut.read(2).addr.poke(DontCare)
-    dut.read(3).addr.poke(DontCare)
+    dut.write(0).addr.set(DontCare)
+    dut.write(0).data.set(DontCare)
+    dut.write(1).addr.set(DontCare)
+    dut.write(1).data.set(DontCare)
+    dut.read(0).addr.set(DontCare)
+    dut.read(1).addr.set(DontCare)
+    dut.read(2).addr.set(DontCare)
+    dut.read(3).addr.set(DontCare)
 
     // verify read data
     dut.read(0).data.expect(out.readData0)

@@ -48,33 +48,33 @@ class FifoProtocols[F <: IsFifo](impl: F, spec: UntimedFifo[UInt]) extends Bindi
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
   protocol(spec.push)(impl.io) { (clock, dut, in) =>
-    dut.pop.poke(false.B)
-    dut.push.poke(true.B)
-    dut.data_in.poke(in)
+    dut.pop.set(false.B)
+    dut.push.set(true.B)
+    dut.data_in.set(in)
     dut.full.expect(false.B)
     clock.step()
   }
 
   protocol(spec.pop)(impl.io) { (clock, dut, out) =>
-    dut.pop.poke(true.B)
-    dut.push.poke(false.B)
+    dut.pop.set(true.B)
+    dut.push.set(false.B)
     dut.data_out.expect(out)
     dut.empty.expect(false.B)
     clock.step()
   }
 
   protocol(spec.push_pop)(impl.io) { (clock, dut, in, out) =>
-    dut.pop.poke(true.B)
-    dut.push.poke(true.B)
-    dut.data_in.poke(in)
+    dut.pop.set(true.B)
+    dut.push.set(true.B)
+    dut.data_in.set(in)
     dut.data_out.expect(out)
     dut.empty.expect(false.B)
     clock.step()
   }
 
   protocol(spec.idle)(impl.io) { (clock, dut) =>
-    dut.pop.poke(false.B)
-    dut.push.poke(false.B)
+    dut.pop.set(false.B)
+    dut.push.set(false.B)
     clock.step()
   }
 }

@@ -60,13 +60,13 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
 
   // TODO: support more than just UInt
   implicit class testableData[T <: UInt](x: T) {
-    def poke(value: T): Unit = {
+    def set(value: T): Unit = {
       x := value
     }
-    def poke(value: DontCare.type): Unit = {
+    def set(value: DontCare.type): Unit = {
       x := value
     }
-    def peek(): T = x
+    def get(): T = x
     def expect(value: T): Unit = {
       val w = Wire(Bool()).suggestName("expect")
       w := x === value

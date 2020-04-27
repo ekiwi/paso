@@ -29,21 +29,21 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
   def mulProtocol(io: PCPI, clock: Clock, op: String, rs1: UInt, rs2: UInt, rd: UInt): Unit = {
     val instr = ("b" + "0000001" + "0000000000" + op + "00000" + "0110011").U
 
-    io.valid.poke(true.B)
-    io.insn.poke(instr)
+    io.valid.set(true.B)
+    io.insn.set(instr)
     println(s"instruction: ${instr.litValue()}")
-    io.rs1.poke(rs1)
-    io.rs2.poke(rs2)
+    io.rs1.set(rs1)
+    io.rs2.set(rs2)
     io.wr.expect(false.B)
     io.ready.expect(false.B)
     clock.step()
-    do_while(!io.ready.peek(), max=70) {
+    do_while(!io.ready.get(), max=70) {
       clock.step()
     }
     io.rd.expect(rd)
     io.wr.expect(true.B)
     clock.step()
-    io.valid.poke(false.B)
+    io.valid.set(false.B)
     clock.step()
   }
 
