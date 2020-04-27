@@ -63,10 +63,13 @@ class Binding[IM <: RawModule, SM <: UntimedModule](impl: IM, spec: SM) {
     def set(value: T): Unit = {
       x := value
     }
+    def poke(value: T): Unit = set(value)
     def set(value: DontCare.type): Unit = {
       x := value
     }
+    def poke(value: DontCare.type): Unit = set(value)
     def get(): T = x
+    def peek(): T = get()
     def expect(value: T): Unit = {
       val w = Wire(Bool()).suggestName("expect")
       w := x === value
