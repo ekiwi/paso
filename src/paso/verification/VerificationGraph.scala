@@ -230,17 +230,17 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
   }
 
   private var branchCounter: Int = 0
-  private def getUniqueBranchInput(choices: Int): Seq[smt.Expr] = {
+  private def getUniqueBranchInput(choices: Int): (smt.Symbol, Seq[smt.Expr]) = {
     assert(choices > 1)
     val bits = log2Ceil(choices-1)
     val complete = 1 << bits == choices
     val sym = smt.Symbol(s"branch_${branchCounter}", smt.BitVectorType(bits))
     branchCounter += 1
-    if(complete) {
+    (sym, if(complete) {
       (0 until choices).map(ii => eq(sym, smt.BitVectorLit(ii, bits)))
     } else {
       (0 until choices-1).map(ii => eq(sym, smt.BitVectorLit(ii, bits))) ++ Seq(cmpConst(BVGTUOp, sym, choices-1))
-    }
+    })
   }
 
   private var stateCounter: Int = 0
@@ -250,22 +250,15 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
     if(node.isFinal) { throw new NotImplementedError("TODO") }
 
     val id = getStateId
-    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length) } else { Seq(tru) }
-
-
-    if(node.isBranchPoint) {
-      val choices = getUniqueBranchInput(node.next.length)
-      node.next.zip(choices).foreach { case (input, choice) =>
-
-        visit(input, state.copy(pathGuard = sym))
-      }
-    } else {
-      visit(node.next.head, state)
+    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length)._2 } else { Seq(tru) }
+    node.next.zip(inputGuards).foreach { case (input, guard) =>
+      visit(input, guard)
     }
+
     id
   }
 
-  private def visit(node: InputNode, state: State): Unit = {
+  private def visit(node: InputNode, guard: smt.Expr): Unit = {
     assert(!node.isFinal, "Should never end on an input node. Expecting an empty output node to follow.")
     if(node.mappingExpr != tru) { check.assumeAt(state.ii, implies(state.pathGuard, node.mappingExpr)) }
 
