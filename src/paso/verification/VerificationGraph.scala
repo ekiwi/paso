@@ -6,10 +6,12 @@ package paso.verification
 
 import java.io.FileWriter
 
+import chisel3.util.log2Ceil
+
 import scala.sys.process._
 import paso.chisel.{SMTHelpers, SMTSimplifier}
 import uclid.smt
-import uclid.smt.ConjunctionOp
+import uclid.smt.{BVGTUOp, ConjunctionOp}
 
 import scala.collection.mutable
 
@@ -159,6 +161,135 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
   }
 }
 
+class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
+
+  type StateId = Int
+  case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
+  case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
+  case class NextState(guard: smt.Expr, nextId: StateId)
+  case class State(name: String, id: StateId,
+                   branches: Seq[smt.Symbol],               // inputs that determine branching decisions
+                   nextState: Seq[NextState],               // the next state might depend on inputs and outputs
+                   environmentAssumptions: smt.Expr,        // restrict the inputs space
+                   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the inputs
+                   inputMappings: Seq[ArgMap]               // mapping DUV inputs to method arguments (depending on input constraints)
+                  )
+
+  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State]): smt.TransitionSystem = {
+    // calculate transition function for the "state" state, i.e. the state of our automaton
+    val stateBits = log2Ceil(states.length + 1)
+    val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
+    def inState(id: Int): smt.Expr = eq(stateSym, smt.BitVectorLit(id, stateBits))
+
+    // if we ever get into this state, we have done something wrong
+    val invalidState = smt.BitVectorLit(states.length, stateBits)
+    val badInInvalidState = eq(stateSym, invalidState)
+
+    // calculate the next state
+    val nextStateAndGuard= states.flatMap(s => s.nextState.map(n => (n.nextId, and(n.guard, inState(s.id)))))
+    val nextState = nextStateAndGuard.groupBy(_._1).foldLeft[smt.Expr](invalidState){ case (other, (stateId, guards)) =>
+      ite(disjunction(guards.map(_._2)), smt.BitVectorLit(stateId, stateBits), other)
+    }
+    val stateState = smt.State(stateSym, init = Some(smt.BitVectorLit(start.id, stateBits)), next = Some(nextState))
+
+    // besides the "state" we need to keep track of argument mapped in earlier cycles
+    // so that we can use them in output constraints in a later cycle
+    // to do this we create a state for every argument
+    val mappingsByArgName = states.flatMap(s => s.inputMappings.map((s.id,_))).groupBy(_._2.eq.argRange.sym.id)
+    val args = mappingsByArgName.map { case(_, m) =>
+      val stateSym = m.head._2.eq.argRange.sym
+      val nextArg = m.groupBy(_._1).map { case (state, updates) =>
+        // TODO: for now we only support a single full update --> need to implement partial updates at some point
+        assert(updates.length == 1)
+        assert(updates.head._2.eq.argRange.isFullRange)
+        and(inState(state), updates.head._2.guard) -> updates.head._2.eq.range.toExpr()
+      }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
+      smt.State(stateSym, next = Some(nextArg))
+    }
+
+    // turn environment assumptions into constraints
+    val constraints = states.map(s => implies(inState(s.id), s.environmentAssumptions))
+
+    // turn system assertions into bad states (requires negation)
+    val asserts = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
+    val bads = asserts.map(not) ++ Seq(badInInvalidState)
+
+    smt.TransitionSystem(
+      name = Some(prefix.dropRight(1)),
+      // TODO: use inputs to decide branches
+      inputs = Seq(),
+      states = Seq(stateState) ++ args,
+      constraints = constraints,
+      bad = bads
+    )
+  }
+
+  def run(proto: StepNode): Seq[FinalNode] = {
+    visit(proto)
+    finalNodes
+  }
+
+  private var branchCounter: Int = 0
+  private def getUniqueBranchInput(choices: Int): Seq[smt.Expr] = {
+    assert(choices > 1)
+    val bits = log2Ceil(choices-1)
+    val complete = 1 << bits == choices
+    val sym = smt.Symbol(s"branch_${branchCounter}", smt.BitVectorType(bits))
+    branchCounter += 1
+    if(complete) {
+      (0 until choices).map(ii => eq(sym, smt.BitVectorLit(ii, bits)))
+    } else {
+      (0 until choices-1).map(ii => eq(sym, smt.BitVectorLit(ii, bits))) ++ Seq(cmpConst(BVGTUOp, sym, choices-1))
+    }
+  }
+
+  private var stateCounter: Int = 0
+  private def getStateId: Int = { val ii = stateCounter; stateCounter += 1; ii}
+
+  private def visit(node: StepNode): StateId = {
+    if(node.isFinal) { throw new NotImplementedError("TODO") }
+
+    val id = getStateId
+    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length) } else { Seq(tru) }
+
+
+    if(node.isBranchPoint) {
+      val choices = getUniqueBranchInput(node.next.length)
+      node.next.zip(choices).foreach { case (input, choice) =>
+
+        visit(input, state.copy(pathGuard = sym))
+      }
+    } else {
+      visit(node.next.head, state)
+    }
+    id
+  }
+
+  private def visit(node: InputNode, state: State): Unit = {
+    assert(!node.isFinal, "Should never end on an input node. Expecting an empty output node to follow.")
+    if(node.mappingExpr != tru) { check.assumeAt(state.ii, implies(state.pathGuard, node.mappingExpr)) }
+
+    // at least one of the following output constraints has to be true
+    assertAt(state, disjunction(node.next.map(_.constraintExpr)))
+
+    if(node.isBranchPoint) {
+      val syms = getUniqueBranchSymbols(node.next.length)
+      node.next.zip(syms).foreach { case (output, sym) =>
+        // associate path with a symbol
+        check.assumeAt(state.ii, iff(sym, and(state.pathGuard, output.constraintExpr)))
+        visit(output, state.copy(pathGuard = sym))
+      }
+    } else {
+      visit(node.next.head, state)
+    }
+  }
+
+  private def visit(node: OutputNode, guard: smt.Expr): NextState = {
+    if(node.isFinal) { throw new NotImplementedError("TODO") }
+    assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
+    NextState(guard, visit(node.next.head))
+  }
+}
 
 object Checker extends SMTHelpers with HasSolver {
   val solver = new YicesInterface
