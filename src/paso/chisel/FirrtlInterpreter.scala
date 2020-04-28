@@ -195,9 +195,6 @@ class FirrtlInterpreter extends SMTHelpers {
     onStmt(fals)
     cond_stack.pop()
   }
-  def onIsInvalid(expr: Value): Unit = {
-    throw new RuntimeException(s"TODO: $expr is invalid")
-  }
 
   // extends expression to width
   def onExpr(e: ir.Expression, width: Int): Value =
@@ -235,7 +232,9 @@ class FirrtlInterpreter extends SMTHelpers {
       val e = ite(cond, args._1.e, args._2.e)
       Value(e, valid)
     case ir.ValidIf(cond, value, tpe) =>
-      onExpr(value).copy(valid = onExpr(cond).get)
+      val e = onExpr(value)
+      val valid = and(e.valid, onExpr(cond).get)
+      e.copy(valid = valid)
     case ir.UIntLiteral(value, width) => Value(onLiteral(value, getWidth(width)))
     case ir.SIntLiteral(value, width) => Value(onLiteral(value, getWidth(width)))
     case ir.DoPrim(op, Seq(a, b), Seq(), tpe) =>
@@ -303,7 +302,7 @@ class FirrtlInterpreter extends SMTHelpers {
     case ir.Connect(_, loc, expr) =>
       onConnect(loc, expr)
     case ir.IsInvalid(_, expr) =>
-      onIsInvalid(onExpr(expr))
+      onConnect(expr, ir.ValidIf(ir.UIntLiteral(0), ir.UIntLiteral(0), expr.tpe))
       //refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
     case ir.EmptyStmt =>
     case other =>

@@ -54,14 +54,13 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
         interpreter.onExpect(lhs, rhs)
       case other => throw new RuntimeException(s"Unexpected pattern for expects: $other")
     } else if(name.startsWith("io_") && isOutput(name)) {
-      interpreter.onSet(smt.Symbol(name, outputs(name)), expr.get, sticky=true)
+      val s = smt.Symbol(name, outputs(name))
+      if(SMTSimplifier.simplify(expr.valid) == fals) {
+        interpreter.onUnSet(s)
+      } else {
+        interpreter.onSet(s, expr.get, sticky = true)
+      }
     }
     super.onConnect(name, expr)
-  }
-
-  override def onIsInvalid(expr: Value): Unit = expr.get match {
-    case s @ smt.Symbol(name, typ) =>
-      assert(name.startsWith("io_") && isOutput(name), f"Unexpected signal $name : $typ")
-      interpreter.onUnSet(s)
   }
 }

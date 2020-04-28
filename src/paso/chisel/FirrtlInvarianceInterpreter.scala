@@ -71,6 +71,4 @@ class FirrtlInvarianceInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) e
     val e = substituteSmt(expr.get, subs)
     asserts ++= makeAsserts(pathCondition, e)
   }
-
-  override def onIsInvalid(expr: Value): Unit = {} // ignore invalids
 }
