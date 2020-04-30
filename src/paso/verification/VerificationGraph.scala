@@ -174,7 +174,7 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
                    systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
                   )
 
-  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State], inputs: Seq[smt.Symbol]): smt.TransitionSystem = {
+  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State]): smt.TransitionSystem = {
     // calculate transition function for the "state" state, i.e. the state of our automaton
     val stateBits = log2Ceil(states.length + 1)
     val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
@@ -215,7 +215,7 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
 
     smt.TransitionSystem(
       name = Some(prefix.dropRight(1)),
-      inputs = inputs,
+      inputs = Seq(),
       states = Seq(stateState) ++ args,
       constraints = constraints,
       bad = bads
@@ -225,23 +225,7 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
   def run(proto: StepNode, prefix: String = ""): smt.TransitionSystem = {
     val start_id = visit(proto)
     val start = states.find(_.id == start_id).get
-    encodeStatesIntoTransitionSystem(prefix, start, states, branchInputs)
-  }
-
-  private var branchCounter: Int = 0
-  private val branchInputs = mutable.ArrayBuffer[smt.Symbol]()
-  private def getUniqueBranchInput(choices: Int): Seq[smt.Expr] = {
-    assert(choices > 1)
-    val bits = log2Ceil(choices-1)
-    val complete = 1 << bits == choices
-    val sym = smt.Symbol(s"branch_${branchCounter}", smt.BitVectorType(bits))
-    branchInputs.append(sym)
-    branchCounter += 1
-    if(complete) {
-      (0 until choices).map(ii => eq(sym, smt.BitVectorLit(ii, bits)))
-    } else {
-      (0 until choices-1).map(ii => eq(sym, smt.BitVectorLit(ii, bits))) ++ Seq(cmpConst(BVGTUOp, sym, choices-1))
-    }
+    encodeStatesIntoTransitionSystem(prefix, start, states)
   }
 
   private var stateCounter: Int = 0
@@ -253,42 +237,32 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
 
     val id = getStateId
 
-    // make a non deterministic decision on which input path to take
-    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length) } else { Seq(tru) }
-    val environmentAssumptions = conjunction(node.next.zip(inputGuards).map{
-      case (input, guard) => implies(guard, input.constraintExpr)
-    })
+    // either of the following input constraints could be true
+    val environmentAssumptions = disjunction(node.next.map(_.constraintExpr))
+
+    // TODO: in case there is an input branch, identifying the disagreeing constraint that separates
+    //       the branches would lead to a smaller formula,
+    //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
+    val inputGuards = if(node.isBranchPoint) { node.next.map(_.constraintExpr) } else { Seq(tru) }
     val inputMappings = node.next.zip(inputGuards).flatMap {
-      case (input, guard) => input.mappings.map(ArgMap(guard, _))
+      case (input, inGuard) => input.mappings.map(ArgMap(inGuard, _))
     }
-
-
-    val s = State(id, )
-  }
-
-  private def visit(node: InputNode, guard: smt.Expr): Unit = {
-    assert(!node.isFinal, "Should never end on an input node. Expecting an empty output node to follow.")
-    if(node.mappingExpr != tru) { check.assumeAt(state.ii, implies(state.pathGuard, node.mappingExpr)) }
-
-    // at least one of the following output constraints has to be true
-    assertAt(state, disjunction(node.next.map(_.constraintExpr)))
-
-    if(node.isBranchPoint) {
-      val syms = getUniqueBranchSymbols(node.next.length)
-      node.next.zip(syms).foreach { case (output, sym) =>
-        // associate path with a symbol
-        check.assumeAt(state.ii, iff(sym, and(state.pathGuard, output.constraintExpr)))
-        visit(output, state.copy(pathGuard = sym))
+    val systemAssertions = node.next.zip(inputGuards).map { case (input, inGuard) =>
+        // at least one of the following output constraints has to be true
+        val c = disjunction(input.next.map(o => and(o.constraintExpr, o.mappingExpr)))
+        OutputConstraint(inGuard, c)
+    }
+    val nextState = node.next.zip(inputGuards).flatMap { case (input, inGuard) =>
+      val outputGuards = if(input.isBranchPoint) { input.next.map(_.constraintExpr) } else { Seq(tru) }
+      input.next.zip(outputGuards).map{ case(output, outGuard) =>
+        assert(!output.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
+        NextState(and(inGuard, outGuard), visit(output.next.head))
       }
-    } else {
-      visit(node.next.head, state)
     }
-  }
 
-  private def visit(node: OutputNode, guard: smt.Expr): NextState = {
-    if(node.isFinal) { throw new NotImplementedError("TODO") }
-    assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
-    NextState(guard, visit(node.next.head))
+    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions)
+    states.append(s)
+    s.id
   }
 }
 
