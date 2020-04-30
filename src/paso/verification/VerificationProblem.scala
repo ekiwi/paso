@@ -29,13 +29,22 @@ sealed trait VerificationNode {
   def isFinal: Boolean = next.isEmpty
   def isBranchPoint: Boolean = next.length > 1
 }
-case class StepNode(next: Seq[InputNode], methods: Set[String]) extends VerificationNode
-case class InputNode(next: Seq[OutputNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[smt.Expr]= Seq()) extends VerificationNode {
+
+sealed trait IONode {
+  val constraints: Seq[smt.Expr]
+  val mappings: Seq[ArgumentEq]
+  val hasGuardedMappings: Boolean = false
   lazy val constraintExpr: smt.Expr = SMTHelper.conjunction(constraints)
-  lazy val mappingExpr: smt.Expr = SMTHelper.conjunction(mappings)
+  lazy val mappingExpr: smt.Expr = {
+    val e = if(hasGuardedMappings) { mappings.map(_.toGuardedExpr()) } else { mappings.map(_.toExpr()) }
+    SMTHelper.conjunction(e)
+  }
 }
-case class OutputNode(next: Seq[StepNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq()) extends VerificationNode {
-  lazy val constraintExpr: smt.Expr = SMTHelper.conjunction(constraints)
+
+case class StepNode(next: Seq[InputNode], methods: Set[String]) extends VerificationNode
+case class InputNode(next: Seq[OutputNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[ArgumentEq]= Seq()) extends VerificationNode with IONode
+case class OutputNode(next: Seq[StepNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[ArgumentEq]= Seq()) extends VerificationNode with IONode {
+  override val hasGuardedMappings: Boolean = true
 }
 
 trait Assertion { def toExpr: smt.Expr }

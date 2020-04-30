@@ -137,10 +137,10 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
 
   private def visit(node: InputNode, state: State): Unit = {
     assert(!node.isFinal, "Should never end on an input node. Expecting an empty output node to follow.")
-    if(node.mappingExpr != tru) { check.assumeAt(state.ii, implies(state.pathGuard, node.mappingExpr)) }
+    if(node.mappings.nonEmpty) { check.assumeAt(state.ii, implies(state.pathGuard, node.mappingExpr)) }
 
     // at least one of the following output constraints has to be true
-    assertAt(state, disjunction(node.next.map(_.constraintExpr)))
+    assertAt(state,  disjunction(node.next.map(o => and(o.constraintExpr, o.mappingExpr))))
 
     if(node.isBranchPoint) {
       val syms = getUniqueBranchSymbols(node.next.length)

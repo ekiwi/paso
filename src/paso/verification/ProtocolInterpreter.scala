@@ -139,12 +139,12 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
       return StepNode(Seq(), methods)
     }
 
-    val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits, false)
+    val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
 
     val outputs = states.map { st =>
-      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits, true)
+      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
       val next = children.get(st).map(c => makeGraph(methods, c, children, None, outBits)).toSeq
-      OutputNode(next, methods, outConst ++ st.pathCondition.toSeq ++ outMap)
+      OutputNode(next, methods, outConst ++ st.pathCondition.toSeq, outMap)
     }.toSeq
 
     val inputs = Seq(InputNode(outputs, methods, inConst ++ guard.toSeq, inMap))
@@ -171,25 +171,24 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
   /**
    * If an argument has been mapped before, it now only serves as a constraint.
    */
-  private def findMappingsAndConstraints(eq: Iterable[RangeEquality], mappedBits: BitMap, withGuards: Boolean): (Seq[smt.Expr], Seq[smt.Expr], BitMap) = {
+  private def findMappingsAndConstraints(eq: Iterable[RangeEquality], mappedBits: BitMap): (Seq[ArgumentEq], Seq[smt.Expr], BitMap) = {
     if(eq.isEmpty) return (Seq(), Seq(), mappedBits)
 
     val newBits = mutable.HashMap(mappedBits.toSeq: _*)
 
     val mapConst = eq.map {
-      case c: ConstantEq => Seq(None, Some(c.toExpr()))
+      case c: ConstantEq => (None, Some(c.toExpr()))
       case a: ArgumentEq =>
         if(isMapping(a.argRange, newBits)) {
-          val e = if(withGuards) a.toGuardedExpr() else a.toExpr()
-          Seq(Some(e), None)
+          (Some(a), None)
         } else {
-          Seq(None, Some(a.toExpr()))
+          (None, Some(a.toExpr()))
         }
       case other => throw new RuntimeException(s"Unexpected: $other")
-    }.transpose.toSeq
+    }.toSeq
 
-    val mapping = mapConst(0).flatten.toSeq
-    val constraints = mapConst(1).flatten.toSeq
+    val mapping = mapConst.flatMap(_._1)
+    val constraints = mapConst.flatMap(_._2)
     (mapping, constraints, newBits.toMap)
   }
   private def isMapping(argRange: Range, newBits: mutable.HashMap[smt.Symbol, BigInt]): Boolean = {

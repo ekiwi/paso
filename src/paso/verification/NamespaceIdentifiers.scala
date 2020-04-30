@@ -19,17 +19,21 @@ object NamespaceIdentifiers {
     )
   }
 
-  def apply(node: StepNode, subs: Sub, sm: Map[String, String]): StepNode =
+  def apply(node: StepNode, subs: SymSub, sm: Map[String, String]): StepNode =
     StepNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm))
-  def apply(node: InputNode, subs: Sub, sm: Map[String, String]): InputNode =
+  def apply(node: InputNode, subs: SymSub, sm: Map[String, String]): InputNode =
     InputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
-      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(substituteSmt(_, subs)))
-  def apply(node: OutputNode, subs: Sub, sm: Map[String, String]): OutputNode =
+      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
+  def apply(node: OutputNode, subs: SymSub, sm: Map[String, String]): OutputNode =
     OutputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
-      node.constraints.map(substituteSmt(_, subs)))
+      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
 
+  def apply(e: ArgumentEq, subs: SymSub): ArgumentEq =
+    e.copy(range = apply(e.range, subs), argRange = apply(e.argRange, subs))
+  def apply(r: Range, subs: SymSub): Range =
+    if(subs.contains(r.sym)) r.copy(sym = subs(r.sym)) else r
 
-  def apply(untimed: UntimedModel, prefix: String): (UntimedModel, Sub, Map[String, String]) = {
+  def apply(untimed: UntimedModel, prefix: String): (UntimedModel, SymSub, Map[String, String]) = {
     val fullPrefix = prefix + untimed.name + "."
 
     val stateSubs: SymSub = untimed.state.map(_.sym).prefix(fullPrefix).toMap
@@ -61,7 +65,7 @@ object NamespaceIdentifiers {
     (renamed_untimed, subs, method_subs)
   }
 
-  def apply(sys: smt.TransitionSystem, prefix: String): (smt.TransitionSystem, Sub)= {
+  def apply(sys: smt.TransitionSystem, prefix: String): (smt.TransitionSystem, SymSub)= {
     val fullPrefix = prefix + sys.name.map(_ + ".").getOrElse("")
     val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
     val subs : SymSub = (sys.states.map(_.sym) ++ sys.inputs ++ outputSymbols).prefix(fullPrefix).toMap
