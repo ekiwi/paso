@@ -167,15 +167,14 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
   case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
   case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
   case class NextState(guard: smt.Expr, nextId: StateId)
-  case class State(name: String, id: StateId,
-                   branches: Seq[smt.Symbol],               // inputs that determine branching decisions
-                   nextState: Seq[NextState],               // the next state might depend on inputs and outputs
-                   environmentAssumptions: smt.Expr,        // restrict the inputs space
-                   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the inputs
-                   inputMappings: Seq[ArgMap]               // mapping DUV inputs to method arguments (depending on input constraints)
+  case class State(id: StateId,
+                   inputMappings: Seq[ArgMap], // mapping DUV inputs to method arguments (depending on input constraints)
+                   environmentAssumptions: smt.Expr, // restrict the inputs space
+                   nextStates: Seq[NextState], // the next state might depend on inputs and outputs
+                   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
                   )
 
-  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State]): smt.TransitionSystem = {
+  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State], inputs: Seq[smt.Symbol]): smt.TransitionSystem = {
     // calculate transition function for the "state" state, i.e. the state of our automaton
     val stateBits = log2Ceil(states.length + 1)
     val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
@@ -186,7 +185,7 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
     val badInInvalidState = eq(stateSym, invalidState)
 
     // calculate the next state
-    val nextStateAndGuard= states.flatMap(s => s.nextState.map(n => (n.nextId, and(n.guard, inState(s.id)))))
+    val nextStateAndGuard= states.flatMap(s => s.nextStates.map(n => (n.nextId, and(n.guard, inState(s.id)))))
     val nextState = nextStateAndGuard.groupBy(_._1).foldLeft[smt.Expr](invalidState){ case (other, (stateId, guards)) =>
       ite(disjunction(guards.map(_._2)), smt.BitVectorLit(stateId, stateBits), other)
     }
@@ -216,46 +215,55 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
 
     smt.TransitionSystem(
       name = Some(prefix.dropRight(1)),
-      // TODO: use inputs to decide branches
-      inputs = Seq(),
+      inputs = inputs,
       states = Seq(stateState) ++ args,
       constraints = constraints,
       bad = bads
     )
   }
 
-  def run(proto: StepNode): Seq[FinalNode] = {
-    visit(proto)
-    finalNodes
+  def run(proto: StepNode, prefix: String = ""): smt.TransitionSystem = {
+    val start_id = visit(proto)
+    val start = states.find(_.id == start_id).get
+    encodeStatesIntoTransitionSystem(prefix, start, states, branchInputs)
   }
 
   private var branchCounter: Int = 0
-  private def getUniqueBranchInput(choices: Int): (smt.Symbol, Seq[smt.Expr]) = {
+  private val branchInputs = mutable.ArrayBuffer[smt.Symbol]()
+  private def getUniqueBranchInput(choices: Int): Seq[smt.Expr] = {
     assert(choices > 1)
     val bits = log2Ceil(choices-1)
     val complete = 1 << bits == choices
     val sym = smt.Symbol(s"branch_${branchCounter}", smt.BitVectorType(bits))
+    branchInputs.append(sym)
     branchCounter += 1
-    (sym, if(complete) {
+    if(complete) {
       (0 until choices).map(ii => eq(sym, smt.BitVectorLit(ii, bits)))
     } else {
       (0 until choices-1).map(ii => eq(sym, smt.BitVectorLit(ii, bits))) ++ Seq(cmpConst(BVGTUOp, sym, choices-1))
-    })
+    }
   }
 
   private var stateCounter: Int = 0
+  private val states = mutable.ArrayBuffer[State]()
   private def getStateId: Int = { val ii = stateCounter; stateCounter += 1; ii}
 
   private def visit(node: StepNode): StateId = {
     if(node.isFinal) { throw new NotImplementedError("TODO") }
 
     val id = getStateId
-    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length)._2 } else { Seq(tru) }
-    node.next.zip(inputGuards).foreach { case (input, guard) =>
-      visit(input, guard)
+
+    // make a non deterministic decision on which input path to take
+    val inputGuards = if(node.isBranchPoint) { getUniqueBranchInput(node.next.length) } else { Seq(tru) }
+    val environmentAssumptions = conjunction(node.next.zip(inputGuards).map{
+      case (input, guard) => implies(guard, input.constraintExpr)
+    })
+    val inputMappings = node.next.zip(inputGuards).flatMap {
+      case (input, guard) => input.mappings.map(ArgMap(guard, _))
     }
 
-    id
+
+    val s = State(id, )
   }
 
   private def visit(node: InputNode, guard: smt.Expr): Unit = {
