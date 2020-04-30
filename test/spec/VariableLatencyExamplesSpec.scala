@@ -117,6 +117,48 @@ class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: Identity
   mapping { (impl, spec) => when(spec.valid) { assert(impl.buffer === spec.value) } }
 }
 
+class ConstLatencyIO extends Bundle {
+  val start = Input(Bool())
+  val dataIn = Input(UInt(64.W))
+  val dataOut = Output(UInt(64.W))
+}
+
+// this module employs two buffers to save the results from the two variable latency units
+class VariableLatencyToConst extends Module {
+  val io = IO(new ConstLatencyIO)
+
+  val lsb = Module(new RandomLatency)
+  lsb.io.start := io.start
+  lsb.io.dataIn := io.dataIn(31,0)
+  val lsbBuffer = RegEnable(lsb.io.dataOut, lsb.io.done)
+
+  val msb = Module(new RandomLatency)
+  msb.io.start := io.start
+  msb.io.dataIn := io.dataIn(63,32)
+  val msbBuffer = RegEnable(msb.io.dataOut, msb.io.done)
+
+  // bypass
+  val latestLsb = Mux(lsb.io.done, lsb.io.dataOut, lsbBuffer)
+  val latestMsb = Mux(msb.io.done, msb.io.dataOut, msbBuffer)
+
+  io.dataOut := latestMsb ## latestLsb
+}
+
+// this module does not need any memory since it relies on its sub modules to keep their last output constant
+class VariableLatencyKeepToConst extends Module {
+  val io = IO(new ConstLatencyIO)
+
+  val lsb = Module(new RandomLatency)
+  lsb.io.start := io.start
+  lsb.io.dataIn := io.dataIn(31,0)
+
+  val msb = Module(new RandomLatency)
+  msb.io.start := io.start
+  msb.io.dataIn := io.dataIn(63,32)
+
+  io.dataOut := msb.io.dataOut ## lsb.io.dataOut
+}
+
 
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
