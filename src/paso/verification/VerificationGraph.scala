@@ -244,25 +244,32 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
     //       the branches would lead to a smaller formula,
     //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
     val inputGuards = if(node.isBranchPoint) { node.next.map(_.constraintExpr) } else { Seq(tru) }
-    val inputMappings = node.next.zip(inputGuards).flatMap {
-      case (input, inGuard) => input.mappings.map(ArgMap(inGuard, _))
-    }
-    val systemAssertions = node.next.zip(inputGuards).map { case (input, inGuard) =>
-        // at least one of the following output constraints has to be true
-        val c = disjunction(input.next.map(o => and(o.constraintExpr, o.mappingExpr)))
-        OutputConstraint(inGuard, c)
-    }
-    val nextState = node.next.zip(inputGuards).flatMap { case (input, inGuard) =>
-      val outputGuards = if(input.isBranchPoint) { input.next.map(_.constraintExpr) } else { Seq(tru) }
-      input.next.zip(outputGuards).map{ case(output, outGuard) =>
-        assert(!output.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
-        NextState(and(inGuard, outGuard), visit(output.next.head))
-      }
-    }
+
+    val ir = node.next.zip(inputGuards).map { case (input, inGuard) => visit(inGuard, input) }
+    val inputMappings = ir.flatMap(_._1)
+    val systemAssertions = ir.map(_._2)
+    val nextState = ir.flatMap(_._3)
 
     val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions)
     states.append(s)
     s.id
+  }
+
+  def visit(inGuard: smt.Expr, node: InputNode): (Seq[ArgMap], OutputConstraint, Seq[NextState]) = {
+    val mappings = node.mappings.map(ArgMap(inGuard, _))
+
+    // at least one of the following output constraints has to be true
+    val systemAssertion = disjunction(node.next.map(o => and(o.constraintExpr, o.mappingExpr)))
+
+    val guards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(tru) }
+    val nextStates = node.next.zip(guards).map{ case(output, outGuard) => visit(outGuard, output) }
+
+    (mappings, OutputConstraint(inGuard, systemAssertion), nextStates)
+  }
+
+  def visit(guard: smt.Expr, node: OutputNode): NextState = {
+    assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
+    NextState(guard, visit(node.next.head))
   }
 }
 
