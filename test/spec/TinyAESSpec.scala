@@ -97,7 +97,6 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) ex
     dut.in.poke(in)
     clock.step()
     dut.in.poke(DontCare)
-    clock.step()
     dut.out.expect(out)
     clock.step()
     dut.outDelayed.expect(out)
