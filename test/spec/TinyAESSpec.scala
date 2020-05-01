@@ -97,14 +97,13 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) ex
     dut.in.poke(in)
     clock.step()
     dut.in.poke(DontCare)
+    clock.step()
     dut.out.expect(out)
     clock.step()
     dut.outDelayed.expect(out)
   }
 
 }
-
-
 
 class TinyAESSpec extends FlatSpec {
   "TinyAES OneRound" should "refine its spec" in {
@@ -114,6 +113,12 @@ class TinyAESSpec extends FlatSpec {
 
   "TinyAES FinalRound" should "refine its spec" in {
     val p = Elaboration()[HasRoundIO, IsRoundSpec](new FinalRound, new AESFinalRoundSpec, (impl, spec) => new TinyAESRoundProtocol(impl, spec))
+    VerificationProblem.verify(p)
+  }
+
+  "TinyAES ExpandKey128" should "refine its spec" in {
+    val rc = StaticTables.rcon(1).U(8.W)
+    val p = Elaboration()[ExpandKey128, AESKeyExpansionSpec](new ExpandKey128(rc), new AESKeyExpansionSpec(rc), (impl, spec) => new TinyAESExpandKeyProtocol(impl, spec))
     VerificationProblem.verify(p)
   }
 
