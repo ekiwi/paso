@@ -117,9 +117,11 @@ class TinyAESSpec extends FlatSpec {
   }
 
   "TinyAES ExpandKey128" should "refine its spec" in {
-    val rc = StaticTables.rcon(1).U(8.W)
-    val p = Elaboration()[ExpandKey128, AESKeyExpansionSpec](new ExpandKey128(rc), new AESKeyExpansionSpec(rc), (impl, spec) => new TinyAESExpandKeyProtocol(impl, spec))
-    VerificationProblem.verify(p)
+    StaticTables.rcon.foreach { ii =>
+      val rc = ii.U(8.W)
+      val p = Elaboration()[ExpandKey128, AESKeyExpansionSpec](new ExpandKey128(rc), new AESKeyExpansionSpec(rc), (impl, spec) => new TinyAESExpandKeyProtocol(impl, spec))
+      VerificationProblem.verify(p)
+    }
   }
 
 }
