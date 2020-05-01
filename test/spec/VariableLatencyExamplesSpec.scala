@@ -8,21 +8,25 @@ import paso.chisel.Elaboration
 import paso.verification.VerificationProblem
 
 /** Simply returns the input unmodified */
-class Identity extends UntimedModule {
-  val id = fun("id").in(UInt(32.W)).out(UInt(32.W)){ (in, out) => out := in }
-  val idle = fun("idle"){}
+class Identity[D <: Data](dataType: D) extends UntimedModule {
+  val id = fun("id").in(dataType).out(dataType) { (in, out) => out := in }
+  val idle = fun("idle") {}
 }
 
-class IdentityAndKeep extends UntimedModule {
+class IdentityAndKeep[D <: Data](dataType: D) extends UntimedModule {
   val valid = RegInit(false.B)
-  val value = Reg(UInt(32.W))
-  val id = fun("id").in(UInt(32.W)).out(UInt(32.W)){ (in, out) =>
+  val value = Reg(dataType)
+  val id = fun("id").in(dataType).out(dataType) { (in, out) =>
     out := in
     valid := true.B
     value := in
   }
-  val idle = fun("idle").out(UInt(32.W)){ out =>
-    when(valid) { out := value } .otherwise { out := DontCare }
+  val idle = fun("idle").out(UInt(32.W)) { out =>
+    when(valid) {
+      out := value
+    }.otherwise {
+      out := DontCare
+    }
   }
 }
 
@@ -33,11 +37,15 @@ class VariableLatencyIO extends Bundle {
   val dataOut = Output(UInt(32.W))
 }
 
-abstract class VariableLatencyModule extends Module { val io = IO(new VariableLatencyIO) }
+abstract class VariableLatencyModule extends Module {
+  val io = IO(new VariableLatencyIO)
+}
 
 class RandomLatency(maxLatency: Int = 4) extends VariableLatencyModule {
   val buffer = Reg(UInt(32.W))
-  when(io.start) { buffer := io.dataIn }
+  when(io.start) {
+    buffer := io.dataIn
+  }
 
   val counterTyp = UInt(log2Ceil(maxLatency).W)
   val delay = RegInit(counterTyp, 1.U) // unfortunately yosys compiles an uninitialized Reg into an input when emitting btor2, why?
@@ -46,8 +54,12 @@ class RandomLatency(maxLatency: Int = 4) extends VariableLatencyModule {
 
   val running = RegInit(false.B)
   val done = running && (counter === delay)
-  when(io.start) { running := true.B }
-    .elsewhen(done) { running := false.B }
+  when(io.start) {
+    running := true.B
+  }
+    .elsewhen(done) {
+      running := false.B
+    }
 
   io.done := done
   io.dataOut := Mux(done, buffer, 0.U)
@@ -55,7 +67,9 @@ class RandomLatency(maxLatency: Int = 4) extends VariableLatencyModule {
 
 class DataDependentLatency(maxLatency: Int = 4) extends RandomLatency(maxLatency) {
   // use lower bits of dataIn to set the delay
-  when(io.start) { delay := io.dataIn }
+  when(io.start) {
+    delay := io.dataIn
+  }
 }
 
 class RandomLatencyKeepOutput(maxLatency: Int = 4) extends RandomLatency(maxLatency) {
@@ -63,7 +77,11 @@ class RandomLatencyKeepOutput(maxLatency: Int = 4) extends RandomLatency(maxLate
   io.dataOut := buffer
 }
 
-class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity) extends Binding(impl, spec) {
+class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec(impl) {
+  // derive specification parameter from implementation
+  // this allows us to verify generators in multiple different configurations
+  val spec = new Identity(chiselTypeOf(impl.io.dataIn))
+
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.start.set(true.B)
     dut.dataIn.set(in)
@@ -72,7 +90,7 @@ class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity
 
     dut.start.set(false.B)
     dut.dataIn.set(DontCare)
-    do_while(!dut.done.get(), max=4) {
+    do_while(!dut.done.get(), max = 4) {
       clock.step()
     }
 
@@ -85,11 +103,13 @@ class RandomLatencyProtocols[F <: VariableLatencyModule](impl: F, spec: Identity
   }
 }
 
-class RandomLatencyInductive(impl: RandomLatency, spec: Identity) extends RandomLatencyProtocols(impl, spec) {
-  invariances { dut => assert(!dut.running)  }
-}
+//class RandomLatencyInductive(impl: RandomLatency, spec: Identity) extends RandomLatencyProtocols(impl, spec) {
+//  invariances { dut => assert(!dut.running)  }
+//}
 
-class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: IdentityAndKeep) extends Binding(impl, spec) {
+class VariableLatencyKeepProtocols(val impl: VariableLatencyModule) extends ProtocolSpec {
+  val spec = new IdentityAndKeep(chiselTypeOf(impl.io.dataIn))
+
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.start.set(true.B)
     dut.dataIn.set(in)
@@ -98,7 +118,7 @@ class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: Id
 
     dut.start.set(false.B)
     dut.dataIn.set(DontCare)
-    do_while(!dut.done.get(), max=4) {
+    do_while(!dut.done.get(), max = 4) {
       clock.step()
     }
 
@@ -113,8 +133,11 @@ class VariableLatencyKeepProtocols[F <: VariableLatencyModule](impl: F, spec: Id
 }
 
 class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: IdentityAndKeep) extends VariableLatencyKeepProtocols(impl, spec) {
-  invariances { dut => assert(!dut.running)  }
-  mapping { (impl, spec) => when(spec.valid) { assert(impl.buffer === spec.value) } }
+  invariances { dut => assert(!dut.running) }
+  mapping { (impl, spec) => when(spec.valid) {
+    assert(impl.buffer === spec.value)
+  }
+  }
 }
 
 class ConstLatencyIO extends Bundle {
@@ -129,12 +152,12 @@ class VariableLatencyToConst extends Module {
 
   val lsb = Module(new RandomLatency)
   lsb.io.start := io.start
-  lsb.io.dataIn := io.dataIn(31,0)
+  lsb.io.dataIn := io.dataIn(31, 0)
   val lsbBuffer = RegEnable(lsb.io.dataOut, lsb.io.done)
 
   val msb = Module(new RandomLatency)
   msb.io.start := io.start
-  msb.io.dataIn := io.dataIn(63,32)
+  msb.io.dataIn := io.dataIn(63, 32)
   val msbBuffer = RegEnable(msb.io.dataOut, msb.io.done)
 
   // bypass
@@ -148,26 +171,34 @@ class VariableLatencyToConst extends Module {
 class VariableLatencyKeepToConst extends Module {
   val io = IO(new ConstLatencyIO)
 
-  val lsb = Module(new RandomLatency)
+  val lsb = Module(new RandomLatencyKeepOutput)
   lsb.io.start := io.start
-  lsb.io.dataIn := io.dataIn(31,0)
+  lsb.io.dataIn := io.dataIn(31, 0)
 
-  val msb = Module(new RandomLatency)
+  val msb = Module(new RandomLatencyKeepOutput)
   msb.io.start := io.start
-  msb.io.dataIn := io.dataIn(63,32)
+  msb.io.dataIn := io.dataIn(63, 32)
 
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
 }
 
+class VariableLatencyToConstSubspecs(impl: VariableLatencyToConst) extends SubspecBindings {
+  replace(impl.lsb)(new RandomLatencyProtocols(_))
+  replace(impl.msb)(new RandomLatencyProtocols(_))
+}
+
 
 class VariableLatencyExamplesSpec extends FlatSpec {
-  "RandomLatency module" should "refine its spec" in {
-    val p = Elaboration()[RandomLatency, Identity](new RandomLatency, new Identity, (impl, spec) => new RandomLatencyInductive(impl, spec))
-    VerificationProblem.verify(p)
-  }
 
-  "RandomLatencyAndKeep module" should "refine its spec" in {
-    val p = Elaboration()[RandomLatencyKeepOutput, IdentityAndKeep](new RandomLatencyKeepOutput, new IdentityAndKeep, (impl, spec) => new VariableLatencyKeepInductive(impl, spec))
-    VerificationProblem.verify(p)
-  }
+  VerificationPlan.randomTest(new RandomLatency)(new RandomLatencyProtocols(_), 200)
+
+  //  "RandomLatency module" should "refine its spec" in {
+  //    val p = Elaboration()[RandomLatency, Identity](new RandomLatency, new Identity, (impl, spec) => new RandomLatencyInductive(impl, spec))
+  //    VerificationProblem.verify(p)
+  //  }
+  //
+  //  "RandomLatencyAndKeep module" should "refine its spec" in {
+  //    val p = Elaboration()[RandomLatencyKeepOutput, IdentityAndKeep](new RandomLatencyKeepOutput, new IdentityAndKeep, (impl, spec) => new VariableLatencyKeepInductive(impl, spec))
+  //    VerificationProblem.verify(p)
+  //  }
 }
