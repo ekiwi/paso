@@ -87,6 +87,7 @@ class TinyAESRoundProtocol(impl: HasRoundIO, spec: IsRoundSpec) extends Binding(
     clock.step()
     dut.key.poke(DontCare)
     dut.state.poke(DontCare)
+    clock.step()
     dut.stateNext.expect(out)
   }
 }
