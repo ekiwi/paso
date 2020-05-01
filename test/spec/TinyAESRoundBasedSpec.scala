@@ -19,14 +19,18 @@ trait AESHelperFunctions {
     Seq(u(31,24), u(23, 16), u(15,8), u(7, 0))
   }
 
+  def selectFromArray(i: UInt, data: Seq[UInt]): UInt = {
+    data.zipWithIndex.foldLeft[UInt](data.head){case (prev, (value, index)) => Mux(i === index.U, value, prev)}
+  }
+
   def S(i: UInt): UInt = {
     require(i.getWidth == 8)
-    VecInit(StaticTables.S.map(_.U(8.W)))(i)
+    selectFromArray(i, StaticTables.S.map(_.U(8.W)))
   }
 
   def xS(i: UInt): UInt = {
     require(i.getWidth == 8)
-    VecInit(StaticTables.xS.map(_.U(8.W)))(i)
+    selectFromArray(i, StaticTables.xS.map(_.U(8.W)))
   }
 
   def S4(u: UInt): UInt = {
@@ -103,7 +107,7 @@ class AESSpec extends UntimedModule with AESHelperFunctions {
   }
 
   val midRound = fun("midRound").when(round > 0.U && round < 10.U) {
-    val rcon = VecInit(StaticTables.rcon.map(_.U(8.W)))(round - 1.U)
+    val rcon = selectFromArray(round - 1.U, StaticTables.rcon.map(_.U(8.W)))
     val encKey = expandKey128B(roundKey, rcon)
     val K0_4 = slice128To32(encKey)
     val S0_4 = slice128To32(cipherText)
