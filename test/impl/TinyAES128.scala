@@ -87,12 +87,15 @@ object ExpandKey128 {
   }
 }
 
-class OneRound extends Module {
-  val io = IO(new Bundle {
-    val state = Input(UInt(128.W))
-    val key = Input(UInt(128.W))
-    val stateNext = Output(UInt(128.W))
-  })
+class RoundIO extends Bundle {
+  val state = Input(UInt(128.W))
+  val key = Input(UInt(128.W))
+  val stateNext = Output(UInt(128.W))
+}
+trait HasRoundIO extends Module { val io: RoundIO }
+
+class OneRound extends Module with HasRoundIO {
+  val io = IO(new RoundIO)
 
   val s = Utils.split(io.state, 4)
   val k = Utils.split(io.key, 4)
@@ -121,12 +124,8 @@ object OneRound {
   }
 }
 
-class FinalRound extends Module {
-    val io = IO(new Bundle {
-      val state = Input(UInt(128.W))
-      val key = Input(UInt(128.W))
-      val stateNext = Output(UInt(128.W))
-    })
+class FinalRound extends Module with HasRoundIO {
+  val io = IO(new RoundIO)
 
     val s = Utils.split(io.state, 4)
     val k = Utils.split(io.key, 4)
