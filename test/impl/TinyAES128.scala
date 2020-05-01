@@ -55,10 +55,10 @@ class ExpandKey128(rcon: UInt) extends Module {
     val outDelayed = Output(UInt(128.W))
   })
   val k = Utils.split(io.in, 4)
-  val v0 = k(3)(31,24) ^ rcon ## k(3)(23,0)
-  val v1 = v0 ^ k(2)
-  val v2 = v1 ^ k(1)
-  val v3 = v2 ^ k(0)
+  val v0 = k(0)(31,24) ^ rcon ## k(0)(23,0)
+  val v1 = v0 ^ k(1)
+  val v2 = v1 ^ k(2)
+  val v3 = v2 ^ k(3)
 
   val k0a = RegNext(v0)
   val k1a = RegNext(v1)
@@ -66,7 +66,7 @@ class ExpandKey128(rcon: UInt) extends Module {
   val k3a = RegNext(v3)
 
   val S4_0 = Module(new S4)
-  S4_0.io.in := k(0)(23,0) ## k(0)(31,24)
+  S4_0.io.in := k(3)(23,0) ## k(3)(31,24)
   val k4a = S4_0.io.out
 
   val k0b = k0a ^ k4a
