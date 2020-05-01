@@ -153,9 +153,13 @@ class TinyAESProtocols(impl: TinyAES128, spec: AESSpec) extends Binding(impl, sp
     dut.key := in.key
     dut.state := in.plainText
     clock.step()
+    dut.key.poke(DontCare)
+    dut.state.poke(DontCare)
+    clock.step()
   }
-  protocol(spec.midRound)(impl.io) { (clock, _) => clock.step() }
+  protocol(spec.midRound)(impl.io) { (clock, _) => clock.step() ; clock.step() }
   protocol(spec.finalRound)(impl.io) { (clock, dut, out) =>
+    clock.step()
     clock.step()
     dut.out.expect(out)
   }
