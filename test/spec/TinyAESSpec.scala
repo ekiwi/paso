@@ -82,17 +82,20 @@ class AESFinalRoundSpec extends UntimedModule with AESHelperFunctions with IsRou
 
 class TinyAESRoundProtocol(impl: HasRoundIO, spec: IsRoundSpec) extends Binding(impl, spec) {
   protocol(spec.round)(impl.io) { (clock, dut, in, out) =>
-    dut.key := in.key
-    dut.state := in.state
+    dut.key.poke(in.key)
+    dut.state.poke(in.state)
     clock.step()
+    dut.key.poke(DontCare)
+    dut.state.poke(DontCare)
     dut.stateNext.expect(out)
   }
 }
 
 class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) extends Binding(impl, spec) {
   protocol(spec.expandKey128)(impl.io) { (clock, dut, in, out) =>
-    dut.in := in
+    dut.in.poke(in)
     clock.step()
+    dut.in.poke(DontCare)
     dut.out.expect(out)
     clock.step()
     dut.outDelayed.expect(out)
@@ -103,8 +106,14 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) ex
 
 
 class TinyAESSpec extends FlatSpec {
-  "TinyAES" should "refine its spec" in {
+  "TinyAES OneRound" should "refine its spec" in {
     val p = Elaboration()[HasRoundIO, IsRoundSpec](new OneRound, new AESRoundSpec, (impl, spec) => new TinyAESRoundProtocol(impl, spec))
     VerificationProblem.verify(p)
   }
+
+  "TinyAES FinalRound" should "refine its spec" in {
+    val p = Elaboration()[HasRoundIO, IsRoundSpec](new FinalRound, new AESFinalRoundSpec, (impl, spec) => new TinyAESRoundProtocol(impl, spec))
+    VerificationProblem.verify(p)
+  }
+
 }
