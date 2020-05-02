@@ -7,7 +7,11 @@ package spec
 import chisel3._
 import paso._
 
-/** SHA3 spec based on MIT licensed https://github.com/mjosaarinen/tiny_sha3 */
+/**
+ * SHA3 spec based on
+ * - MIT licensed https://github.com/mjosaarinen/tiny_sha3
+ * - https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf
+ * */
 class SHA3Spec extends UntimedModule {
 
   val rndc = Seq(
@@ -34,6 +38,14 @@ class SHA3Spec extends UntimedModule {
     if(offset == 0) { u } else {
       u(w - 1 - offset, 0) ## u(w - 1, w - offset)
     }
+  }
+
+  // in the style of the NIST spec
+  type State = Seq[Seq[UInt]]
+  def thetaNist(A: State): State = {
+    val C = (0 until 5).map(x => A(x)(0) ^ A(x)(1) ^ A(x)(2) ^ A(x)(3) ^ A(x)(4))
+    val D = (0 until 5).map(x => C((x - 1) % 5) ^ rotateLeft(C((x + 1) % 5), 1))
+    A.zipWithIndex.map{ case (ax, x) => ax.map(ay => ay ^ D(x))}
   }
 
   def theta(st: Seq[UInt]): Seq[UInt] = {
