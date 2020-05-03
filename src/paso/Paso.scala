@@ -11,7 +11,7 @@ import paso.verification.VerificationProblem
 
 import scala.collection.mutable
 
-abstract class SubSpecs {
+abstract class SubSpecs[I <: RawModule](val impl: I) {
   trait IsSubmodule { def getTarget: ModuleTarget ; def getSpec: ProtocolSpec[UntimedModule] }
   case class Submodule[I <: RawModule, S <: UntimedModule](impl: I, spec: I => ProtocolSpec[S], var bindings: Seq[UntimedModule] = Seq()) extends IsSubmodule {
     override def getTarget: ModuleTarget = impl.toTarget
@@ -22,12 +22,12 @@ abstract class SubSpecs {
   val subspecs = mutable.ArrayBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
 
   /** marks a submodule to be replaced with its specification */
-  def replace[I <: RawModule, S <: UntimedModule](module: I, spec: I => ProtocolSpec[S]): Unit = {
+  def replace[I <: RawModule, S <: UntimedModule](module: I)(spec: I => ProtocolSpec[S]): Unit = {
     subspecs.append(Submodule(module, spec))
   }
 }
 
-case class NoSubSpecs[I <: RawModule](impl: I) extends SubSpecs {}
+case class NoSubSpecs[I <: RawModule](override val impl: I) extends SubSpecs[I](impl) {}
 
 case class PasoImpl[I <: RawModule](impl: () => I) {
   def apply[S <: UntimedModule](spec: I => ProtocolSpec[S]): PasoImplAndSpec[I,S] = PasoImplAndSpec(impl, spec)
@@ -38,10 +38,10 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, sp
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_), inv)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_), k)
   def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, new NoSubSpecs(_), k)
-  def apply(subspecs: I => SubSpecs): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
+  def apply(subspecs: I => SubSpecs[I]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
 
-case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs) {
+case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs[I]) {
   def proof(): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _))
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k)
@@ -51,11 +51,11 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
 object Paso {
   def apply[I <: RawModule](impl: => I): PasoImpl[I] = PasoImpl(() => impl)
 
-  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs, inv: (I, S) => ProofCollateral[I,S]): Boolean = {
+  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs[I], inv: (I, S) => ProofCollateral[I,S]): Boolean = {
     val elaborated = Elaboration()[I, S](impl, spec, inv)
     VerificationProblem.verify(elaborated)
     true
   }
-  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs, k: Int): Boolean = ???
-  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs, k: Int): Boolean = ???
+  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs[I], k: Int): Boolean = ???
+  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs[I], k: Int): Boolean = ???
 }
