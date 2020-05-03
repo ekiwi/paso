@@ -135,8 +135,9 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
 
   private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): StepNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
-    if(states.head.isEmpty) {
-      assert(states.forall(_.isEmpty))
+    // if we are at a final step
+    if(states.head.isEmpty && !children.contains(states.head)) {
+      assert(states.forall(s => s.isEmpty && !children.contains(s)))
       return StepNode(Seq(), methods)
     }
 
