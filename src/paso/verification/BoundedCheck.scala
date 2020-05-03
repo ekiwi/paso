@@ -82,7 +82,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     }
 
     // emulate steps with counter
-    val counterBits = log2Ceil(steps.length)
+    val counterBits = if(steps.length > 1) log2Ceil(steps.length) else 1
     val counter = smt.Symbol("__counter", smt.BitVectorType(counterBits))
     val counterNext = smt.OperatorApplication(smt.BVAddOp(counterBits), List(counter, smt.BitVectorLit(1, counterBits)))
     val counterState = smt.State(counter, init=Some(smt.BitVectorLit(0, counterBits)), next=Some(counterNext))
