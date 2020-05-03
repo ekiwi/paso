@@ -25,7 +25,9 @@ class Multiplier extends UntimedModule {
   }
 }
 
-class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(impl, spec) {
+class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
+  val spec = new Multiplier
+
   def mulProtocol(io: PCPI, clock: Clock, op: String, rs1: UInt, rs2: UInt, rd: UInt): Unit = {
     val instr = ("b" + "0000001" + "0000000000" + op + "00000" + "0110011").U
 
@@ -58,7 +60,7 @@ class MulProtocols[M <: PCPIModule](impl: M, spec: Multiplier) extends Binding(i
   protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
 }
 
-class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(impl, spec) {
+class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends ProofCollateral(impl, spec) {
   invariances { dut =>
     assert(dut.mulWaiting)
     assert(!dut.mulFinishDelay)
@@ -69,6 +71,7 @@ class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends MulProtocols(imp
 
 
 class PicoRV32Spec extends FlatSpec {
-  val p = Elaboration()[PicoRV32Mul, Multiplier](new PicoRV32Mul(), new Multiplier, (impl, spec) => new MulInductive(impl, spec))
-  VerificationProblem.verify(p)
+  "PicoRV32Mul" should "refine its spec" in {
+    Paso.proof(new PicoRV32Mul())(new MulProtocols(_))(new MulInductive(_, _)).run()
+  }
 }

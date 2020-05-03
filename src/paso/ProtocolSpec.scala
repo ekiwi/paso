@@ -4,15 +4,15 @@
 package paso
 
 import chisel3._
-import chisel3.experimental.{ChiselAnnotation, annotate}
+import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import chisel3.util.log2Ceil
+import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
+
 import scala.collection.mutable
 
 /** Specifies a Chisel Module `IM` by binding it to an untimed model `SM` through protocols. */
-abstract class ProtocolSpec {
-  // TODO: can we get rid of impl + spec fields? are they needed?
-  val impl: RawModule
-  val spec: UntimedModule
+abstract class ProtocolSpec[S <: UntimedModule] {
+  val spec: S
   val protos = new mutable.ArrayBuffer[Protocol]()
   def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: (Clock, IO) => Unit): Unit =
     protos.append(NProtocol(chiselTypeOf(io), meth, gen))
@@ -22,13 +22,6 @@ abstract class ProtocolSpec {
     protos.append(IProtocol(chiselTypeOf(io), meth, gen))
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (Clock, IO, I,O) => Unit): Unit =
     protos.append(IOProtocol(chiselTypeOf(io), meth, gen))
-
-  // replace default chisel assert
-  def assert(cond: => Bool): Unit = {
-    val w = Wire(Bool()).suggestName("assert")
-    w := cond
-    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
-  }
 
 
   // TODO: support more than just UInt
@@ -73,16 +66,47 @@ abstract class ProtocolSpec {
   }
 }
 
-abstract class InductiveProof[IM <: RawModule, SM <: UntimedModule] {
-  def impl: IM
-  def spec: ProtocolSpec[IM, SM]
+trait Protocol {
+  def methodName: String
+  def generate(prefix: String, clock: Clock): Unit
+}
+trait ProtocolHelper extends MethodBodyHelper {
+  protected def io[IO <: Data](ioType: IO): IO = IO(Flipped(ioType)).suggestName("io")
+}
+case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit) extends Protocol with ProtocolHelper {
+  override def methodName = meth.gen.name
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType))
+}
+case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit) extends Protocol with ProtocolHelper  {
+  override def methodName = meth.gen.name
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType, prefix))
+}
+case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit) extends Protocol with ProtocolHelper  {
+  override def methodName = meth.gen.name
+  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType, prefix))
+}
+case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
+  override def methodName = meth.gen.name
+  override def generate(prefix: String, clock: Clock): Unit = {
+    impl(clock, io(ioType), makeInput(meth.inputType, prefix), makeOutput(meth.outputType, prefix))
+  }
+}
 
-  val invs = new mutable.ArrayBuffer[IM => Unit]()
-  def invariances(gen: IM => Unit): Unit = invs.append(gen)
+abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec: S) {
+
+  val invs = new mutable.ArrayBuffer[I => Unit]()
+  def invariances(gen: I => Unit): Unit = invs.append(gen)
 
 
-  val maps = new mutable.ArrayBuffer[(IM,SM) => Unit]()
-  def mapping(gen: (IM, SM) => Unit): Unit = maps.append(gen)
+  val maps = new mutable.ArrayBuffer[(I,S) => Unit]()
+  def mapping(gen: (I, S) => Unit): Unit = maps.append(gen)
+
+  // replace default chisel assert
+  def assert(cond: => Bool): Unit = {
+    val w = Wire(Bool()).suggestName("assert")
+    w := cond
+    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
+  }
 
   implicit class comparableMem[T <: UInt](x: Mem[T]) {
     def ===(y: Mem[T]): Bool = {
@@ -116,4 +140,33 @@ abstract class InductiveProof[IM <: RawModule, SM <: UntimedModule] {
     dontTouch(end)
     annotate(new ChiselAnnotation { override def toFirrtl = ForallEndAnnotation(end.toTarget) })
   }
+}
+
+
+case class AssertAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ExpectAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ForallStartAnnotation(target: ReferenceTarget, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+
+case class ForallEndAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
 }

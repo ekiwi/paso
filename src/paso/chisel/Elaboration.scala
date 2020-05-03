@@ -11,7 +11,7 @@ import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
 import paso.chisel.passes.{FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, StepNode, UntimedModel, VerificationProblem}
-import paso.{Binding, UntimedModule}
+import paso.{ProofCollateral, Protocol, ProtocolSpec, UntimedModule}
 import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -131,9 +131,9 @@ case class Elaboration() {
   }
 
   private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem)
-  private def elaborateImpl[IM <: RawModule](impl: => IM): Impl[IM] = {
+  private def elaborateImpl[IM <: RawModule](impl: () => IM): Impl[IM] = {
     var ip: Option[IM] = None
-    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl); ip.get})
+    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl()); ip.get})
     val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
     val impl_state = FindState(impl_fir).run()
     val impl_model = FirrtlToFormal(impl_fir, impl_anno)
@@ -157,20 +157,18 @@ case class Elaboration() {
     Impl(ip.get, impl_state, impl_model)
   }
 
-  private case class Spec[SM <: UntimedModule](mod: SM, state: Seq[State], model: UntimedModel)
-  private def elaborateSpec[SM <: UntimedModule](spec: => SM) = {
-    var sp: Option[SM] = None
-    val (main, _) = toFirrtl { () =>
-      sp = Some(spec)
-      sp.get
-    }
+  private case class Spec[S <: UntimedModule](mod: S, state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
+  private def elaborateSpec[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
+    var maybeProto: Option[ProtocolSpec[S]] = None
+    val (main, _) = toFirrtl { () => maybeProto = Some(proto()) ; maybeProto.get.spec }
+    val p = maybeProto.get
 
     val spec_name = main.main
     val spec_state = FindState(main).run()
 
     val spec_module = getMain(main)
-    val methods = sp.get.methods.map { meth =>
-      val (raw_firrtl, raw_annos) = elaborate(sp.get, meth.generate)
+    val methods = p.spec.methods.map { meth =>
+      val (raw_firrtl, raw_annos) = elaborate(p.spec, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw_firrtl).body
@@ -205,24 +203,24 @@ case class Elaboration() {
       case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
     }
     val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
-    Spec(sp.get, spec_state, untimed_model)
+    Spec(p.spec, spec_state, untimed_model, p.protos)
   }
 
-  def apply[IM <: RawModule, SM <: UntimedModule](impl: => IM, spec: => SM, bind: (IM, SM) => Binding[IM, SM]): VerificationProblem = {
+  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
     firrtlCompilerTime = 0L
     chiselElaborationTime = 0L
     val start = System.nanoTime()
 
     val implementation = elaborateImpl(impl)
     val endImplementation = System.nanoTime()
-    val untimed = elaborateSpec(spec)
+    val untimed = elaborateSpec(() => proto(implementation.mod))
     val endUntimed = System.nanoTime()
+    val protos = elaborateProtocols(untimed.protocols, untimed.model.methods)
 
-    // elaborate the binding
-    val binding = bind(implementation.mod, untimed.mod)
-    val protos = elaborateProtocols(binding.protos, untimed.model.methods)
-    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, binding.maps)
-    val invariances = elaborateInvariances(implementation.mod, implementation.state, binding.invs)
+    // elaborate the proof collateral
+    val collateral = inv(implementation.mod, untimed.mod)
+    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, collateral.maps)
+    val invariances = elaborateInvariances(implementation.mod, implementation.state, collateral.invs)
     val endBinding = System.nanoTime()
 
     if(true) {

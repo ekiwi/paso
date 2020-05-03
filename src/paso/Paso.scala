@@ -5,32 +5,39 @@
 package paso
 
 import chisel3.RawModule
-import firrtl.annotations.{ModuleTarget, ReferenceTarget}
+import firrtl.annotations.ModuleTarget
+import paso.chisel.Elaboration
+import paso.verification.VerificationProblem
 
 import scala.collection.mutable
 
-object Paso {
-
-}
-
-sealed trait IsSpec {}
-case class SubSpec[M <: RawModule](target: ModuleTarget, genSpec: M => ProtocolSpec) extends  IsSpec
-trait SpecGenerator { def apply(impl: RawModule): ProtocolSpec }
-
-trait VerificationTask[M <: RawModule] {
-  def impl: M
-  def spec(impl: M): ProtocolSpec
-  def subspecs(impl: M): Seq[SubSpec] = Seq()
-}
-
-
 class SubspecBindings {
-  val subspecs = mutable.ArrayBuffer[IsSpec]()
+  val subspecs = mutable.ArrayBuffer[ModuleTarget]() // modules that should be abstracted by replacing them with their spec
+  case class Binding(impl: ModuleTarget, spec: ModuleTarget)
+  val bindings = mutable.ArrayBuffer[Binding]()
 
-  def replace[M <: RawModule](module: M)(spec: M => ProtocolSpec): Unit = {
-    subspecs.append(SubSpec(module.toTarget, spec))
+  /** marks a submodule to be replaced with its specification */
+  def replace(module: RawModule): Unit = {
+    subspecs.append(module.toTarget)
   }
-  def bind[M <: RawModule](module: M, untimed: UntimedModule, spec: M => ProtocolSpec): Unit = {
 
+  /** marks a RTL submodule as implementing an untimed submodule */
+  def bind(module: RawModule, untimed: UntimedModule): Unit = {
+    bindings.append(Binding(module.toTarget, untimed.toTarget))
   }
+}
+
+trait PasoVerificationTask { def run(): Boolean }
+case class PasoVerificationProblem[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S])
+case class PasoProof[I <: RawModule, S <: UntimedModule](p: PasoVerificationProblem[I, S], inv: (I, S) => ProofCollateral[I,S]) extends PasoVerificationTask {
+  override def run(): Boolean = {
+    val elaborated = Elaboration()[I, S](p.impl, p.spec, inv)
+    VerificationProblem.verify(elaborated)
+    true
+  }
+}
+
+object Paso {
+  def proof[I <: RawModule, S <: UntimedModule](impl: => I)(spec: I => ProtocolSpec[S])(inv: (I, S) => ProofCollateral[I,S]): PasoProof[I, S] =
+    PasoProof(PasoVerificationProblem(() => impl, spec), inv)
 }

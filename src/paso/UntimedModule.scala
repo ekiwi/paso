@@ -99,6 +99,10 @@ class UntimedModule extends MultiIOModule with MethodParent {
   //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
+object UntimedModule {
+  def apply(m: UntimedModule): UntimedModule = m
+}
+
 
 // TODO: inject spec finding through annotation
 //case class PasoSpecAnnotation[M <: RawModule](target: ModuleTarget, spec: M => BindingBase)

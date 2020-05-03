@@ -77,7 +77,7 @@ class RandomLatencyKeepOutput(maxLatency: Int = 4) extends RandomLatency(maxLate
   io.dataOut := buffer
 }
 
-class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec(impl) {
+class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[Identity[UInt]] {
   // derive specification parameter from implementation
   // this allows us to verify generators in multiple different configurations
   val spec = new Identity(chiselTypeOf(impl.io.dataIn))
@@ -103,11 +103,11 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec(i
   }
 }
 
-//class RandomLatencyInductive(impl: RandomLatency, spec: Identity) extends RandomLatencyProtocols(impl, spec) {
-//  invariances { dut => assert(!dut.running)  }
-//}
+class RandomLatencyInductive(impl: RandomLatency, spec: Identity[UInt]) extends ProofCollateral(impl, spec) {
+  invariances { dut => assert(!dut.running)  }
+}
 
-class VariableLatencyKeepProtocols(val impl: VariableLatencyModule) extends ProtocolSpec {
+class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends ProtocolSpec[IdentityAndKeep[UInt]] {
   val spec = new IdentityAndKeep(chiselTypeOf(impl.io.dataIn))
 
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
@@ -132,11 +132,12 @@ class VariableLatencyKeepProtocols(val impl: VariableLatencyModule) extends Prot
   }
 }
 
-class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: IdentityAndKeep) extends VariableLatencyKeepProtocols(impl, spec) {
+class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: IdentityAndKeep[UInt]) extends ProofCollateral(impl, spec) {
   invariances { dut => assert(!dut.running) }
-  mapping { (impl, spec) => when(spec.valid) {
-    assert(impl.buffer === spec.value)
-  }
+  mapping { (impl, spec) =>
+    when(spec.valid) {
+      assert(impl.buffer === spec.value)
+    }
   }
 }
 
@@ -182,23 +183,18 @@ class VariableLatencyKeepToConst extends Module {
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
 }
 
-class VariableLatencyToConstSubspecs(impl: VariableLatencyToConst) extends SubspecBindings {
-  replace(impl.lsb)(new RandomLatencyProtocols(_))
-  replace(impl.msb)(new RandomLatencyProtocols(_))
-}
+//class VariableLatencyToConstSubspecs(impl: VariableLatencyToConst) extends SubspecBindings {
+//  replace(impl.lsb)(new RandomLatencyProtocols(_))
+//  replace(impl.msb)(new RandomLatencyProtocols(_))
+//}
 
 
 class VariableLatencyExamplesSpec extends FlatSpec {
+  "RandomLatency module" should "refine its spec" in {
+    Paso.proof(new RandomLatency)(new RandomLatencyProtocols(_))(new RandomLatencyInductive(_, _)).run()
+  }
 
-  VerificationPlan.randomTest(new RandomLatency)(new RandomLatencyProtocols(_), 200)
-
-  //  "RandomLatency module" should "refine its spec" in {
-  //    val p = Elaboration()[RandomLatency, Identity](new RandomLatency, new Identity, (impl, spec) => new RandomLatencyInductive(impl, spec))
-  //    VerificationProblem.verify(p)
-  //  }
-  //
-  //  "RandomLatencyAndKeep module" should "refine its spec" in {
-  //    val p = Elaboration()[RandomLatencyKeepOutput, IdentityAndKeep](new RandomLatencyKeepOutput, new IdentityAndKeep, (impl, spec) => new VariableLatencyKeepInductive(impl, spec))
-  //    VerificationProblem.verify(p)
-  //  }
+  "RandomLatencyAndKeep module" should "refine its spec" in {
+    Paso.proof(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_))(new VariableLatencyKeepInductive(_, _)).run()
+  }
 }

@@ -9,8 +9,6 @@ import chisel3.util._
 import impl.{FPGAMem, LVTMemory, MemData, MemSize, ParallelWriteMem, SimulationMem, XorMemory}
 import paso._
 import org.scalatest._
-import paso.chisel.Elaboration
-import paso.verification.VerificationProblem
 
 // NOTE: while the spec is currently hard coded for a certain number of read and write ports, one
 //       could write a spec generator that takes these numbers as inputs and generates the correct spec.
@@ -42,7 +40,9 @@ class Untimed1W1RMemory(size: MemSize) extends UntimedModule {
   }
 }
 
-class Mem1W1RProtocol[F <: FPGAMem](impl: F, spec: Untimed1W1RMemory) extends Binding(impl, spec) {
+class Mem1W1RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed1W1RMemory] {
+  val spec = new Untimed1W1RMemory(impl.d.size)
+
   protocol(spec.rw)(impl.io) { (clock, dut, in, readData) =>
     dut.write.head.addr.set(in.writeAddr)
     dut.write.head.data.set(in.writeData)
@@ -55,7 +55,7 @@ class Mem1W1RProtocol[F <: FPGAMem](impl: F, spec: Untimed1W1RMemory) extends Bi
   }
 }
 
-class Simulation1W1RInductive(impl: SimulationMem, spec: Untimed1W1RMemory) extends Mem1W1RProtocol(impl, spec) {
+class Simulation1W1RInductive(impl: SimulationMem, spec: Untimed1W1RMemory) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ ii =>
       when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
@@ -129,7 +129,9 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
 
 // While the protocol does not depend on the implementation, it does depend on the number of read and write ports.
 // We could turn the protocol into a generator and make it generic vis-a-vis the number of ports.
-class Mem2W4RProtocol[F <: FPGAMem](impl: F, spec: Untimed2W4RMemory) extends Binding(impl, spec) {
+class Mem2W4RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed2W4RMemory] {
+  val spec = new Untimed2W4RMemory(impl.d.size)
+
   protocol(spec.rw)(impl.io) { (clock, dut, in, out) =>
     // write
     dut.write(0).addr.set(in.writeAddr0)
@@ -163,7 +165,7 @@ class Mem2W4RProtocol[F <: FPGAMem](impl: F, spec: Untimed2W4RMemory) extends Bi
 }
 
 class LaForest2W4RInductive(impl: LVTMemory[ParallelWriteMem[SimulationMem], SimulationMem],
-                            spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
+                            spec: Untimed2W4RMemory) extends ProofCollateral(impl, spec) {
   require(impl.d.writePorts == 2)
   require(impl.d.readPorts == 4)
 
@@ -186,7 +188,7 @@ class LaForest2W4RInductive(impl: LVTMemory[ParallelWriteMem[SimulationMem], Sim
 }
 
 class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
-                               spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
+                               spec: Untimed2W4RMemory) extends ProofCollateral(impl, spec) {
   require(impl.d.writePorts == 2)
   require(impl.d.readPorts == 4)
 
@@ -221,7 +223,7 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
 }
 
 
-class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) extends Mem2W4RProtocol(impl, spec) {
+class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ ii =>
       when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
@@ -232,8 +234,7 @@ class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) exte
 class FPGAMemoriesSpec extends FlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    val p = Elaboration()[SimulationMem, Untimed1W1RMemory](new SimulationMem(data), new Untimed1W1RMemory(data.size), (impl, spec) => new Simulation1W1RInductive(impl, spec))
-    VerificationProblem.verify(p)
+    Paso.proof(new SimulationMem(data))(new Mem1W1RProtocol(_))(new Simulation1W1RInductive(_, _)).run()
   }
 
   "Charles Eric LaForest LVT 2W4R memory" should "refine its spec" in {
@@ -243,8 +244,7 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeSimMem(data: MemData) = new SimulationMem(data)
     def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
     def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
-    val p = Elaboration()[ImplMem, Untimed2W4RMemory](makeLVTMem(data.size), new Untimed2W4RMemory(data.size), (impl, spec) => new LaForest2W4RInductive(impl, spec))
-    VerificationProblem.verify(p)
+    Paso.proof(makeLVTMem(data.size))(new Mem2W4RProtocol(_))(new LaForest2W4RInductive(_, _)).run()
   }
 
   "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" in {
@@ -253,13 +253,11 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
     def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-    val p = Elaboration()[ImplMem, Untimed2W4RMemory](makeXorMem(data), new Untimed2W4RMemory(data.size), (impl, spec) => new LaForest2W4RXorInductive(impl, spec))
-    VerificationProblem.verify(p)
+    Paso.proof(makeXorMem(data))(new Mem2W4RProtocol(_))(new LaForest2W4RXorInductive(_, _)).run()
   }
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    val p = Elaboration()[SimulationMem, Untimed2W4RMemory](new SimulationMem(data), new Untimed2W4RMemory(data.size), (impl, spec) => new Simulation2W4RInductive(impl, spec))
-    VerificationProblem.verify(p)
+    Paso.proof(new SimulationMem(data))(new Mem2W4RProtocol(_))(new Simulation2W4RInductive(_, _)).run()
   }
 }

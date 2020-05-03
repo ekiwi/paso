@@ -5,10 +5,6 @@ import chisel3.util._
 import impl.{CircularPointerFifo, IsFifo, ShiftRegisterFifo}
 import org.scalatest._
 import paso._
-import paso.chisel.Elaboration
-import paso.verification.VerificationProblem
-
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -41,10 +37,8 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
   val idle = fun("idle")() // TODO: closing brackets are unfortunately required for method to be registered for now :(
 }
 
-class FifoProtocols[F <: IsFifo](impl: F, spec: UntimedFifo[UInt]) extends Binding(impl, spec) {
-  // TODO: instantiate spec based on impl parametrization
-  require(impl.width == spec.dataType.getWidth)
-  require(impl.depth == spec.depth)
+class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]] {
+  val spec = new UntimedFifo[UInt](impl.depth, UInt(impl.width.W))
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
   protocol(spec.push)(impl.io) { (clock, dut, in) =>
@@ -79,7 +73,7 @@ class FifoProtocols[F <: IsFifo](impl: F, spec: UntimedFifo[UInt]) extends Bindi
   }
 }
 
-class CircularBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends FifoProtocols(impl, spec) {
+class CircularProof(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
     assert(spec.count === impl.cnt)
     assert(spec.read === impl.rdPtr)
@@ -104,7 +98,7 @@ class CircularBinding(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extend
   }
 }
 
-class ShiftBinding(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends FifoProtocols(impl, spec) {
+class ShiftProof(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends ProofCollateral(impl, spec) {
   mapping { (dut, spec) =>
     assert(dut.count === spec.count)
     (0 until dut.depth).foreach { ii =>
@@ -121,29 +115,20 @@ class ShiftBinding(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends Fif
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FifoSpec extends FlatSpec {
-  val depth = 8
-  val width = 8
-  val fixed = true
 
-  val p = Elaboration()[CircularPointerFifo, UntimedFifo[UInt]](
-    new CircularPointerFifo(depth = depth, width = width, fixed = fixed),
-    new UntimedFifo(depth = depth, dataType = UInt(width.W)),
-    (impl, spec) => new CircularBinding(impl, spec)
-  )
+  "CircularPointerFifo" should "refine its spec" in {
+    val depth = 8
+    val width = 8
+    val fixed = true
 
-  VerificationProblem.verify(p)
-}
+    Paso.proof(new CircularPointerFifo(depth, width, fixed))(new FifoProtocols(_))(new CircularProof(_, _)).run()
+  }
 
-class ShiftFifoSpec extends FlatSpec {
-  val depth = 8
-  val width = 8
-  val fixed = true
+  "ShiftFifo" should "refine its spec" in {
+    val depth = 8
+    val width = 8
+    val fixed = true
 
-  val p = Elaboration()[ShiftRegisterFifo, UntimedFifo[UInt]](
-    new ShiftRegisterFifo(depth = depth, width = width, fixed = fixed),
-    new UntimedFifo(depth = depth, dataType = UInt(width.W)),
-    (impl, spec) => new ShiftBinding(impl, spec)
-  )
-
-  VerificationProblem.verify(p)
+    Paso.proof(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_))(new ShiftProof(_, _)).run()
+  }
 }
