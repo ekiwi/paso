@@ -60,18 +60,15 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
   protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
 }
 
-class MulInductive(impl: PicoRV32Mul, spec: Multiplier) extends ProofCollateral(impl, spec) {
-  invariances { dut =>
-    assert(dut.mulWaiting)
-    assert(!dut.mulFinishDelay)
-    assert(!dut.mulFinish)
-    assert(!dut.doWait)
-  }
-}
-
-
 class PicoRV32Spec extends FlatSpec {
   "PicoRV32Mul" should "refine its spec" in {
-    Paso.proof(new PicoRV32Mul())(new MulProtocols(_))(new MulInductive(_, _)).run()
+    Paso.proof(new PicoRV32Mul())(new MulProtocols(_))(new ProofCollateral(_, _){
+      invariances { dut =>
+        assert(dut.mulWaiting)
+        assert(!dut.mulFinishDelay)
+        assert(!dut.mulFinish)
+        assert(!dut.doWait)
+      }
+    }).run()
   }
 }

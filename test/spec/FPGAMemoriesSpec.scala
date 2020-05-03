@@ -55,14 +55,6 @@ class Mem1W1RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed1W1RMem
   }
 }
 
-class Simulation1W1RInductive(impl: SimulationMem, spec: Untimed1W1RMemory) extends ProofCollateral(impl, spec) {
-  mapping { (impl, spec) =>
-    forall(0 until impl.d.size.depth.toInt){ ii =>
-      when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
-    }
-  }
-}
-
 /////////////////////////////// 2W 4R ///////////////////////
 
 /**
@@ -222,19 +214,16 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
   }
 }
 
-
-class Simulation2W4RInductive(impl: SimulationMem, spec: Untimed2W4RMemory) extends ProofCollateral(impl, spec) {
-  mapping { (impl, spec) =>
-    forall(0 until impl.d.size.depth.toInt){ ii =>
-      when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
-    }
-  }
-}
-
 class FPGAMemoriesSpec extends FlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    Paso.proof(new SimulationMem(data))(new Mem1W1RProtocol(_))(new Simulation1W1RInductive(_, _)).run()
+    Paso.proof(new SimulationMem(data))(new Mem1W1RProtocol(_))(new ProofCollateral(_, _){
+      mapping { (impl, spec) =>
+        forall(0 until impl.d.size.depth.toInt){ ii =>
+          when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
+        }
+      }
+    }).run()
   }
 
   "Charles Eric LaForest LVT 2W4R memory" should "refine its spec" in {
@@ -258,6 +247,12 @@ class FPGAMemoriesSpec extends FlatSpec {
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    Paso.proof(new SimulationMem(data))(new Mem2W4RProtocol(_))(new Simulation2W4RInductive(_, _)).run()
+    Paso.proof(new SimulationMem(data))(new Mem2W4RProtocol(_))(new ProofCollateral(_, _){
+      mapping { (impl, spec) =>
+        forall(0 until impl.d.size.depth.toInt){ ii =>
+          when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
+        }
+      }
+    }).run()
   }
 }

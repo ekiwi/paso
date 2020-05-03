@@ -103,10 +103,6 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[I
   }
 }
 
-class RandomLatencyInductive(impl: RandomLatency, spec: Identity[UInt]) extends ProofCollateral(impl, spec) {
-  invariances { dut => assert(!dut.running)  }
-}
-
 class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends ProtocolSpec[IdentityAndKeep[UInt]] {
   val spec = new IdentityAndKeep(chiselTypeOf(impl.io.dataIn))
 
@@ -129,15 +125,6 @@ class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends Protocol
     dut.start.set(false.B)
     dut.dataOut.expect(out)
     clock.step()
-  }
-}
-
-class VariableLatencyKeepInductive(impl: RandomLatencyKeepOutput, spec: IdentityAndKeep[UInt]) extends ProofCollateral(impl, spec) {
-  invariances { dut => assert(!dut.running) }
-  mapping { (impl, spec) =>
-    when(spec.valid) {
-      assert(impl.buffer === spec.value)
-    }
   }
 }
 
@@ -191,10 +178,19 @@ class VariableLatencyKeepToConst extends Module {
 
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
-    Paso.proof(new RandomLatency)(new RandomLatencyProtocols(_))(new RandomLatencyInductive(_, _)).run()
+    Paso.proof(new RandomLatency)(new RandomLatencyProtocols(_))(new ProofCollateral(_, _){
+      invariances { dut => assert(!dut.running)  }
+    }).run()
   }
 
   "RandomLatencyAndKeep module" should "refine its spec" in {
-    Paso.proof(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_))(new VariableLatencyKeepInductive(_, _)).run()
+    Paso.proof(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_))(new ProofCollateral(_, _){
+      invariances { dut => assert(!dut.running) }
+      mapping { (impl, spec) =>
+        when(spec.valid) {
+          assert(impl.buffer === spec.value)
+        }
+      }
+    }).run()
   }
 }
