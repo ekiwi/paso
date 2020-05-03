@@ -37,7 +37,7 @@ class VariableLatencyIO extends Bundle {
   val dataOut = Output(UInt(32.W))
 }
 
-abstract class VariableLatencyModule extends Module {
+abstract class VariableLatencyModule extends MultiIOModule {
   val io = IO(new VariableLatencyIO)
 }
 
@@ -48,18 +48,20 @@ class RandomLatency(maxLatency: Int = 4) extends VariableLatencyModule {
   }
 
   val counterTyp = UInt(log2Ceil(maxLatency).W)
-  val delay = RegInit(counterTyp, 1.U) // unfortunately yosys compiles an uninitialized Reg into an input when emitting btor2, why?
+  require(1 << counterTyp.getWidth == maxLatency, s"For now maxLatency needs to be a power of 2, not: $maxLatency")
+  // model a random delay through an unconstrained input
+  val randomDelay = IO(Input(counterTyp))
+  val delay = RegEnable(randomDelay, io.start)
   val counter = Reg(counterTyp)
   counter := Mux(io.start, 0.U, counter + 1.U)
 
   val running = RegInit(false.B)
   val done = running && (counter === delay)
-  when(io.start) {
-    running := true.B
+  when(!running) {
+    running := io.start
+  }.elsewhen(done) {
+    running := false.B
   }
-    .elsewhen(done) {
-      running := false.B
-    }
 
   io.done := done
   io.dataOut := Mux(done, buffer, 0.U)
@@ -134,21 +136,23 @@ class ConstLatencyIO extends Bundle {
   val dataOut = Output(UInt(64.W))
 }
 
-trait IsConstLatency extends Module { val io : ConstLatencyIO ; val latency : Int }
+trait IsConstLatency extends MultiIOModule { val io : ConstLatencyIO ; val latency : Int }
 
 // this module employs two buffers to save the results from the two variable latency units
-class VariableLatencyToConst extends Module with IsConstLatency {
+class VariableLatencyToConst extends MultiIOModule with IsConstLatency {
   val io = IO(new ConstLatencyIO)
   val latency = 4
 
   val lsb = Module(new RandomLatency)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
+  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
   val lsbBuffer = RegEnable(lsb.io.dataOut, lsb.io.done)
 
   val msb = Module(new RandomLatency)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
+  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
   val msbBuffer = RegEnable(msb.io.dataOut, msb.io.done)
 
   // bypass
@@ -159,17 +163,19 @@ class VariableLatencyToConst extends Module with IsConstLatency {
 }
 
 // this module does not need any memory since it relies on its sub modules to keep their last output constant
-class VariableLatencyKeepToConst extends Module with IsConstLatency {
+class VariableLatencyKeepToConst extends MultiIOModule with IsConstLatency {
   val io = IO(new ConstLatencyIO)
   val latency = 4
 
   val lsb = Module(new RandomLatencyKeepOutput)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
+  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
 
   val msb = Module(new RandomLatencyKeepOutput)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
+  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
 
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
 }
