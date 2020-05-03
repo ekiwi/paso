@@ -234,6 +234,7 @@ case class Elaboration() {
       println(s"${p(dImpl)}% RTL, ${p(dUntimed)}% Untimed Model, ${p(dBinding)}% Protocol and Invariances")
       val other = total - firrtlCompilerTime - chiselElaborationTime
       println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
+      println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
     }
 
 
