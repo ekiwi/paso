@@ -13,15 +13,6 @@ import uclid.smt.Expr
 
 import scala.collection.mutable
 
-// things that need to be verified:
-// (1) do assertions on untimed model always hold? (can we do an inductive proof?)
-// (2) do the invariances over the implementation hold after a reset?
-// (3) check the base case for the mapping function (see MC 11.1 and Definition 13.2):
-//     3.1) for all initial states in the untimed model, there exists a state in the
-//          timed model and that state is pan initial state
-//     TODO
-// (4)
-
 // Verification Graph
 sealed trait VerificationNode {
   val next: Seq[VerificationNode]
