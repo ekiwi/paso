@@ -134,9 +134,12 @@ class ConstLatencyIO extends Bundle {
   val dataOut = Output(UInt(64.W))
 }
 
+trait IsConstLatency extends Module { val io : ConstLatencyIO ; val latency : Int }
+
 // this module employs two buffers to save the results from the two variable latency units
-class VariableLatencyToConst extends Module {
+class VariableLatencyToConst extends Module with IsConstLatency {
   val io = IO(new ConstLatencyIO)
+  val latency = 4
 
   val lsb = Module(new RandomLatency)
   lsb.io.start := io.start
@@ -156,8 +159,9 @@ class VariableLatencyToConst extends Module {
 }
 
 // this module does not need any memory since it relies on its sub modules to keep their last output constant
-class VariableLatencyKeepToConst extends Module {
+class VariableLatencyKeepToConst extends Module with IsConstLatency {
   val io = IO(new ConstLatencyIO)
+  val latency = 4
 
   val lsb = Module(new RandomLatencyKeepOutput)
   lsb.io.start := io.start
@@ -168,6 +172,32 @@ class VariableLatencyKeepToConst extends Module {
   msb.io.dataIn := io.dataIn(63, 32)
 
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
+}
+
+class ConstantLatencyProtocols(impl: IsConstLatency) extends ProtocolSpec[Identity[UInt]] {
+  // derive specification parameter from implementation
+  // this allows us to verify generators in multiple different configurations
+  val spec = new Identity(chiselTypeOf(impl.io.dataIn))
+
+  protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
+    dut.start.set(true.B)
+    dut.dataIn.set(in)
+    clock.step()
+
+    dut.start.set(false.B)
+    dut.dataIn.set(DontCare)
+
+    (1 until impl.latency).foreach { _ =>
+      clock.step()
+    }
+
+    dut.dataOut.expect(out)
+    clock.step()
+  }
+  protocol(spec.idle)(impl.io) { (clock, dut) =>
+    dut.start.set(false.B)
+    clock.step()
+  }
 }
 
 //class VariableLatencyToConstSubspecs(impl: VariableLatencyToConst) extends SubspecBindings {
@@ -190,6 +220,15 @@ class VariableLatencyExamplesSpec extends FlatSpec {
         when(spec.valid) {
           assert(impl.buffer === spec.value)
         }
+      }
+    })
+  }
+
+  "VariableLatencyToConst with full RTL" should "refine its spec" in {
+    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+      invariances { dut =>
+        assert(!dut.lsb.running)
+        assert(!dut.msb.running)
       }
     })
   }
