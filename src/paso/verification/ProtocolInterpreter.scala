@@ -23,7 +23,7 @@ case class ProtocolState(
 }
 
 
-class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers {
+class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Boolean = false) extends SMTHelpers {
   protected var activeStates: Seq[ProtocolState] = Seq(ProtocolState("0"))
   protected var stateCounter: Int = 1
   protected def getStateName: String = { val i = stateCounter ; stateCounter += 1; i.toString }
@@ -71,17 +71,17 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
 
     // visit true branch
     activeStates = trueFalseStates(0)
-    //println(s"WHEN $cond (${activeStates})")
+    if(debugPrint) println(s"WHEN $cond (${activeStates})")
     visitTrue()
     val finalTrueStates = activeStates
-    //println(s" -> (${activeStates})")
+    if(debugPrint) println(s" -> (${activeStates})")
 
     // visit false branch
     activeStates = trueFalseStates(1)
-    //println(s"WHEN !$cond (${activeStates})")
+    if(debugPrint) println(s"WHEN !$cond (${activeStates})")
     visitFalse()
     val finalFalseStates = activeStates
-    //println(s" -> (${activeStates})")
+    if(debugPrint) println(s" -> (${activeStates})")
 
     // combine
     activeStates = finalTrueStates ++ finalFalseStates
@@ -89,7 +89,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr, sticky: Boolean = false): Unit = lhs match {
     case s: smt.Symbol =>
-      //println(s"SET $lhs := $rhs (${activeStates})")
+      if(debugPrint) println(s"SET $lhs := $rhs (${activeStates})")
       val simpleRhs = SMTSimplifier.simplify(rhs)
       activeStates = activeStates.map(set(_, s, simpleRhs, sticky))
     case other => throw new RuntimeException(s"Cannot assign to $other")
@@ -97,6 +97,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
 
   /** mark an input as don't care */
   def onUnSet(lhs: smt.Symbol): Unit = {
+    if(debugPrint) println(s"SET $lhs := DontCare (${activeStates})")
     def unset(state: ProtocolState): ProtocolState = {
       val stickyInput = state.stickyInput - lhs
       val inputs = state.inputs - lhs
@@ -107,14 +108,14 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean) extends SMTHelpers
 
   def onExpect(lhs: smt.Expr, rhs: smt.Expr): Unit = lhs match {
     case s: smt.Symbol =>
-      //println(s"EXPECT $lhs = $rhs (${activeStates})")
+      if(debugPrint) println(s"EXPECT $lhs = $rhs (${activeStates})")
       val simpleRhs = SMTSimplifier.simplify(rhs)
       activeStates = activeStates.map(expect(_, s, simpleRhs))
     case other => throw new RuntimeException(s"Cannot read from $other")
   }
 
   def onStep(): Unit = {
-    //println(s"STEP (${activeStates})")
+    if(debugPrint) println(s"STEP (${activeStates})")
     activeStates = activeStates.map(step)
   }
 
