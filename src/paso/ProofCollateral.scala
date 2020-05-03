@@ -61,6 +61,8 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
   }
 }
 
+case class NoProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec: S) extends ProofCollateral(impl, spec)
+
 case class AssertAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }

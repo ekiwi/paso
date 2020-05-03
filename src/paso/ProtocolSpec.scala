@@ -10,7 +10,7 @@ import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 import scala.collection.mutable
 
 /** Specifies a Chisel Module `IM` by binding it to an untimed model `SM` through protocols. */
-abstract class ProtocolSpec[S <: UntimedModule] {
+abstract class ProtocolSpec[+S <: UntimedModule] {
   val spec: S
   val protos = new mutable.ArrayBuffer[Protocol]()
   def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: (Clock, IO) => Unit): Unit =

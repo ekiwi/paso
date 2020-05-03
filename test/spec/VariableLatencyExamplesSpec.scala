@@ -178,19 +178,19 @@ class VariableLatencyKeepToConst extends Module {
 
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
-    Paso.proof(new RandomLatency)(new RandomLatencyProtocols(_))(new ProofCollateral(_, _){
+    Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut => assert(!dut.running)  }
-    }).run()
+    })
   }
 
   "RandomLatencyAndKeep module" should "refine its spec" in {
-    Paso.proof(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_))(new ProofCollateral(_, _){
+    Paso(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut => assert(!dut.running) }
       mapping { (impl, spec) =>
         when(spec.valid) {
           assert(impl.buffer === spec.value)
         }
       }
-    }).run()
+    })
   }
 }

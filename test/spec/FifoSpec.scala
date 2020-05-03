@@ -121,7 +121,7 @@ class FifoSpec extends FlatSpec {
     val width = 8
     val fixed = true
 
-    Paso.proof(new CircularPointerFifo(depth, width, fixed))(new FifoProtocols(_))(new CircularProof(_, _)).run()
+    Paso(new CircularPointerFifo(depth, width, fixed))(new FifoProtocols(_)).proof(new CircularProof(_, _))
   }
 
   "ShiftFifo" should "refine its spec" in {
@@ -129,6 +129,6 @@ class FifoSpec extends FlatSpec {
     val width = 8
     val fixed = true
 
-    Paso.proof(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_))(new ShiftProof(_, _)).run()
+    Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(new ShiftProof(_, _))
   }
 }

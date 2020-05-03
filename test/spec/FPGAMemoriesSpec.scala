@@ -217,13 +217,13 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
 class FPGAMemoriesSpec extends FlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    Paso.proof(new SimulationMem(data))(new Mem1W1RProtocol(_))(new ProofCollateral(_, _){
+    Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).proof(new ProofCollateral(_, _){
       mapping { (impl, spec) =>
         forall(0 until impl.d.size.depth.toInt){ ii =>
           when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
         }
       }
-    }).run()
+    })
   }
 
   "Charles Eric LaForest LVT 2W4R memory" should "refine its spec" in {
@@ -233,7 +233,7 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeSimMem(data: MemData) = new SimulationMem(data)
     def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
     def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
-    Paso.proof(makeLVTMem(data.size))(new Mem2W4RProtocol(_))(new LaForest2W4RInductive(_, _)).run()
+    Paso(makeLVTMem(data.size))(new Mem2W4RProtocol(_)).proof(new LaForest2W4RInductive(_, _))
   }
 
   "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" in {
@@ -242,17 +242,17 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
     def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-    Paso.proof(makeXorMem(data))(new Mem2W4RProtocol(_))(new LaForest2W4RXorInductive(_, _)).run()
+    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(new LaForest2W4RXorInductive(_, _))
   }
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    Paso.proof(new SimulationMem(data))(new Mem2W4RProtocol(_))(new ProofCollateral(_, _){
+    Paso(new SimulationMem(data))(new Mem2W4RProtocol(_)).proof(new ProofCollateral(_, _){
       mapping { (impl, spec) =>
         forall(0 until impl.d.size.depth.toInt){ ii =>
           when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
         }
       }
-    }).run()
+    })
   }
 }

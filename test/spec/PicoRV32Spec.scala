@@ -62,13 +62,13 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
 
 class PicoRV32Spec extends FlatSpec {
   "PicoRV32Mul" should "refine its spec" in {
-    Paso.proof(new PicoRV32Mul())(new MulProtocols(_))(new ProofCollateral(_, _){
+    Paso(new PicoRV32Mul())(new MulProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut =>
         assert(dut.mulWaiting)
         assert(!dut.mulFinishDelay)
         assert(!dut.mulFinish)
         assert(!dut.doWait)
       }
-    }).run()
+    })
   }
 }
