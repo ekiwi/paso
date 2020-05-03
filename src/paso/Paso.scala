@@ -52,7 +52,7 @@ object Paso {
   def apply[I <: RawModule](impl: => I): PasoImpl[I] = PasoImpl(() => impl)
 
   private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: I => SubSpecs[I], inv: (I, S) => ProofCollateral[I,S]): Boolean = {
-    val elaborated = Elaboration()[I, S](impl, spec, inv)
+    val elaborated = Elaboration()[I, S](impl, spec, subspecs, inv)
     VerificationProblem.verify(elaborated)
     true
   }

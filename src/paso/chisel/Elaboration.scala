@@ -11,7 +11,7 @@ import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
 import paso.chisel.passes.{FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, StepNode, UntimedModel, VerificationProblem}
-import paso.{ProofCollateral, Protocol, ProtocolSpec, UntimedModule}
+import paso.{ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -206,7 +206,7 @@ case class Elaboration() {
     Spec(p.spec, spec_state, untimed_model, p.protos)
   }
 
-  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
+  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], subspecs: I => SubSpecs[I], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
     firrtlCompilerTime = 0L
     chiselElaborationTime = 0L
     val start = System.nanoTime()
