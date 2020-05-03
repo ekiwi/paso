@@ -30,7 +30,24 @@ object elaborateInContextOfModule {
 }
 
 /** Replace nodes with absolute references if the element parent is part of {prefixes} */
-case class prefixNames(prefixes: Set[String]) {
+case class prefixNames(prefixes: Set[String]) extends FixNaming {
+  override def fixName(parentPathNamePrefix: String, pathName: String): Option[String] = {
+    if (prefixes.contains(parentPathNamePrefix)) Option(pathName) else None
+  }
+}
+
+/** Replace nodes with absolute references (- parent module name) if the element parent is part of {prefixes} */
+case class prefixNamesOfSubmodules(prefixes: Set[String]) extends FixNaming {
+  override def fixName(parentPathNamePrefix: String, pathName: String): Option[String] = {
+    //if (prefixes.contains(parentPathNamePrefix)) Option(pathName) else None
+    println(s"$parentPathNamePrefix, $pathName")
+    None
+  }
+}
+
+abstract class FixNaming {
+  def fixName(parentPathNamePrefix: String, pathName: String): Option[String]
+
   case class FakeId(ref: Arg) extends chisel3.internal.HasId {
     override def toNamed = ???
     override def toTarget = ???
@@ -48,10 +65,9 @@ case class prefixNames(prefixes: Set[String]) {
         val pathName = node.id.pathName
         val parentPathName = node.id.parentPathName
         val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
-        if (prefixes.contains(parentPathNamePrefix)) {
-          Ref(pathName)
-        } else {
-          r
+        fixName(parentPathNamePrefix, pathName) match {
+          case Some(name) => Ref(name)
+          case None => r
         }
     }
     Node(FakeId(new_ref))
