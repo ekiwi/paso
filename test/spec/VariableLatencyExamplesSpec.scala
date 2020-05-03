@@ -232,4 +232,11 @@ class VariableLatencyExamplesSpec extends FlatSpec {
       }
     })
   }
+
+  "VariableLatencyToConst with abstracted RTL" should "refine its spec" in {
+    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_) {
+      replace(impl.lsb)(new RandomLatencyProtocols(_))
+      replace(impl.msb)(new RandomLatencyProtocols(_))
+    }).proof()
+  }
 }
