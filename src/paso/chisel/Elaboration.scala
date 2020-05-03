@@ -67,9 +67,9 @@ case class Elaboration() {
     chiselElaborationTime += System.nanoTime() - start
     r
   }
-  private def elaborate(ctx0: RawModule, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation]) = {
+  private def elaborate(ctx0: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.ir.Circuit, Seq[Annotation]) = {
     val start = System.nanoTime()
-    val r = elaborateInContextOfModule(ctx0, gen)
+    val r = elaborateInContextOfModule(ctx0, gen, submoduleRefs)
     chiselElaborationTime += System.nanoTime() - start
     r
   }
@@ -108,7 +108,7 @@ case class Elaboration() {
     val memTypes = collectMemTypes(impl_state, "").toMap
 
     invs.flatMap { ii =>
-      val mod = elaborate(impl, {() => ii(impl)})
+      val mod = elaborate(impl, {() => ii(impl)}, submoduleRefs = true)
       val body = mod._1.modules.head.asInstanceOf[ir.Module].body
       val c = ir.Circuit(NoInfo, Seq(inv_mod.copy(body=body)), inv_mod.name)
       // HACK: replace all read ports (and inferred ports b/c yolo) with vector accesses

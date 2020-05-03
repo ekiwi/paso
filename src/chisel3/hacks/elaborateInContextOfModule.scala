@@ -8,14 +8,15 @@ import firrtl.annotations.Annotation
 
 /** exposes some of the InjectingAspect magic for people who do not want the resulting firrtl to be appended to the parent module  **/
 object elaborateInContextOfModule {
-  def apply(ctx: RawModule, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation]) = {
+  def apply(ctx: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.ir.Circuit, Seq[Annotation]) = {
     val (chiselIR, _) = Builder.build(Module(new ModuleAspect(ctx) {
       ctx match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }
         case x: RawModule => gen()
       }
     }))
-    (Aspect.getFirrtl(chiselIR), chiselIR.annotations.map(_.toFirrtl))
+    val pp = if(submoduleRefs) prefixNamesOfSubmodules(Set(ctx.name)).run(chiselIR) else chiselIR
+    (Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
   }
   def apply(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation])  = {
     val (chiselIR, _) = Builder.build(Module(new ModuleDoubleAspect(ctx0, ctx1, name) {
@@ -32,16 +33,15 @@ object elaborateInContextOfModule {
 /** Replace nodes with absolute references if the element parent is part of {prefixes} */
 case class prefixNames(prefixes: Set[String]) extends FixNaming {
   override def fixName(parentPathNamePrefix: String, pathName: String): Option[String] = {
-    if (prefixes.contains(parentPathNamePrefix)) Option(pathName) else None
+    if (prefixes.contains(parentPathNamePrefix)) Some(pathName) else None
   }
 }
 
 /** Replace nodes with absolute references (- parent module name) if the element parent is part of {prefixes} */
 case class prefixNamesOfSubmodules(prefixes: Set[String]) extends FixNaming {
   override def fixName(parentPathNamePrefix: String, pathName: String): Option[String] = {
-    //if (prefixes.contains(parentPathNamePrefix)) Option(pathName) else None
-    println(s"$parentPathNamePrefix, $pathName")
-    None
+    val subName = pathName.split('.').drop(1).mkString(".")
+    if (prefixes.contains(parentPathNamePrefix)) Some(subName) else None
   }
 }
 
