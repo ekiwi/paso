@@ -2,7 +2,17 @@ package paso.verification
 
 import uclid.smt
 
-/** turns all identifiers used in a verification problem into their fully qualified names */
+/**
+ * turns all identifiers used in a verification problem into their fully qualified names
+ *
+ * For Untimed Modules:
+ * - we prefix the name with ${prefix}
+ * - we prefix the state with ${prefix}${moduleName}.
+ * - we prefix method arguments (+ ret arguments) with ${prefix}${moduleName}.${methodName}.
+ *
+ * For Transition Systems (implementation):
+ * - we prefix all signals (states, inputs, outputs) with ${prefix}${systemName}. (TODO remove)
+ * */
 object NamespaceIdentifiers {
   type Sub = Map[smt.Expr, smt.Expr]
   type SymSub =  Map [smt.Expr, smt.Symbol]
