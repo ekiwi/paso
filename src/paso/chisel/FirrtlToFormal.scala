@@ -25,7 +25,7 @@ import scala.sys.process._
 
 class MinimumFirrtlToVerilogCompiler extends Compiler {
   def emitter = new VerilogEmitter
-  def transforms: Seq[Transform] = getLoweringTransforms(HighForm, MidForm) ++ Seq(new TopWiringTransform) ++
+  def transforms: Seq[Transform] = getLoweringTransforms(HighForm, MidForm) ++ Seq(/*new TopWiringTransform*/) ++
       getLoweringTransforms(MidForm, LowForm) ++ Seq(new MinimumLowFirrtlOptimization, new BlackBoxSourceHelper)
 }
 
