@@ -139,13 +139,10 @@ case class Elaboration() {
     // we need to run the subspecs finder right after elaboration in order to find out
     // which submodules we want to get rid of and expose their I/O at the toplevel
     val subspecs = findSubspecs(ip.get).subspecs
-    val (exposed_fir, exposed_annos) = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
+    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
 
     val impl_state = FindState(exposed_fir).run()
-
-    println(exposed_fir.serialize)
-
-    val impl_model = FirrtlToFormal(exposed_fir, impl_anno ++ exposed_annos)
+    val impl_model = FirrtlToFormal(exposed_fir, impl_anno)
 
     //println("State extracted from Chisel")
     //impl_state.foreach(st => println(s"${st.name}: ${st.tpe}"))

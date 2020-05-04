@@ -4,23 +4,19 @@
 
 package paso.chisel.passes
 
-import firrtl.annotations.{Annotation, CircuitName, ComponentName, ModuleName, ReferenceTarget}
-import firrtl.transforms.TopWiring.TopWiringAnnotation
-import firrtl.{AnnotationSeq, ir}
+import firrtl.ir
 
 import scala.collection.mutable
 
 class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
   private val mods = c.modules.collect{ case m: ir.Module => m.name -> m}.toMap
-  case class ExposedPort(name: String, tpe: ir.Type, wire: ReferenceTarget)
-  private val annos = mutable.ArrayBuffer[Annotation]()
-  private val toplevel = ModuleName(c.main, CircuitName(c.main))
+  private val ports = mutable.ArrayBuffer[ir.Port]()
 
   private def exposeInstance(prefix: String, info: ir.Info, name: String, tpe: ir.Type): ir.Statement = {
-    val p = prefix.replace('.', '_')
-    // TODO: we cannot use toplevel when we want to support unreplace submodules
-    annos.append(TopWiringAnnotation(ComponentName(name, toplevel), p))
-    ir.Block(Seq(ir.DefWire(info, name, tpe), ir.IsInvalid(info, firrtl.WRef(name, tpe))))
+    // add a new port to the toplevel module and delete the instance definition
+    // TODO: support hierarchical replacement
+    ports.append(ir.Port(info, name, ir.Input, tpe))
+    ir.EmptyStmt
   }
 
   private def onInstance(prefix: String, d: firrtl.WDefInstance): ir.Statement = {
@@ -40,11 +36,10 @@ class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
     case other => other.mapStmt(onStmt(prefix, _))
   }
 
-  def apply(): (ir.Circuit, AnnotationSeq) = {
+  def apply(): ir.Circuit= {
     val main = mods(c.main)
     val newBody = onStmt(c.main + ".", main.body)
     // TODO: support submodules that are not replaced
-    val newC = c.copy(modules = Seq(main.copy(body = newBody)))
-    (newC, annos)
+    c.copy(modules = Seq(main.copy(body = newBody, ports = main.ports ++ ports)))
   }
 }
