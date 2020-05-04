@@ -4,7 +4,6 @@
 
 package paso.chisel.passes
 
-import scala.collection.mutable
 import firrtl.ir
 import firrtl.ir.NoInfo
 

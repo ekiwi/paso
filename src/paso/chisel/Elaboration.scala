@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
-import paso.chisel.passes.{FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
+import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, StepNode, UntimedModel, VerificationProblem}
 import paso.{ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
@@ -134,15 +134,18 @@ case class Elaboration() {
   private def elaborateImpl[IM <: RawModule](impl: () => IM, findSubspecs: IM => SubSpecs[IM]): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl()); ip.get})
+    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
 
     // we need to run the subspecs finder right after elaboration in order to find out
     // which submodules we want to get rid of and expose their I/O at the toplevel
     val subspecs = findSubspecs(ip.get).subspecs
-    assert(subspecs.isEmpty, s"TODO: implement subspecs in Elaboration and Verification: $subspecs")
+    val (exposed_fir, exposed_annos) = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
 
-    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
-    val impl_state = FindState(impl_fir).run()
-    val impl_model = FirrtlToFormal(impl_fir, impl_anno)
+    val impl_state = FindState(exposed_fir).run()
+
+    println(exposed_fir.serialize)
+
+    val impl_model = FirrtlToFormal(exposed_fir, impl_anno ++ exposed_annos)
 
     //println("State extracted from Chisel")
     //impl_state.foreach(st => println(s"${st.name}: ${st.tpe}"))

@@ -12,8 +12,8 @@ import paso.verification.VerificationProblem
 import scala.collection.mutable
 
 abstract class SubSpecs[I <: RawModule](val impl: I) {
-  trait IsSubmodule { def getTarget: ModuleTarget ; def getSpec: ProtocolSpec[UntimedModule] }
-  case class Submodule[I <: RawModule, S <: UntimedModule](impl: I, spec: I => ProtocolSpec[S], var bindings: Seq[UntimedModule] = Seq()) extends IsSubmodule {
+  trait IsSubmodule { def getTarget: ModuleTarget ; def getSpec: ProtocolSpec[UntimedModule] ; val instancePath: String }
+  case class Submodule[I <: RawModule, S <: UntimedModule](instancePath: String, impl: I, spec: I => ProtocolSpec[S], var bindings: Seq[UntimedModule] = Seq()) extends IsSubmodule {
     override def getTarget: ModuleTarget = impl.toTarget
     override def getSpec: ProtocolSpec[UntimedModule] = spec(impl)
     /** marks a RTL submodule as implementing an untimed submodule */
@@ -23,7 +23,7 @@ abstract class SubSpecs[I <: RawModule](val impl: I) {
 
   /** marks a submodule to be replaced with its specification */
   def replace[I <: RawModule, S <: UntimedModule](module: I)(spec: I => ProtocolSpec[S]): Unit = {
-    subspecs.append(Submodule(module, spec))
+    subspecs.append(Submodule(module.pathName, module, spec))
   }
 }
 

@@ -14,8 +14,9 @@ import java.io.{File, PrintWriter}
 
 import uclid.smt
 import firrtl.annotations.Annotation
-import firrtl.{ChirrtlForm, CircuitState, Compiler, HighForm, LowForm, MinimumLowFirrtlOptimization, Transform, VerilogEmitter, ir}
+import firrtl.{ChirrtlForm, CircuitState, Compiler, HighForm, LowForm, MidForm, MinimumLowFirrtlOptimization, Transform, VerilogEmitter, ir}
 import firrtl.CompilerUtils.getLoweringTransforms
+import firrtl.transforms.TopWiring.TopWiringTransform
 import firrtl.transforms.{BlackBoxSourceHelper, NoDCEAnnotation}
 import firrtl.util.BackendCompilationUtilities
 
@@ -24,15 +25,15 @@ import scala.sys.process._
 
 class MinimumFirrtlToVerilogCompiler extends Compiler {
   def emitter = new VerilogEmitter
-  def transforms: Seq[Transform] = getLoweringTransforms(HighForm, LowForm) ++
-      Seq(new MinimumLowFirrtlOptimization, new BlackBoxSourceHelper)
+  def transforms: Seq[Transform] = getLoweringTransforms(HighForm, MidForm) ++ Seq(new TopWiringTransform) ++
+      getLoweringTransforms(MidForm, LowForm) ++ Seq(new MinimumLowFirrtlOptimization, new BlackBoxSourceHelper)
 }
 
 object FirrtlToFormal extends BackendCompilationUtilities {
   private val compiler = new MinimumFirrtlToVerilogCompiler
 
   private def makeVerilog(testDir: File, circuit: ir.Circuit, annos: Seq[Annotation]): String = {
-    val state = CircuitState(circuit, ChirrtlForm, Seq(NoDCEAnnotation))
+    val state = CircuitState(circuit, ChirrtlForm, annos ++ Seq(NoDCEAnnotation))
     val verilog = compiler.compileAndEmit(state)
     val file = new PrintWriter(s"${testDir.getAbsolutePath}/${circuit.main}.v")
     file.write(verilog.getEmittedCircuit.value)
