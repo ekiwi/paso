@@ -6,20 +6,24 @@ import uclid.smt
  * turns all identifiers used in a verification problem into their fully qualified names
  *
  * For Untimed Modules:
+ * - for the main spec, prefix="", for the subspecs, prefix = "${instanceName}."
  * - we prefix the name with ${prefix}
  * - we prefix the state with ${prefix}${moduleName}.
  * - we prefix method arguments (+ ret arguments) with ${prefix}${moduleName}.${methodName}.
+ * - the renamed state needs to be propagated to invariances/mappings which refer to it
+ * - the renamed method arguments need to be propagated to protocols which refer to them
  *
  * For Transition Systems (implementation):
- * - we prefix all signals (states, inputs, outputs) with ${prefix}${systemName}. (TODO remove)
+ * - we prefix all signals (states, inputs, outputs) with ${systemName}.
+ * - this information needs to be propagated to protocols which refer to I/O and
+ *   invariances/mappings which refer to state
  * */
 object NamespaceIdentifiers {
-  type Sub = Map[smt.Expr, smt.Expr]
   type SymSub =  Map [smt.Expr, smt.Symbol]
 
   def apply(p: VerificationProblem): VerificationProblem = {
     val (untimed, u_subs, m_subs) = apply(p.spec.untimed, "")
-    val (impl, i_subs) = apply(p.impl, "")
+    val (impl, i_subs) = apply(p.impl)
     val subs = u_subs ++ i_subs
     val protocols = p.spec.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
     assert(p.subspecs.isEmpty, "TODO")
@@ -77,8 +81,8 @@ object NamespaceIdentifiers {
     (renamed_untimed, subs, method_subs)
   }
 
-  def apply(sys: smt.TransitionSystem, prefix: String): (smt.TransitionSystem, SymSub)= {
-    val fullPrefix = prefix + sys.name.map(_ + ".").getOrElse("")
+  def apply(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub)= {
+    val fullPrefix = sys.name.map(_ + ".").getOrElse("")
     val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
     val subs : SymSub = (sys.states.map(_.sym) ++ sys.inputs ++ outputSymbols).prefix(fullPrefix).toMap
     def rename(s: smt.State): smt.State =
