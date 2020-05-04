@@ -130,7 +130,7 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem)
+  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem, subspecs: SubSpecs[IM])
   private def elaborateImpl[IM <: RawModule](impl: () => IM, findSubspecs: IM => SubSpecs[IM]): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl()); ip.get})
@@ -138,8 +138,8 @@ case class Elaboration() {
 
     // we need to run the subspecs finder right after elaboration in order to find out
     // which submodules we want to get rid of and expose their I/O at the toplevel
-    val subspecs = findSubspecs(ip.get).subspecs
-    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
+    val subspecs = findSubspecs(ip.get)
+    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.subspecs.map(_.instancePath).toSet)()
 
     val impl_state = FindState(exposed_fir).run()
     val impl_model = FirrtlToFormal(exposed_fir, impl_anno)
@@ -160,7 +160,7 @@ case class Elaboration() {
       }
       //assert(impl_model.states.exists(_.sym.id == state.name), s"State $state is missing from the formal model!")
     }
-    Impl(ip.get, impl_state, impl_model)
+    Impl(ip.get, impl_state, impl_model, subspecs)
   }
 
   private case class Spec[S <: UntimedModule](mod: S, state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
@@ -220,8 +220,8 @@ case class Elaboration() {
     val implementation = elaborateImpl(impl, findSubspecs)
     val endImplementation = System.nanoTime()
     val untimed = elaborateSpec(() => proto(implementation.mod))
-    val endUntimed = System.nanoTime()
     val protos = elaborateProtocols(untimed.protocols, untimed.model.methods)
+    val endSpec= System.nanoTime()
 
     // elaborate the proof collateral
     val collateral = inv(implementation.mod, untimed.mod)
@@ -232,12 +232,12 @@ case class Elaboration() {
     if(true) {
       val total = endBinding - start
       val dImpl = endImplementation - start
-      val dUntimed = endUntimed - endImplementation
-      val dBinding = endBinding - endUntimed
+      val dSpec = endSpec - endImplementation
+      val dBinding = endBinding - endSpec
       def p(i: Long): Long = i * 100 / total
       def ms(i: Long): Long = i / 1000 / 1000
       println(s"Total Elaboration Time: ${ms(total)}ms")
-      println(s"${p(dImpl)}% RTL, ${p(dUntimed)}% Untimed Model, ${p(dBinding)}% Protocol and Invariances")
+      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dBinding)}% Invariances + Mapping")
       val other = total - firrtlCompilerTime - chiselElaborationTime
       println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
       println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
