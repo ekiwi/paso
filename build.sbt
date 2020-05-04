@@ -6,9 +6,9 @@ resolvers ++= Seq(Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("rel
 
 scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11")
 
-libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.3.0-RC2"
-libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.0-RC2"
-libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.2.0-RC2" % "test"
+libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.3.0"
+libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.0"
+libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.2.0" % "test"
 // required for uclid files
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0"
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources()
