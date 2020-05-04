@@ -55,10 +55,12 @@ case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: sm
   }
 }
 
+case class Spec(untimed: UntimedModel, protocols: Map[String, StepNode])
+
 case class VerificationProblem(
                                 impl: smt.TransitionSystem,
-                                untimed: UntimedModel,
-                                protocols: Map[String, StepNode],
+                                spec: Spec,
+                                subspecs: Map[String, Spec],
                                 invariances: Seq[Assertion],
                                 mapping: Seq[Assertion]
 )
@@ -120,26 +122,26 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     // find failing property and print
     res match {
       case smt.ModelCheckFail(witness) =>
-        println(s"Failed to verify ${methods.keys.mkString(", ")} on ${p.untimed.name}")
+        println(s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
         new smt.TransitionSystemSimulator(sys).run(witness, Some("test.vcd"))
       case smt.ModelCheckSuccess() =>
     }
 
-    assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.untimed.name}")
+    assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
   }
 
   override protected def execute(p: VerificationProblem): Unit = {
     // first we need to merge the protocol graph to ensure that methods are independent
     // - independence in this case means that for common inputs, the expected outputs are not mutually exclusive
-    val combined = p.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
+    val combined = p.spec.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
 
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
-      p.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.protocols(name), Map(name -> semantics))
+      p.spec.untimed.methods.foreach { case (name, semantics) =>
+        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics))
       }
     } else {
-      verifyMethods(p, combined, p.untimed.methods)
+      verifyMethods(p, combined, p.spec.untimed.methods)
     }
 
   }
@@ -157,8 +159,8 @@ class VerifyMapping extends VerificationTask with SMTHelpers with HasSolver {
     if(p.mapping.isEmpty) return // early return for empty mapping
     val impl_states = p.impl.states.map(_.sym)
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)} )
-    val spec_states = p.untimed.state.map(_.sym)
-    val spec_init_const = conjunction(p.untimed.state.map{st => eq(st.sym, st.init.get)})
+    val spec_states = p.spec.untimed.state.map(_.sym)
+    val spec_init_const = conjunction(p.spec.untimed.state.map{st => eq(st.sym, st.init.get)})
     val mapping_const = conjunction(p.mapping.map(_.toExpr))
 
     // The mapping check gets a lot easier because we require the untimed model to have all states initialized

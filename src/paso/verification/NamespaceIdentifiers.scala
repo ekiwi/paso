@@ -8,12 +8,14 @@ object NamespaceIdentifiers {
   type SymSub =  Map [smt.Expr, smt.Symbol]
 
   def apply(p: VerificationProblem): VerificationProblem = {
-    val (untimed, u_subs, m_subs) = apply(p.untimed, "")
+    val (untimed, u_subs, m_subs) = apply(p.spec.untimed, "")
     val (impl, i_subs) = apply(p.impl, "")
     val subs = u_subs ++ i_subs
-    val protocols = p.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
+    val protocols = p.spec.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
+    assert(p.subspecs.isEmpty, "TODO")
     VerificationProblem(
-      impl=impl, untimed=untimed, protocols=protocols,
+      impl=impl, spec=Spec(untimed=untimed, protocols=protocols),
+      subspecs = Map(),
       invariances = p.invariances.map(substituteSmt(_, subs)),
       mapping = p.mapping.map(substituteSmt(_, subs))
     )

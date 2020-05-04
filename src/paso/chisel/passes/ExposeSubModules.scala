@@ -38,7 +38,7 @@ class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
 
   def apply(): ir.Circuit= {
     val main = mods(c.main)
-    val newBody = onStmt(c.main + ".", main.body)
+    val newBody = onStmt("", main.body)
     // TODO: support submodules that are not replaced
     c.copy(modules = Seq(main.copy(body = newBody, ports = main.ports ++ ports)))
   }

@@ -10,8 +10,8 @@ import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
 import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
-import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, StepNode, UntimedModel, VerificationProblem}
-import paso.{ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
+import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, UntimedModel, VerificationProblem}
+import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -130,7 +130,7 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem, subspecs: SubSpecs[IM])
+  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem, subspecs: Seq[IsSubmodule])
   private def elaborateImpl[IM <: RawModule](impl: () => IM, findSubspecs: IM => SubSpecs[IM]): Impl[IM] = {
     var ip: Option[IM] = None
     val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl()); ip.get})
@@ -138,8 +138,8 @@ case class Elaboration() {
 
     // we need to run the subspecs finder right after elaboration in order to find out
     // which submodules we want to get rid of and expose their I/O at the toplevel
-    val subspecs = findSubspecs(ip.get)
-    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.subspecs.map(_.instancePath).toSet)()
+    val subspecs = findSubspecs(ip.get).subspecs
+    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
 
     val impl_state = FindState(exposed_fir).run()
     val impl_model = FirrtlToFormal(exposed_fir, impl_anno)
@@ -163,8 +163,8 @@ case class Elaboration() {
     Impl(ip.get, impl_state, impl_model, subspecs)
   }
 
-  private case class Spec[S <: UntimedModule](mod: S, state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
-  private def elaborateSpec[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
+  private case class Untimed[S <: UntimedModule](mod: S, state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
+  private def elaborateUntimed[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
     var maybeProto: Option[ProtocolSpec[S]] = None
     val (main, _) = toFirrtl { () => maybeProto = Some(proto()) ; maybeProto.get.spec }
     val p = maybeProto.get
@@ -209,7 +209,13 @@ case class Elaboration() {
       case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
     }
     val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
-    Spec(p.spec, spec_state, untimed_model, p.protos)
+    Untimed(p.spec, spec_state, untimed_model, p.protos)
+  }
+
+  private def elaborateSpec[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
+    val ut = elaborateUntimed(proto)
+    val pt = elaborateProtocols(ut.protocols, ut.model.methods)
+    (Spec(ut.model, pt.toMap), ut.mod, ut.state)
   }
 
   def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: I => SubSpecs[I], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
@@ -219,13 +225,19 @@ case class Elaboration() {
 
     val implementation = elaborateImpl(impl, findSubspecs)
     val endImplementation = System.nanoTime()
-    val untimed = elaborateSpec(() => proto(implementation.mod))
-    val protos = elaborateProtocols(untimed.protocols, untimed.model.methods)
+    val (spec, untimed_mod, untimed_state) = elaborateSpec(() => proto(implementation.mod))
     val endSpec= System.nanoTime()
 
+    // elaborate subspecs
+    val subspecs = implementation.subspecs.map { s =>
+      val (spec, _, _) = elaborateSpec[UntimedModule](s.makeSpec)
+      s.instancePath -> spec
+    }
+    val endSubSpec= System.nanoTime()
+
     // elaborate the proof collateral
-    val collateral = inv(implementation.mod, untimed.mod)
-    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed.mod, untimed.state, collateral.maps)
+    val collateral = inv(implementation.mod, untimed_mod)
+    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed_mod, untimed_state, collateral.maps)
     val invariances = elaborateInvariances(implementation.mod, implementation.state, collateral.invs)
     val endBinding = System.nanoTime()
 
@@ -233,11 +245,12 @@ case class Elaboration() {
       val total = endBinding - start
       val dImpl = endImplementation - start
       val dSpec = endSpec - endImplementation
-      val dBinding = endBinding - endSpec
+      val dSubspec = endSubSpec - endSpec
+      val dBinding = endBinding - endSubSpec
       def p(i: Long): Long = i * 100 / total
       def ms(i: Long): Long = i / 1000 / 1000
       println(s"Total Elaboration Time: ${ms(total)}ms")
-      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dBinding)}% Invariances + Mapping")
+      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dSubspec)}% Subspecs, ${p(dBinding)}% Invariances + Mapping")
       val other = total - firrtlCompilerTime - chiselElaborationTime
       println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
       println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
@@ -247,8 +260,8 @@ case class Elaboration() {
     // combine into verification problem
     val prob = VerificationProblem(
       impl = implementation.model,
-      untimed = untimed.model,
-      protocols = protos.toMap,
+      spec = spec,
+      subspecs = subspecs.toMap,
       invariances = invariances,
       mapping = mappings
     )
