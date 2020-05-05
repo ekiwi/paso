@@ -36,7 +36,8 @@ class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
     case other => other.mapStmt(onStmt(prefix, _))
   }
 
-  def apply(): ir.Circuit= {
+  def apply(): ir.Circuit = {
+    if(toBeReplaced.isEmpty) return c // short circuit
     val main = mods(c.main)
     val newBody = onStmt("", main.body)
     // TODO: support submodules that are not replaced
