@@ -136,6 +136,12 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     // - independence in this case means that for common inputs, the expected outputs are not mutually exclusive
     val combined = p.spec.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
 
+    // if there are subspecs, we need to generate a transition system simulating them
+    val subTransitionsSystems = p.subspecs.map{ case (name, spec) =>
+      val combined = spec.protocols.values.reduce(VerificationGraph.merge)
+      VerificationAutomatonEncoder(true).run(combined, prefix = name + ".")
+    }
+
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>

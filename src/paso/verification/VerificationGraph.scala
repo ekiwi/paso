@@ -170,7 +170,10 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
   }
 }
 
-class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
+case class VerificationAutomatonEncoder(switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
+  // TODO: remove simplifications
+  private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
+  private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
 
   type StateId = Int
   case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
@@ -198,7 +201,7 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
     val nextState = nextStateAndGuard.groupBy(_._1).foldLeft[smt.Expr](invalidState){ case (other, (stateId, guards)) =>
       ite(disjunction(guards.map(_._2)), smt.BitVectorLit(stateId, stateBits), other)
     }
-    val stateState = smt.State(stateSym, init = Some(smt.BitVectorLit(start.id, stateBits)), next = Some(nextState))
+    val stateState = smt.State(stateSym, init = Some(smt.BitVectorLit(start.id, stateBits)), next = Some(simplify(nextState)))
 
     // besides the "state" we need to keep track of argument mapped in earlier cycles
     // so that we can use them in output constraints in a later cycle
@@ -212,22 +215,28 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
         assert(updates.head._2.eq.argRange.isFullRange)
         and(inState(state), updates.head._2.guard) -> updates.head._2.eq.range.toExpr()
       }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
-      smt.State(stateSym, next = Some(nextArg))
+      smt.State(stateSym, next = Some(simplify(nextArg)))
     }
 
-    // turn environment assumptions into constraints
-    val constraints = states.map(s => implies(inState(s.id), s.environmentAssumptions))
+    val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions))
+    val guarantees = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
 
-    // turn system assertions into bad states (requires negation)
-    val asserts = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
-    val bads = asserts.map(not) ++ Seq(badInInvalidState)
+    val assumptionsSimple = simplify(assumptions)
+    val guaranteesSimple  = simplify(guarantees)
+
+    // turn environment assumptions or system assertions into constraints
+    val constraints = if(switchAssumesAndGuarantees) guaranteesSimple else assumptionsSimple
+
+    // turn system assertions or environment assumptions into bad states (requires negation)
+    val asserts = if(switchAssumesAndGuarantees) assumptionsSimple else guaranteesSimple
+    val bads = asserts.map(not)
 
     smt.TransitionSystem(
       name = Some(prefix.dropRight(1)),
       inputs = Seq(),
       states = Seq(stateState) ++ args,
       constraints = constraints,
-      bad = bads
+      bad = Seq(badInInvalidState) ++ bads
     )
   }
 
@@ -237,12 +246,19 @@ class VerificationAutomatonEncoder(check: BoundedCheckBuilder) extends SMTHelper
     encodeStatesIntoTransitionSystem(prefix, start, states)
   }
 
-  private var stateCounter: Int = 0
+  private val StartId: StateId = 0
+  private var stateCounter: Int = StartId
   private val states = mutable.ArrayBuffer[State]()
-  private def getStateId: Int = { val ii = stateCounter; stateCounter += 1; ii}
+  private def getStateId: StateId = { val ii = stateCounter; stateCounter += 1; ii}
 
   private def visit(node: StepNode): StateId = {
-    if(node.isFinal) { throw new NotImplementedError("TODO") }
+    if(node.isFinal) {
+      if(node.next.isEmpty) {
+        return StartId
+      } else {
+        throw new NotImplementedError("TODO")
+      }
+    }
 
     val id = getStateId
 
