@@ -301,7 +301,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     (mappings, constraints, nextStatesAndMappings.map(_._1))
   }
 
-  def visit(guard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
+  def visit(outGuard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
     val mappings = node.mappings.map { m =>
       // substitute argument to refer to the correct mapping
@@ -311,10 +311,10 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
       // build constraint expressions
       val argExpr = if(m.argRange.isFullRange) argValue else app(smt.BVExtractOp(hi=m.argRange.hi, lo=m.argRange.lo), argValue)
       val equality = eq(m.range.toExpr(), argExpr)
-      OutputConstraint(guard, implies(guardValue, equality))
+      OutputConstraint(outGuard, implies(guardValue, equality))
     }
 
-    val next = NextState(guard, visit(node.next.head))
+    val next = NextState(outGuard, visit(node.next.head))
     (next, mappings)
   }
 

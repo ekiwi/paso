@@ -135,7 +135,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     val subTransitionsSystems = p.subspecs.map { sub =>
       val combined = sub.spec.protocols.values.reduce(VerificationGraph.merge)
       val methodFuns = UntimedModel.functionAppSubs(sub.spec.untimed)
-      VerificationAutomatonEncoder(true).run(combined, prefix = sub.instance + ".")
+      val encoder = VerificationAutomatonEncoder(methodFuns.toMap, switchAssumesAndGuarantees = true)
+      encoder.run(combined, prefix = sub.instance + ".")
     }
 
     // we can verify each method individually or with the combined method graph
