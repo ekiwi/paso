@@ -58,6 +58,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     if(debugPrint) println(s"assume: $expr")
   }
 
+  // TODO: add support for functions with arguments instead of just defines (this will be used for the new method semantics model)
   def define(name: smt.Symbol, expr: smt.Expr): Unit = {
     require(name.typ == expr.typ, s"Type mismatch: ${name.typ} != ${expr.typ}")
     require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
@@ -84,6 +85,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
 
     // emulate defines and symbolic constants with states
     val constStates = symConsts.map(s => smt.State(s, next=Some(s)))
+    // TODO: inline defines (at least at an option to)
     val defineStates = defines.map{ case (name, expr) =>
       val s = smt.Symbol(name, expr.typ)
       smt.State(s, init=Some(expr), next=Some(s))
