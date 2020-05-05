@@ -64,7 +64,7 @@ object VerificationProblem {
   def verify(problem: VerificationProblem): Unit = {
     // first we need to make sure to properly namespace all symbols in the Verification Problem
     val p = NamespaceIdentifiers(problem)
-    println(p)
+    //println(p)
     val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true))
     tasks.foreach(_.run(p))
   }
