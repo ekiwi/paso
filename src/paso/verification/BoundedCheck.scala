@@ -47,6 +47,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     steps(ii) = step.copy(assumptions = step.assumptions ++ Seq(expr))
     if(debugPrint) {
       val simpl = SMTSimplifier.simplify(expr)
+      assert(simpl != SMTHelper.fals, "Assuming false! https://xkcd.com/704/")
       if(simpl != SMTHelper.tru) println(s"assume @ $ii: $simpl")
     }
   }
