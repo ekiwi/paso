@@ -10,7 +10,7 @@ import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
 import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
-import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, UntimedModel, VerificationProblem}
+import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
 
@@ -229,9 +229,13 @@ case class Elaboration() {
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
+    val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
     val subspecs = implementation.subspecs.map { s =>
       val (spec, _, _) = elaborateSpec[UntimedModule](s.makeSpec)
-      s.instancePath -> spec
+      val instance = s.instancePath
+      val prefixLength = instance.length + 1
+      val io = implIo.filter(_.id.startsWith(instance + "_")).map(s => s.copy(id = s.id.substring(prefixLength)))
+      Subspec(instance, io, spec)
     }
     val endSubSpec= System.nanoTime()
 
@@ -261,7 +265,7 @@ case class Elaboration() {
     val prob = VerificationProblem(
       impl = implementation.model,
       spec = spec,
-      subspecs = subspecs.toMap,
+      subspecs = subspecs,
       invariances = invariances,
       mapping = mappings
     )

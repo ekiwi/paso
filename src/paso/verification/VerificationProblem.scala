@@ -56,11 +56,12 @@ case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: sm
 }
 
 case class Spec(untimed: UntimedModel, protocols: Map[String, StepNode])
+case class Subspec(instance: String, ioSymbols: Seq[smt.Symbol], spec: Spec)
 
 case class VerificationProblem(
                                 impl: smt.TransitionSystem,
                                 spec: Spec,
-                                subspecs: Map[String, Spec],
+                                subspecs: Seq[Subspec],
                                 invariances: Seq[Assertion],
                                 mapping: Seq[Assertion]
 )
@@ -137,9 +138,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     val combined = p.spec.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
 
     // if there are subspecs, we need to generate a transition system simulating them
-    val subTransitionsSystems = p.subspecs.map{ case (name, spec) =>
-      val combined = spec.protocols.values.reduce(VerificationGraph.merge)
-      VerificationAutomatonEncoder(true).run(combined, prefix = name + ".")
+    val subTransitionsSystems = p.subspecs.map { sub =>
+      val combined = sub.spec.protocols.values.reduce(VerificationGraph.merge)
+      VerificationAutomatonEncoder(true).run(combined, prefix = sub.instance + ".")
     }
 
     // we can verify each method individually or with the combined method graph

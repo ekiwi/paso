@@ -24,8 +24,7 @@ object NamespaceIdentifiers {
   def apply(p: VerificationProblem): VerificationProblem = {
     val (impl, ioSubs, implStateSubs) = renameImpl(p.impl)
     val (spec, specStateSubs) = renameSpec("", p.spec, ioSubs)
-    val subspecs = p.subspecs.map{ case (name, spec) => name -> renameSpec(name + ".", spec, ioSubs)._1 }
-
+    val subspecs = p.subspecs.map(renameSubspec(_, ioSubs))
     val invariances = p.invariances.map(substituteSmt(_, implStateSubs))
     val stateSubs = implStateSubs ++ specStateSubs
     val mapping = p.mapping.map(substituteSmt(_, stateSubs))
@@ -54,6 +53,13 @@ object NamespaceIdentifiers {
     )
 
     (renamed_sys, ioSubs, stateSubs)
+  }
+
+  def renameSubspec(s: Subspec, ioSubs: SymSub): Subspec = {
+    val p = s.instance + "_"
+    val localIoSubs : SymSub = s.ioSymbols.map(s => s -> ioSubs(s.copy(id = p + s.id))).toMap
+    val spec = renameSpec(s.instance + ".", s.spec, localIoSubs)._1
+    s.copy(spec = spec)
   }
 
   def renameSpec(prefix: String, spec: Spec, implIoSubs: SymSub): (Spec, SymSub) = {
