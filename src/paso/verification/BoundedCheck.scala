@@ -5,7 +5,7 @@
 package paso.verification
 
 import chisel3.util.log2Ceil
-import paso.chisel.SMTSimplifier
+import paso.chisel.{SMTHelper, SMTSimplifier}
 import uclid.smt
 
 import scala.collection.mutable
@@ -35,14 +35,20 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assertions = step.assertions ++ Seq(expr))
-    if(debugPrint) println(s"assert @ $ii: ${SMTSimplifier.simplify(expr)}")
+    if(debugPrint) {
+      val simpl = SMTSimplifier.simplify(expr)
+      if(simpl != SMTHelper.tru) println(s"assert @ $ii: $simpl")
+    }
   }
 
   def assumeAt(ii : Int, expr: smt.Expr): Unit = {
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assumptions = step.assumptions ++ Seq(expr))
-    if(debugPrint) println(s"assume @ $ii: ${SMTSimplifier.simplify(expr)}")
+    if(debugPrint) {
+      val simpl = SMTSimplifier.simplify(expr)
+      if(simpl != SMTHelper.tru) println(s"assume @ $ii: $simpl")
+    }
   }
 
   def assume(expr: smt.Expr): Unit = {
