@@ -22,37 +22,61 @@ object NamespaceIdentifiers {
   type SymSub =  Map [smt.Expr, smt.Symbol]
 
   def apply(p: VerificationProblem): VerificationProblem = {
-    val (untimed, u_subs, m_subs) = apply(p.spec.untimed, "")
-    val (impl, i_subs) = apply(p.impl)
-    val subs = u_subs ++ i_subs
-    val protocols = p.spec.protocols.map{ case(name, graph) => (name, apply(graph, subs, m_subs)) }
-    assert(p.subspecs.isEmpty, "TODO")
-    VerificationProblem(
-      impl=impl, spec=Spec(untimed=untimed, protocols=protocols),
-      subspecs = Map(),
-      invariances = p.invariances.map(substituteSmt(_, subs)),
-      mapping = p.mapping.map(substituteSmt(_, subs))
-    )
+    val (impl, ioSubs, implStateSubs) = renameImpl(p.impl)
+    val (spec, specStateSubs) = renameSpec("", p.spec, ioSubs)
+    val subspecs = p.subspecs.map{ case (name, spec) => name -> renameSpec(name + ".", spec, ioSubs)._1 }
+
+    val invariances = p.invariances.map(substituteSmt(_, implStateSubs))
+    val stateSubs = implStateSubs ++ specStateSubs
+    val mapping = p.mapping.map(substituteSmt(_, stateSubs))
+
+    VerificationProblem(impl, spec, subspecs, invariances, mapping)
   }
 
-  def apply(node: StepNode, subs: SymSub, sm: Map[String, String]): StepNode =
-    StepNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm))
-  def apply(node: InputNode, subs: SymSub, sm: Map[String, String]): InputNode =
-    InputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
-      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
-  def apply(node: OutputNode, subs: SymSub, sm: Map[String, String]): OutputNode =
-    OutputNode(node.next.map(apply(_, subs, sm)), node.methods.map(sm),
-      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
+  def renameImpl(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub, SymSub) = {
+    // we want to prefix state and io with the name of the toplevel module
+    val prefix = sys.name.get + "."
+    val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
+    val ioSubs : SymSub = (sys.inputs ++ outputSymbols).prefix(prefix).toMap
+    val stateSubs : SymSub = sys.states.map(_.sym).prefix(prefix).toMap
 
-  def apply(e: ArgumentEq, subs: SymSub): ArgumentEq =
-    e.copy(range = apply(e.range, subs), argRange = apply(e.argRange, subs))
-  def apply(r: Range, subs: SymSub): Range =
-    if(subs.contains(r.sym)) r.copy(sym = subs(r.sym)) else r
+    val subs = ioSubs ++ stateSubs
+    def rename(s: smt.State): smt.State =
+      smt.State(subs(s.sym), s.init.map(substituteSmt(_, subs)), s.next.map(substituteSmt(_, subs)))
+    val renamed_sys = smt.TransitionSystem(
+      name = sys.name,
+      inputs = sys.inputs.map(subs),
+      states = sys.states.map(rename),
+      outputs = sys.outputs.map{ case (name, expr) => (prefix + name, substituteSmt(expr, subs)) },
+      constraints = sys.constraints.map(substituteSmt(_, subs)),
+      bad = sys.bad.map(substituteSmt(_, subs)),
+      fair = sys.fair.map(substituteSmt(_, subs)),
+    )
 
-  def apply(untimed: UntimedModel, prefix: String): (UntimedModel, SymSub, Map[String, String]) = {
-    val fullPrefix = prefix + untimed.name + "."
+    (renamed_sys, ioSubs, stateSubs)
+  }
 
+  def renameSpec(prefix: String, spec: Spec, implIoSubs: SymSub): (Spec, SymSub) = {
+    val fullPrefix = prefix + spec.untimed.name + "."
+    val (renamedUntimed, stateSubs) = renameUntimedModel(fullPrefix, spec.untimed)
+
+    // io substitutions for protocols
+    val args = spec.untimed.methods.flatMap{case (name, sem) =>
+      sem.inputs.map{ i => i.copy(id = name + "." + i.id) } ++
+        sem.outputs.flatMap{ case NamedGuardedExpr(sym, _,_) => Seq(sym.copy(id = name + "." + sym.id) ,
+          smt.Symbol(name + "." + sym.id + ".valid", smt.BoolType))}
+    }
+    val specIoSubs : SymSub = args.prefix(fullPrefix).toMap
+    val methodNameSubs = spec.untimed.methods.map{case (name, _) => name -> name} // TODO: should this be prefixed or not?
+    val protocolIoSubs = specIoSubs ++ implIoSubs
+    val renamedProtocols = spec.protocols.map{ case(name, graph) => (name, renameProtocol(graph, protocolIoSubs, methodNameSubs)) }
+
+    (Spec(renamedUntimed, renamedProtocols), stateSubs)
+  }
+
+  def renameUntimedModel(fullPrefix: String, untimed: UntimedModel): (UntimedModel, SymSub) = {
     val stateSubs: SymSub = untimed.state.map(_.sym).prefix(fullPrefix).toMap
+
     def rename(name: String, s: MethodSemantics): MethodSemantics = {
       val subs: SymSub = (s.inputs ++ s.outputs.map(_.sym)).prefix(fullPrefix + name + ".").toMap ++ stateSubs
       MethodSemantics(substituteSmt(s.guard, subs), s.updates.map(renameNamed(_, subs)), s.outputs.map(renameGuardedNamed(_, subs)), s.inputs.map(subs))
@@ -64,47 +88,35 @@ object NamespaceIdentifiers {
       NamedGuardedExpr(subs(n.sym), expr = substituteSmt(n.expr, subs), guard = substituteSmt(n.guard, subs))
     }
 
-    val renamed_untimed = UntimedModel(
+    val renamedUntimed = UntimedModel(
       name = fullPrefix.dropRight(1),
       state = untimed.state.map(st => st.copy(sym = stateSubs(st.sym))), // we assume that all inits are constant
       methods = untimed.methods.map{ case (name, s) => (name,  rename(name, s))},
     )
 
-    // substitutions for protocols
-    val args = untimed.methods.flatMap{case (name, sem) =>
-      sem.inputs.map{ i => i.copy(id = name + "." + i.id) } ++
-        sem.outputs.flatMap{ case NamedGuardedExpr(sym, _,_) => Seq(sym.copy(id = name + "." + sym.id) ,
-          smt.Symbol(name + "." + sym.id + ".valid", smt.BoolType))}
-    }
-    val subs : SymSub = (untimed.state.map(_.sym) ++ args).prefix(fullPrefix).toMap
-    val method_subs = untimed.methods.map{case (name, _) => name -> name} // TODO: should this be prefixed or not?
-    (renamed_untimed, subs, method_subs)
+    (renamedUntimed, stateSubs)
   }
 
-  def apply(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub)= {
-    val fullPrefix = sys.name.map(_ + ".").getOrElse("")
-    val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
-    val subs : SymSub = (sys.states.map(_.sym) ++ sys.inputs ++ outputSymbols).prefix(fullPrefix).toMap
-    def rename(s: smt.State): smt.State =
-      smt.State(subs(s.sym), s.init.map(substituteSmt(_, subs)), s.next.map(substituteSmt(_, subs)))
-    val renamed_sys = smt.TransitionSystem(
-      name = Some(fullPrefix.dropRight(1)),
-      inputs = sys.inputs.map(subs),
-      states = sys.states.map(rename),
-      outputs = sys.outputs.map{ case (name, expr) => (fullPrefix + name, substituteSmt(expr, subs)) },
-      constraints = sys.constraints.map(substituteSmt(_, subs)),
-      bad = sys.bad.map(substituteSmt(_, subs)),
-      fair = sys.fair.map(substituteSmt(_, subs)),
-    )
-    (renamed_sys, subs)
-  }
+
+  def renameProtocol(node: StepNode, subs: SymSub, sm: Map[String, String]): StepNode =
+    StepNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm))
+  def renameProtocol(node: InputNode, subs: SymSub, sm: Map[String, String]): InputNode =
+    InputNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm),
+      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
+  def renameProtocol(node: OutputNode, subs: SymSub, sm: Map[String, String]): OutputNode =
+    OutputNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm),
+      node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
+
+  def apply(e: ArgumentEq, subs: SymSub): ArgumentEq =
+    e.copy(range = apply(e.range, subs), argRange = apply(e.argRange, subs))
+  def apply(r: Range, subs: SymSub): Range =
+    if(subs.contains(r.sym)) r.copy(sym = subs(r.sym)) else r
 
   // helper functions
   implicit class symbolSeq(x: Iterable[smt.Symbol]) {
     def prefix(p: String): Iterable[(smt.Symbol, smt.Symbol)] = x.map(s => s -> smt.Symbol(p + s.id, s.typ))
     def suffix(suf: String): Iterable[(smt.Symbol, smt.Symbol)] = x.map(s => s -> smt.Symbol(s.id + suf, s.typ))
   }
-  //implicit def mapToSymbols(m: Iterable[(String, smt.Type)]): Iterable[smt.Symbol] = m.map{ case (name, tpe) => smt.Symbol(name, tpe)}
 }
 
 object substituteSmt {
