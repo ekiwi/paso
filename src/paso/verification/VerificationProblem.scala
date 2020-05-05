@@ -104,7 +104,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     }
 
     // encode the protocol tree
-    val final_edges = new VerificationTreeEncoder(check).run(proto)
+    val guards = methods.mapValues(_.guard)
+    val final_edges = new VerificationTreeEncoder(check, guards).run(proto)
 
     // make sure that in the final states the mapping as well as the invariances hold
     final_edges.foreach { case FinalNode(ii, guard, method, isStep) =>

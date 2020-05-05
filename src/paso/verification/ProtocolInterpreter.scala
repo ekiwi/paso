@@ -133,7 +133,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     (merge(parentToChildren, parentMap), roots | parentRoots)
   }
 
-  private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], guard: Option[smt.Expr], mappedBits: BitMap): StepNode = {
+  private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], mappedBits: BitMap): StepNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
     // if we are at a final step
     if(states.head.isEmpty && !children.contains(states.head)) {
@@ -145,22 +145,19 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
 
     val outputs = states.map { st =>
       val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
-      val next = children.get(st).map(c => makeGraph(methods, c, children, None, outBits)).toSeq
+      val next = children.get(st).map(c => makeGraph(methods, c, children, outBits)).toSeq
       OutputNode(next, methods, outConst ++ st.pathCondition.toSeq, outMap)
     }.toSeq
 
-    val inputs = Seq(InputNode(outputs, methods, inConst ++ guard.toSeq, inMap))
+    val inputs = Seq(InputNode(outputs, methods, inConst, inMap))
     StepNode(inputs, methods)
   }
 
-  def getGraph(method: String, guard: smt.Expr): StepNode = {
+  def getGraph(method: String): StepNode = {
     checkFinalStates(activeStates)
-
-    val optGuard = if(guard == smt.BooleanLit(true)) { None } else { Some(guard) }
-
     // reverse connectivity
     val (children, roots) = reverseConnectivity(activeStates)
-    makeGraph(Set(method), roots, children, optGuard, Map())
+    makeGraph(Set(method), roots, children, Map())
   }
 
   def checkFinalStates(states: Iterable[ProtocolState]) = {

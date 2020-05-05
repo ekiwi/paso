@@ -90,7 +90,7 @@ object VerificationGraph extends SMTHelpers with HasSolver {
 }
 
 case class FinalNode(ii: Int, guard: smt.Expr, method: String, isStep: Boolean)
-class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
+class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, smt.Expr]) extends SMTHelpers {
 
   case class State(ii: Int, pathGuard: smt.Expr)
   def run(proto: StepNode): Seq[FinalNode] = {
@@ -121,7 +121,16 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder) extends SMTHelpers {
     if(node.isFinal) { addFinalNode(node, state); return }
 
     // either of the following input constraints could be true
-    assumeAt(state, disjunction(node.next.map(_.constraintExpr)))
+    val inputConstraints = node.next.map { ii =>
+      // add method guard if necessary
+      if(ii.methods.size > 1 || ii.methods != node.methods || state.ii == 0) {
+        val g = ii.methods.toSeq.map(guards).filterNot(_ == tru)
+        and(ii.constraintExpr, disjunction(g))
+      } else {
+        ii.constraintExpr
+      }
+    }
+    assumeAt(state, disjunction(inputConstraints))
 
     if(node.isBranchPoint) {
       val syms = getUniqueBranchSymbols(node.next.length)

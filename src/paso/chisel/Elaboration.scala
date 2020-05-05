@@ -126,7 +126,7 @@ case class Elaboration() {
       val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
       //println(ff.serialize)
       new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
-      (p.methodName, int.getGraph(p.methodName, methods(p.methodName).guard))
+      (p.methodName, int.getGraph(p.methodName))
     }
   }
 
