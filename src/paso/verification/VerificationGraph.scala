@@ -125,7 +125,11 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
       // add method guard if necessary
       if(ii.methods.size > 1 || ii.methods != node.methods || state.ii == 0) {
         val g = ii.methods.toSeq.map(guards).filterNot(_ == tru)
-        and(ii.constraintExpr, disjunction(g))
+        if(g.nonEmpty) {
+          and(ii.constraintExpr, disjunction(g))
+        } else {
+          ii.constraintExpr
+        }
       } else {
         ii.constraintExpr
       }

@@ -52,7 +52,7 @@ trait SMTHelpers {
   def neq(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.InequalityOp, a, b)
   def implies(a: smt.Expr, b: smt.Expr): smt.Expr = app(smt.ImplicationOp, a, b)
   def conjunction(c: Iterable[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(true)){case (a,b) => app(smt.ConjunctionOp, a, b)}
-  def disjunction(c: Iterable[smt.Expr]): smt.Expr = c.foldLeft[smt.Expr](smt.BooleanLit(false)){case (a,b) => app(smt.DisjunctionOp, a, b)}
+  def disjunction(c: Iterable[smt.Expr]): smt.Expr = c.reduceLeft[smt.Expr]{case (a,b) => app(smt.DisjunctionOp, a, b)}
   def forall(vars: Seq[smt.Symbol], e: smt.Expr): smt.Expr = vars.foldRight(e)((vv, e) => app(smt.ForallOp(List(vv), List()), e))
   val tru = smt.BooleanLit(true)
   val fals = smt.BooleanLit(false)
