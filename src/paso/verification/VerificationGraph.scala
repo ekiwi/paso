@@ -174,7 +174,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
   }
 }
 
-case class VerificationAutomatonEncoder(switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
+case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
   // TODO: remove simplifications
   private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
   private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
@@ -288,17 +288,43 @@ case class VerificationAutomatonEncoder(switchAssumesAndGuarantees: Boolean = fa
     val mappings = node.mappings.map(ArgMap(inGuard, _))
 
     // at least one of the following output constraints has to be true
-    val systemAssertion = disjunction(node.next.map(o => and(o.constraintExpr, o.mappingExpr)))
+    val systemAssertion = disjunction(node.next.map(_.constraintExpr))
 
-    val guards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(tru) }
-    val nextStates = node.next.zip(guards).map{ case(output, outGuard) => visit(outGuard, output) }
+    // TODO: in case there is an input branch, identifying the disagreeing constraint that separates
+    //       the branches would lead to a smaller formula,
+    //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
+    // note that return argument maps cannot be used to distinguish the path
+    val outputGuards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(tru) }
+    val nextStates = node.next.zip(outputGuards).map{ case(output, outGuard) => visit(outGuard, mappings, output) }
 
     (mappings, OutputConstraint(inGuard, systemAssertion), nextStates)
   }
 
-  def visit(guard: smt.Expr, node: OutputNode): NextState = {
+  def visit(guard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
-    NextState(guard, visit(node.next.head))
+    val mappings = node.mappings.map { m =>
+      // substitute argument to refer to the correct mapping
+      val foo = callWithLatestArgumentValue(methodFuns(m.argRange.sym), inputMap)
+      val argExpr = if(m.argRange.isFullRange) foo else app(smt.BVExtractOp(hi=m.argRange.hi, lo=m.argRange.lo), foo)
+      val equality = eq(m.range.toExpr(), argExpr)
+      val withValidGuard = 
+      OutputConstraint(guard, eq(argExpr))
+    }
+
+
+    val next = NextState(guard, visit(node.next.head))
+  }
+
+  private def callWithLatestArgumentValue(foo: smt.FunctionApplication, map: Seq[ArgMap]): smt.FunctionApplication = {
+    val args = foo.args.map(a => getLatestArgumentValue(a.asInstanceOf[smt.Symbol], map))
+    foo.copy(args = args)
+  }
+
+  /** Returns the argument state if the argument is not mapped in the current cycle. */
+  private def getLatestArgumentValue(arg: smt.Symbol, map: Seq[ArgMap]): smt.Expr = {
+    // TODO: for now we only support a single full update --> need to implement partial updates at some point
+    assert(map.forall(_.eq.argRange.isFullRange))
+    map.find(_.eq.argRange.sym == arg).map(_.eq.range.toExpr()).getOrElse(arg)
   }
 }
 
