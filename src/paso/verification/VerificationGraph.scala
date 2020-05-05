@@ -276,7 +276,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
 
     val ir = node.next.zip(inputGuards).map { case (input, inGuard) => visit(inGuard, input) }
     val inputMappings = ir.flatMap(_._1)
-    val systemAssertions = ir.map(_._2)
+    val systemAssertions = ir.flatMap(_._2)
     val nextState = ir.flatMap(_._3)
 
     val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions)
@@ -284,7 +284,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     s.id
   }
 
-  def visit(inGuard: smt.Expr, node: InputNode): (Seq[ArgMap], OutputConstraint, Seq[NextState]) = {
+  def visit(inGuard: smt.Expr, node: InputNode): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState]) = {
     val mappings = node.mappings.map(ArgMap(inGuard, _))
 
     // at least one of the following output constraints has to be true
@@ -295,24 +295,27 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
     // note that return argument maps cannot be used to distinguish the path
     val outputGuards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(tru) }
-    val nextStates = node.next.zip(outputGuards).map{ case(output, outGuard) => visit(outGuard, mappings, output) }
+    val nextStatesAndMappings = node.next.zip(outputGuards).map{ case(output, outGuard) => visit(outGuard, mappings, output) }
 
-    (mappings, OutputConstraint(inGuard, systemAssertion), nextStates)
+    val constraints = Seq(OutputConstraint(inGuard, systemAssertion)) ++ nextStatesAndMappings.flatMap(_._2)
+    (mappings, constraints, nextStatesAndMappings.map(_._1))
   }
 
   def visit(guard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
     val mappings = node.mappings.map { m =>
       // substitute argument to refer to the correct mapping
-      val foo = callWithLatestArgumentValue(methodFuns(m.argRange.sym), inputMap)
-      val argExpr = if(m.argRange.isFullRange) foo else app(smt.BVExtractOp(hi=m.argRange.hi, lo=m.argRange.lo), foo)
+      val argValue = callWithLatestArgumentValue(methodFuns(m.argRange.sym), inputMap)
+      val guard = smt.Symbol(m.argRange.sym.id + ".valid", smt.BoolType)
+      val guardValue = callWithLatestArgumentValue(methodFuns(guard), inputMap)
+      // build constraint expressions
+      val argExpr = if(m.argRange.isFullRange) argValue else app(smt.BVExtractOp(hi=m.argRange.hi, lo=m.argRange.lo), argValue)
       val equality = eq(m.range.toExpr(), argExpr)
-      val withValidGuard = 
-      OutputConstraint(guard, eq(argExpr))
+      OutputConstraint(guard, implies(guardValue, equality))
     }
 
-
     val next = NextState(guard, visit(node.next.head))
+    (next, mappings)
   }
 
   private def callWithLatestArgumentValue(foo: smt.FunctionApplication, map: Seq[ArgMap]): smt.FunctionApplication = {
