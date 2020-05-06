@@ -283,18 +283,19 @@ object Btor2Serializer {
 
       st.init.foreach { init => line(s"init ${t(init.typ)} ${s(st.sym)} ${s(init)}") }
     }
+
+    // define outputs first to allow other labels to refer to the output symbols
+    sys.outputs.foreach{ case (name, expr) =>
+      expr_cache(Symbol(name, expr.typ)) = s(expr)
+      if(!skipOutput) line(s"output ${s(expr)} $name")
+    }
+
     // define state next
     sys.states.foreach { st =>
       st.next.foreach{ next =>
         comment(s"${st.sym}.next := $next")
         line(s"next ${t(next.typ)} ${s(st.sym)} ${s(next)}")
       }
-    }
-
-    // define outputs first to allow other labels to refer to the output symbols
-    sys.outputs.foreach{ case (name, expr) =>
-      expr_cache(Symbol(name, expr.typ)) = s(expr)
-      if(!skipOutput) line(s"output ${s(expr)} $name")
     }
 
     // define bad states, constraints and fairness properties
