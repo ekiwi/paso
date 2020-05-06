@@ -76,7 +76,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
   override val solverName: String = "btormc"
 
 
-  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics]): Unit = {
+  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], sub: Seq[smt.TransitionSystem]): Unit = {
     val check = new BoundedCheckBuilder(p.impl)
 
     //ShowDot(VerificationGraphToDot("proto", proto))
@@ -110,7 +110,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
       p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(ii, implies(guard, elim(m.toExpr))))
     }
 
-    val sys = check.getCombinedSystem
+    val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub)
     val checker = smt.Btor2.createBtorMC()
     //val checker = smt.Btor2.createCosa2MC()
     val res = checker.check(sys, fileName=Some("test.btor"), kMax = check.getK)
@@ -135,17 +135,19 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     val subTransitionsSystems = p.subspecs.map { sub =>
       val combined = sub.spec.protocols.values.reduce(VerificationGraph.merge)
       val methodFuns = UntimedModel.functionAppSubs(sub.spec.untimed)
+      val resetAssumption = VerificationTask.findReset(sub.ioSymbols).map(not).getOrElse(tru)
       val encoder = VerificationAutomatonEncoder(methodFuns.toMap, switchAssumesAndGuarantees = true)
-      encoder.run(combined, prefix = sub.instance + ".")
+      encoder.run(combined, sub.instance + ".", resetAssumption)
     }
+    val methodFunctionDefinitions = p.subspecs.flatMap(s => UntimedModel.functionDefs(s.spec.untimed))
 
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics))
+        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), methodFunctionDefinitions, subTransitionsSystems)
       }
     } else {
-      verifyMethods(p, combined, p.spec.untimed.methods)
+      verifyMethods(p, combined, p.spec.untimed.methods, methodFunctionDefinitions, subTransitionsSystems)
     }
 
   }

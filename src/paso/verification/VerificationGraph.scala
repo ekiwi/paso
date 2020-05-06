@@ -190,7 +190,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
                    systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
                   )
 
-  def encodeStatesIntoTransitionSystem(prefix: String, start: State, states: Seq[State]): smt.TransitionSystem = {
+  def encodeStatesIntoTransitionSystem(prefix: String, resetAssumption: smt.Expr, start: State, states: Seq[State]): smt.TransitionSystem = {
     // calculate transition function for the "state" state, i.e. the state of our automaton
     val stateBits = log2Ceil(states.length + 1)
     val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
@@ -222,7 +222,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
       smt.State(stateSym, next = Some(simplify(nextArg)))
     }
 
-    val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions))
+    val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions)) ++ Seq(resetAssumption)
     val guarantees = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
 
     val assumptionsSimple = simplify(assumptions)
@@ -244,10 +244,10 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     )
   }
 
-  def run(proto: StepNode, prefix: String = ""): smt.TransitionSystem = {
+  def run(proto: StepNode, prefix: String, resetAssumption: smt.Expr): smt.TransitionSystem = {
     val start_id = visit(proto)
     val start = states.find(_.id == start_id).get
-    encodeStatesIntoTransitionSystem(prefix, start, states)
+    encodeStatesIntoTransitionSystem(prefix, resetAssumption, start, states)
   }
 
   private val StartId: StateId = 0
