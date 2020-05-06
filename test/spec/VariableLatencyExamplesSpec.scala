@@ -252,8 +252,8 @@ class VariableLatencyExamplesSpec extends FlatSpec {
 
   "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" in {
     Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_) {
-      replace(impl.lsb)(new RandomLatencyProtocols(_))
-      replace(impl.msb)(new RandomLatencyProtocols(_))
+      replace(impl.lsb)(new VariableLatencyKeepProtocols(_))
+      replace(impl.msb)(new VariableLatencyKeepProtocols(_))
     }).proof()
   }
 }
