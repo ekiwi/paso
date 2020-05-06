@@ -151,7 +151,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
 
   private def eval(expr: Expr): BigInt = {
     val value = expr match {
-      case s: Symbol => data(bvSymbolToDataIndex(s))
+      case s: Symbol =>
+        val value = data(bvSymbolToDataIndex(s))
+        assert(value != null, s"Trying to read uninitialized symbol $s!")
+        value
       case OperatorApplication(EqualityOp, List(a, b)) if a.typ.isArray => arrayEq(a, b)
       case OperatorApplication(InequalityOp, List(a, b)) if a.typ.isArray => arrayIneq(a, b)
       case OperatorApplication(BVConcatOp(_), List(a, b)) => BitVectorAndBoolSemantics.concat(eval(a), eval(b), b.typ.asInstanceOf[BitVectorType].width)
