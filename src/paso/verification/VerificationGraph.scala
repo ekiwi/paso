@@ -294,7 +294,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     //       the branches would lead to a smaller formula,
     //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
     // note that return argument maps cannot be used to distinguish the path
-    val outputGuards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(tru) }
+    val outputGuards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(inGuard) }
     val nextStatesAndMappings = node.next.zip(outputGuards).map{ case(output, outGuard) => visit(outGuard, mappings, output) }
 
     val constraints = Seq(OutputConstraint(inGuard, systemAssertion)) ++ nextStatesAndMappings.flatMap(_._2)
