@@ -95,6 +95,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
   }
 
   private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], sub: Seq[smt.TransitionSystem]): Unit = {
+    //println(s"Trying to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}...")
     val check = new BoundedCheckBuilder(p.impl)
 
     //ShowDot(VerificationGraphToDot("proto", proto))
