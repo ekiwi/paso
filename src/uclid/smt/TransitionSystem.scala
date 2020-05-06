@@ -263,6 +263,18 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       vcdWriter.foreach(_.wireChanged(dataIndexToName(ii), value))
     }
 
+    // evaluate outputs
+    val newOutputs = sys.outputs.zipWithIndex.map { case ((name, expr), ii) =>
+      val value = eval(expr)
+      // println(s"Output: $name := $value")
+      (ii, value)
+    }
+    // update outputs (constraints, bad states and next state functions could depend on the new value)
+    newOutputs.foreach{ case (ii, value) =>
+      data(ii + outputOffset) = value
+      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + outputOffset), value))
+    }
+
     // calculate next states
     val newRegValues = regStates.map { case (state, ii) =>
       val value = state.next match {
@@ -278,18 +290,6 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         case None => throw new NotImplementedError(s"State $state without a next function is not supported")
       }
       (ii, value)
-    }
-
-    // evaluate outputs
-    val newOutputs = sys.outputs.zipWithIndex.map { case ((name, expr), ii) =>
-      val value = eval(expr)
-      // println(s"Output: $name := $value")
-      (ii, value)
-    }
-    // update outputs (constraints and bad states could depend on the new value)
-    newOutputs.foreach{ case (ii, value) =>
-      data(ii + outputOffset) = value
-      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + outputOffset), value))
     }
 
     // make sure constraints are not violated
