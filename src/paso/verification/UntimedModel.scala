@@ -10,12 +10,15 @@ case class MethodSemantics(guard: smt.Expr, updates: Seq[NamedExpr], outputs: Se
 case class UntimedModel(name: String, state: Seq[smt.State], methods: Map[String, MethodSemantics])
 
 object UntimedModel {
-  def functionAppSubs(m: UntimedModel): Iterable[(smt.Symbol, smt.FunctionApplication)] = m.methods.flatMap { case( _, meth) =>
+  def functionAppSubs(m: UntimedModel): Iterable[(smt.Symbol, smt.FunctionApplication)] = m.methods.flatMap { case( name, meth) =>
     meth.outputs.flatMap(o => Seq(o.sym -> o.functionApp, o.guardSym -> o.guardFunctionApp)) ++
-      meth.updates.map(u => u.sym -> u.functionApp)
+    // for state updated we need to add the s".$name" suffix to avoid name conflicts
+      meth.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(u => u.sym -> u.functionApp)
   }
-  def functionDefs(m: UntimedModel): Iterable[smt.DefineFun] = m.methods.flatMap { case( _, meth) =>
-    meth.outputs.flatMap(o => Seq(o.functionDef, o.guardFunctionDef)) ++ meth.updates.map(_.functionDef)
+  def functionDefs(m: UntimedModel): Iterable[smt.DefineFun] = m.methods.flatMap { case( name, meth) =>
+    meth.outputs.flatMap(o => Seq(o.functionDef, o.guardFunctionDef)) ++
+      // for state updated we need to add the s".$name" suffix to avoid name conflicts
+      meth.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(_.functionDef)
   }
 }
 
