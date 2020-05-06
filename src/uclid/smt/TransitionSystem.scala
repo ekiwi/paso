@@ -72,6 +72,29 @@ case class TransitionSystem(name: Option[String], inputs: Seq[Symbol], states: S
   }
 }
 
+object TransitionSystem {
+  def getAllSymbols(sys: TransitionSystem): Seq[Symbol] = {
+    sys.inputs ++ sys.outputs.map(o => Symbol(o._1, o._2.typ)) ++ sys.states.map(_.sym)
+  }
+  def merge(name: String, a: TransitionSystem, b: TransitionSystem): TransitionSystem = {
+    val aSyms = getAllSymbols(a).map(_.id).toSet
+    getAllSymbols(b).foreach(s => assert(!aSyms.contains(s.id), s"Name collision! $s appears both in ${a.name} and ${b.name}"))
+    TransitionSystem(
+      name = Some(name),
+      inputs = a.inputs ++ b.inputs,
+      states = a.states ++ b.states,
+      outputs = a.outputs ++ b.outputs,
+      constraints = a.constraints ++ b.constraints,
+      bad = a.bad ++ b.bad,
+      fair = a.fair ++ b.fair
+    )
+  }
+  def merge(original: TransitionSystem, others: Iterable[TransitionSystem]): TransitionSystem = {
+    val name = original.name.get
+    others.foldLeft(original)(merge(name, _, _))
+  }
+}
+
 trait ModelCheckResult {
   def isFail: Boolean
   def isSuccess: Boolean = !isFail
