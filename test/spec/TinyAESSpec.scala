@@ -84,12 +84,12 @@ class TinyAESRoundProtocol(impl: HasRoundIO) extends ProtocolSpec[IsRoundSpec] {
   val spec = if(impl.isFinal) new AESFinalRoundSpec else new AESRoundSpec
 
   protocol(spec.round)(impl.io) { (clock, dut, in, out) =>
-    dut.key.poke(in.key)
     dut.state.poke(in.state)
     clock.step()
-    dut.key.poke(DontCare)
     dut.state.poke(DontCare)
+    dut.key.poke(in.key)
     clock.step()
+    dut.key.poke(DontCare)
     dut.stateNext.expect(out)
   }
 }
