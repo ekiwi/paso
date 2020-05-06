@@ -207,12 +207,6 @@ class ConstantLatencyProtocols(impl: IsConstLatency) extends ProtocolSpec[Identi
   }
 }
 
-//class VariableLatencyToConstSubspecs(impl: VariableLatencyToConst) extends SubspecBindings {
-//  replace(impl.lsb)(new RandomLatencyProtocols(_))
-//  replace(impl.msb)(new RandomLatencyProtocols(_))
-//}
-
-
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
     Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
