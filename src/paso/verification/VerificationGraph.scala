@@ -256,13 +256,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
   private def getStateId: StateId = { val ii = stateCounter; stateCounter += 1; ii}
 
   private def visit(node: StepNode): StateId = {
-    if(node.isFinal) {
-      if(node.next.isEmpty) {
-        return StartId
-      } else {
-        throw new NotImplementedError("TODO")
-      }
-    }
+    if(node.isFinal) { return StartId }
 
     val id = getStateId
 
