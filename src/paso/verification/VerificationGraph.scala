@@ -224,6 +224,16 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
       smt.State(stateSym, next = Some(simplify(nextArg)))
     }
 
+    // we also need to keep track of the architectural state of the untimed model
+    val updatesByState = states.flatMap(s => s.stateUpdates.map((s.id, _))).groupBy(_._2.state.id)
+    val untimedState = updatesByState.map { case (_, u) =>
+      val stateSym = u.head._2.state
+      val nextState = u.map { case (state, update) =>
+        and(inState(state), update.guard) -> update.value
+      }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
+      smt.State(stateSym, next = Some(simplify(nextState)))
+    }
+
     val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions)) ++ Seq(resetAssumption)
     val guarantees = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
 
@@ -240,7 +250,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     smt.TransitionSystem(
       name = Some(prefix.dropRight(1)),
       inputs = Seq(),
-      states = Seq(stateState) ++ args,
+      states = Seq(stateState) ++ args ++ untimedState,
       constraints = constraints,
       bad = Seq(badInInvalidState) ++ bads
     )
