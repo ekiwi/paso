@@ -101,6 +101,7 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[I
   }
   protocol(spec.idle)(impl.io) { (clock, dut) =>
     dut.start.set(false.B)
+    dut.done.expect(false.B)
     clock.step()
   }
 }
