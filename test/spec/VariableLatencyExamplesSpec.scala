@@ -117,7 +117,7 @@ class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends Protocol
 
     dut.start.set(false.B)
     dut.dataIn.set(DontCare)
-    do_while(!dut.done.get(), max = 4) {
+    do_while(!dut.done.get(), max = 3) {
       clock.step()
     }
 
@@ -126,6 +126,7 @@ class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends Protocol
   }
   protocol(spec.idle)(impl.io) { (clock, dut, out) =>
     dut.start.set(false.B)
+    dut.done.expect(false.B)
     dut.dataOut.expect(out)
     clock.step()
   }
