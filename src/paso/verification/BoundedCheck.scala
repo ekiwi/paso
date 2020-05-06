@@ -111,7 +111,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     combined.sortStatesByInitDependencies()
   }
 
-  def getK: Int = steps.length - 1
+  def getK: Int = steps.length
 }
 
 object BoundedCheckBuilder {
