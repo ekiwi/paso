@@ -226,6 +226,12 @@ class VariableLatencyExamplesSpec extends FlatSpec {
     })
   }
 
+  "RandomLatencyAndKeep module" should "also refine the less demanding RandomLatency spec" in {
+    Paso(new RandomLatencyKeepOutput)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+      invariances { dut => assert(!dut.running) }
+    })
+  }
+
   "VariableLatencyToConst with full RTL" should "refine its spec" in {
     Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut =>
