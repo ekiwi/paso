@@ -92,7 +92,7 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[I
 
     dut.start.set(false.B)
     dut.dataIn.set(DontCare)
-    do_while(!dut.done.get(), max = 4) {
+    do_while(!dut.done.get(), max = 3) {
       clock.step()
     }
 
