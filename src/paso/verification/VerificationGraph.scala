@@ -183,11 +183,13 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
   case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
   case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
   case class NextState(guard: smt.Expr, nextId: StateId)
+  case class StateUpdate(guard: smt.Expr, state: smt.Symbol, value: smt.Expr)
   case class State(id: StateId,
                    inputMappings: Seq[ArgMap], // mapping DUV inputs to method arguments (depending on input constraints)
                    environmentAssumptions: smt.Expr, // restrict the inputs space
                    nextStates: Seq[NextState], // the next state might depend on inputs and outputs
                    systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
+                   stateUpdates: Seq[StateUpdate], // updates to the architectural state
                   )
 
   def encodeStatesIntoTransitionSystem(prefix: String, resetAssumption: smt.Expr, start: State, states: Seq[State]): smt.TransitionSystem = {
@@ -273,7 +275,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     val systemAssertions = ir.flatMap(_._2)
     val nextState = ir.flatMap(_._3)
 
-    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions)
+    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions, Seq(/*TODO*/))
     states.append(s)
     s.id
   }
@@ -297,6 +299,8 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
 
   def visit(outGuard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
+    assert(!node.isFinal, "TODO: deal with final output nodes")
+
     val mappings = node.mappings.map { m =>
       // substitute argument to refer to the correct mapping
       val argValue = callWithLatestArgumentValue(methodFuns(m.argRange.sym), inputMap)
@@ -309,6 +313,14 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     }
 
     val next = NextState(outGuard, visit(node.next.head))
+
+    // if this is the last node before going back into the idle state --> commit any updates to the architectural state
+    if(node.next.head.isFinal) {
+      assert(node.methods.size == 1, "Cannot have overlapping methods at the commit point!")
+      // TODO
+
+    }
+
     (next, mappings)
   }
 
