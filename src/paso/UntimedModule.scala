@@ -27,10 +27,18 @@ case class MethodIOAnnotation(target: ReferenceTarget, isInput: Boolean) extends
 }
 
 // TODO: rename to something more sensible
-case class NMethod(gen: MethodGenerator)
-case class IMethod[I <: Data](inputType: I, gen: MethodGenerator)
-case class OMethod[O <: Data](outputType: O, gen: MethodGenerator)
-case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator)
+case class NMethod(gen: MethodGenerator) {
+  def apply(): Unit = {}
+}
+case class IMethod[I <: Data](inputType: I, gen: MethodGenerator) {
+  def apply(in: I): Unit = {}
+}
+case class OMethod[O <: Data](outputType: O, gen: MethodGenerator) {
+  def apply(): O = { Wire(outputType) }
+}
+case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator) {
+  def apply(in: I): O = { Wire(outputType) }
+}
 
 trait MethodBody { def generate(prefix: String): Unit }
 trait MethodBodyHelper {
@@ -100,7 +108,7 @@ class UntimedModule extends MultiIOModule with MethodParent {
 }
 
 object UntimedModule {
-  def apply(m: UntimedModule): UntimedModule = m
+  def apply[M <: UntimedModule](m: M): M = m
 }
 
 

@@ -208,6 +208,41 @@ class ConstantLatencyProtocols(impl: IsConstLatency) extends ProtocolSpec[Identi
   }
 }
 
+class IdentityWithSubId extends UntimedModule {
+  val id32 = UntimedModule(new Identity(UInt(32.W)))
+  val id = fun("id").in(UInt(64.W)).out(UInt(64.W)) { (in, out) =>
+    val msb = in(61,32)
+    val lsb = in(31, 0)
+    out := id32.id(msb) ## id32.id(lsb)
+  }
+  val idle = fun("idle") {}
+}
+
+class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean = false) extends ProtocolSpec[IdentityWithSubId] {
+  require(impl.io.dataIn.getWidth == 64)
+  val spec = new IdentityWithSubId
+
+  protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
+    dut.start.set(true.B)
+    dut.dataIn.set(in)
+    clock.step()
+
+    dut.start.set(false.B)
+    dut.dataIn.set(DontCare)
+
+    (1 until impl.latency).foreach { _ =>
+      clock.step()
+    }
+
+    dut.dataOut.expect(out)
+    clock.step()
+  }
+  protocol(spec.idle)(impl.io) { (clock, dut) =>
+    dut.start.set(false.B)
+    clock.step()
+  }
+}
+
 class VariableLatencyExamplesSpec extends FlatSpec {
   "RandomLatency module" should "refine its spec" in {
     Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
@@ -242,9 +277,16 @@ class VariableLatencyExamplesSpec extends FlatSpec {
   }
 
   "VariableLatencyToConst with abstracted RTL" should "refine its spec" in {
-    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_) {
+    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_))
       replace(impl.msb)(new RandomLatencyProtocols(_))
+    }).proof()
+  }
+
+  "VariableLatencyToConst with abstracted RTL and id bindings" should "refine its spec" in {
+    Paso(new VariableLatencyToConst)(new ConstantLatencyWithSubIdProtocols(_))(new SubSpecs(_,_) {
+      replace(impl.lsb)(new RandomLatencyProtocols(_)).bind(spec.id32)
+      replace(impl.msb)(new RandomLatencyProtocols(_)).bind(spec.id32)
     }).proof()
   }
 
@@ -258,7 +300,7 @@ class VariableLatencyExamplesSpec extends FlatSpec {
   }
 
   "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" in {
-    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_) {
+    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new VariableLatencyKeepProtocols(_))
       replace(impl.msb)(new VariableLatencyKeepProtocols(_))
     }).proof()

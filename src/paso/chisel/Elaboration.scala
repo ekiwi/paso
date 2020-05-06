@@ -130,19 +130,16 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](mod: IM, state: Seq[State], model: smt.TransitionSystem, subspecs: Seq[IsSubmodule])
-  private def elaborateImpl[IM <: RawModule](impl: () => IM, findSubspecs: IM => SubSpecs[IM]): Impl[IM] = {
-    var ip: Option[IM] = None
-    val (impl_c, impl_anno) = toFirrtl({() => ip = Some(impl()); ip.get})
-    val impl_fir = toHighFirrtl(impl_c, impl_anno)._1
+  private case class Impl[IM <: RawModule](state: Seq[State], model: smt.TransitionSystem)
+  private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule]): Impl[IM] = {
+    val impl_fir = toHighFirrtl(impl.circuit, impl.annos)._1
 
     // we need to run the subspecs finder right after elaboration in order to find out
     // which submodules we want to get rid of and expose their I/O at the toplevel
-    val subspecs = findSubspecs(ip.get).subspecs
     val exposed_fir = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
 
     val impl_state = FindState(exposed_fir).run()
-    val impl_model = FirrtlToFormal(exposed_fir, impl_anno)
+    val impl_model = FirrtlToFormal(exposed_fir, impl.annos)
 
     //println("State extracted from Chisel")
     //impl_state.foreach(st => println(s"${st.name}: ${st.tpe}"))
@@ -160,21 +157,17 @@ case class Elaboration() {
       }
       //assert(impl_model.states.exists(_.sym.id == state.name), s"State $state is missing from the formal model!")
     }
-    Impl(ip.get, impl_state, impl_model, subspecs)
+    Impl(impl_state, impl_model)
   }
 
-  private case class Untimed[S <: UntimedModule](mod: S, state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
-  private def elaborateUntimed[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
-    var maybeProto: Option[ProtocolSpec[S]] = None
-    val (main, _) = toFirrtl { () => maybeProto = Some(proto()) ; maybeProto.get.spec }
-    val p = maybeProto.get
+  private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
+  private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]) = {
+    val spec_name = spec.circuit.main
+    val spec_state = FindState(spec.circuit).run()
 
-    val spec_name = main.main
-    val spec_state = FindState(main).run()
-
-    val spec_module = getMain(main)
-    val methods = p.spec.methods.map { meth =>
-      val (raw_firrtl, raw_annos) = elaborate(p.spec, meth.generate)
+    val spec_module = getMain(spec.circuit)
+    val methods = spec.untimed.methods.map { meth =>
+      val (raw_firrtl, raw_annos) = elaborate(spec.untimed, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw_firrtl).body
@@ -209,29 +202,49 @@ case class Elaboration() {
       case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
     }
     val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
-    Untimed(p.spec, spec_state, untimed_model, p.protos)
+    Untimed(spec_state, untimed_model, spec.protos)
   }
 
-  private def elaborateSpec[S <: UntimedModule](proto: () => ProtocolSpec[S]) = {
-    val ut = elaborateUntimed(proto)
+  private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S]) = {
+    val ut = elaborateUntimed(spec)
     val pt = elaborateProtocols(ut.protocols, ut.model.methods)
-    (Spec(ut.model, pt.toMap), ut.mod, ut.state)
+    (Spec(ut.model, pt.toMap), ut.state)
   }
 
-  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: I => SubSpecs[I], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
+  case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
+  private def chiselElaborationImpl[M <: RawModule](gen: () => M): ChiselImpl[M] = {
+    var ip: Option[M] = None
+    val (c, anno) = toFirrtl({() => ip = Some(gen()); ip.get})
+    ChiselImpl(ip.get, c, anno)
+  }
+  case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol], circuit: ir.Circuit, annos: Seq[Annotation])
+  private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
+    var ip: Option[ProtocolSpec[S]] = None
+    val (c, anno) = toFirrtl({() => ip = Some(gen()); ip.get.spec})
+    ChiselSpec(ip.get.spec, ip.get.protos, c, anno)
+  }
+
+  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
     firrtlCompilerTime = 0L
     chiselElaborationTime = 0L
     val start = System.nanoTime()
 
-    val implementation = elaborateImpl(impl, findSubspecs)
+    // Chisel elaboration for implementation and spec
+    val implChisel = chiselElaborationImpl(impl)
+    val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
+    val subspecList = findSubspecs(implChisel.instance, specChisel.untimed).subspecs
+
+    // Firrtl Compilation
+    val implementation = elaborateImpl(implChisel, subspecList)
     val endImplementation = System.nanoTime()
-    val (spec, untimed_mod, untimed_state) = elaborateSpec(() => proto(implementation.mod))
+    val (spec, untimed_state) = elaborateSpec(specChisel)
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
     val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
-    val subspecs = implementation.subspecs.map { s =>
-      val (spec, _, _) = elaborateSpec[UntimedModule](s.makeSpec)
+    val subspecs = subspecList.map { s =>
+      val elaborated = chiselElaborationSpec(s.makeSpec)
+      val (spec, _) = elaborateSpec[UntimedModule](elaborated)
       val instance = s.instancePath
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.id.startsWith(instance + "_")).map(s => s.copy(id = s.id.substring(prefixLength)))
@@ -240,9 +253,9 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val collateral = inv(implementation.mod, untimed_mod)
-    val mappings = elaborateMappings(implementation.mod, implementation.state, untimed_mod, untimed_state, collateral.maps)
-    val invariances = elaborateInvariances(implementation.mod, implementation.state, collateral.invs)
+    val collateral = inv(implChisel.instance, specChisel.untimed)
+    val mappings = elaborateMappings(implChisel.instance, implementation.state, specChisel.untimed, untimed_state, collateral.maps)
+    val invariances = elaborateInvariances(implChisel.instance, implementation.state, collateral.invs)
     val endBinding = System.nanoTime()
 
     if(true) {
