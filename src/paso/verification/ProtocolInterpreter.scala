@@ -48,6 +48,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
         state.copy(isEmpty = false, name=getStateName, pathCondition = Some(fals)))
   }
 
+  def _assert(state: ProtocolState, cond: smt.Expr): ProtocolState = {
+    val pathCondition = state.pathCondition.map(and(_, cond)).getOrElse(cond)
+    state.copy(isEmpty = false, pathCondition = Some(pathCondition))
+  }
+
   def step(state: ProtocolState): ProtocolState = {
     // copy sticky inputs to next state
     val inputs = state.stickyInput.toIterator.flatMap(i => state.inputs.get(i).map(i -> _)).toMap
@@ -85,6 +90,12 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
 
     // combine
     activeStates = finalTrueStates ++ finalFalseStates
+  }
+
+  // this is used to indicate that the loop has been fully unrolled
+  def onAssert(cond: smt.Expr): Unit = {
+    val simpleCond = SMTSimplifier.simplify(cond)
+    activeStates = activeStates.map(_assert(_, simpleCond))
   }
 
   def onSet(lhs: smt.Expr, rhs: smt.Expr, sticky: Boolean = false): Unit = lhs match {

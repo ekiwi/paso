@@ -61,7 +61,14 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
       unroll(cond, max-1, body)
     }
   } else {
-    // ???
+    assert(!cond)
+  }
+
+  // replace default chisel assert
+  private def assert(cond: => Bool): Unit = {
+    val w = Wire(Bool()).suggestName("assert")
+    w := cond
+    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
   }
 }
 

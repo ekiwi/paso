@@ -33,6 +33,8 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
     super.defWire(name, tpe)
   }
 
+  override def onAssert(expr: Value): Unit = interpreter.onAssert(expr.get)
+
   override def onWhen(cond: Value, tru: ir.Statement, fals: ir.Statement): Unit = {
     def visitTrue() {
       cond_stack.push(cond.get)
