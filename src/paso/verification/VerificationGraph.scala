@@ -174,7 +174,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
   }
 }
 
-case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
+case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], modelState: Seq[smt.Symbol], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
   // TODO: remove simplifications
   private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
   private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
@@ -274,13 +274,14 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     val inputMappings = ir.flatMap(_._1)
     val systemAssertions = ir.flatMap(_._2)
     val nextState = ir.flatMap(_._3)
+    val stateUpdates = ir.flatMap(_._4)
 
-    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions, Seq(/*TODO*/))
+    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions, stateUpdates)
     states.append(s)
     s.id
   }
 
-  def visit(inGuard: smt.Expr, node: InputNode): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState]) = {
+  def visit(inGuard: smt.Expr, node: InputNode): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState], Seq[StateUpdate]) = {
     val mappings = node.mappings.map(ArgMap(inGuard, _))
 
     // at least one of the following output constraints has to be true
@@ -291,13 +292,17 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     //       i.e. a -> x and b -> y instead of (a and c) -> x and (b and c) -> y
     // note that return argument maps cannot be used to distinguish the path
     val outputGuards = if(node.isBranchPoint) { node.next.map(o => and(inGuard, o.constraintExpr)) } else { Seq(inGuard) }
-    val nextStatesAndMappings = node.next.zip(outputGuards).map{ case(output, outGuard) => visit(outGuard, mappings, output) }
+    val nextStatesAndMappingsAndUpdates = node.next.zip(outputGuards).map{
+      case(output, outGuard) => visit(outGuard, mappings, output)
+    }
 
-    val constraints = Seq(OutputConstraint(inGuard, systemAssertion)) ++ nextStatesAndMappings.flatMap(_._2)
-    (mappings, constraints, nextStatesAndMappings.map(_._1))
+    val constraints = Seq(OutputConstraint(inGuard, systemAssertion)) ++ nextStatesAndMappingsAndUpdates.flatMap(_._2)
+    val nextStates = nextStatesAndMappingsAndUpdates.map(_._1)
+    val stateUpdates = nextStatesAndMappingsAndUpdates.flatMap(_._3)
+    (mappings, constraints, nextStates, stateUpdates)
   }
 
-  def visit(outGuard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint]) = {
+  def visit(outGuard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode): (NextState, Seq[OutputConstraint], Seq[StateUpdate]) = {
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
     assert(!node.isFinal, "TODO: deal with final output nodes")
 
@@ -315,13 +320,19 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     val next = NextState(outGuard, visit(node.next.head))
 
     // if this is the last node before going back into the idle state --> commit any updates to the architectural state
-    if(node.next.head.isFinal) {
+    val updates = if(node.next.head.isFinal) {
       assert(node.methods.size == 1, "Cannot have overlapping methods at the commit point!")
-      // TODO
+      val meth = node.methods.head
 
-    }
+      // find all state updates for this method
+      modelState.map { state =>
+        val stateUpdate = state.copy(id = state.id + s".$meth")
+        val updateValue = callWithLatestArgumentValue(methodFuns(stateUpdate), inputMap)
+        StateUpdate(outGuard, state, updateValue)
+      }
+    } else { Seq() }
 
-    (next, mappings)
+    (next, mappings, updates)
   }
 
   private def callWithLatestArgumentValue(foo: smt.FunctionApplication, map: Seq[ArgMap]): smt.FunctionApplication = {

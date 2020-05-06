@@ -156,7 +156,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
       val combined = sub.spec.protocols.values.reduce(VerificationGraph.merge)
       val methodFuns = UntimedModel.functionAppSubs(sub.spec.untimed)
       val resetAssumption = VerificationTask.findReset(sub.ioSymbols).map(not).getOrElse(tru)
-      val encoder = VerificationAutomatonEncoder(methodFuns.toMap, switchAssumesAndGuarantees = true)
+      val encoder = VerificationAutomatonEncoder(methodFuns.toMap, sub.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
       encoder.run(combined, sub.instance + ".", resetAssumption)
     }
     val methodFunctionDefinitions = p.subspecs.flatMap(s => UntimedModel.functionDefs(s.spec.untimed))
