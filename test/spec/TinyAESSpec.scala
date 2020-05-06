@@ -80,7 +80,9 @@ class AESFinalRoundSpec extends UntimedModule with AESHelperFunctions with IsRou
   }
 }
 
-class TinyAESRoundProtocol(impl: HasRoundIO, spec: IsRoundSpec) extends Binding(impl, spec) {
+class TinyAESRoundProtocol(impl: HasRoundIO) extends ProtocolSpec[IsRoundSpec] {
+  val spec = if(impl.isFinal) new AESFinalRoundSpec else new AESRoundSpec
+
   protocol(spec.round)(impl.io) { (clock, dut, in, out) =>
     dut.key.poke(in.key)
     dut.state.poke(in.state)
@@ -92,7 +94,9 @@ class TinyAESRoundProtocol(impl: HasRoundIO, spec: IsRoundSpec) extends Binding(
   }
 }
 
-class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) extends Binding(impl, spec) {
+class TinyAESExpandKeyProtocol(impl: ExpandKey128) extends ProtocolSpec[AESKeyExpansionSpec] {
+  val spec = new AESKeyExpansionSpec(impl.rcon)
+
   protocol(spec.expandKey128)(impl.io) { (clock, dut, in, out) =>
     dut.in.poke(in)
     clock.step()
@@ -105,21 +109,20 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128, spec: AESKeyExpansionSpec) ex
 }
 
 class TinyAESSpec extends FlatSpec {
+  // TODO: this is broken, but why?
   "TinyAES OneRound" should "refine its spec" in {
-    val p = Elaboration()[HasRoundIO, IsRoundSpec](new OneRound, new AESRoundSpec, (impl, spec) => new TinyAESRoundProtocol(impl, spec))
-    VerificationProblem.verify(p)
+    Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
   }
 
+  // TODO: this is broken, but why?
   "TinyAES FinalRound" should "refine its spec" in {
-    val p = Elaboration()[HasRoundIO, IsRoundSpec](new FinalRound, new AESFinalRoundSpec, (impl, spec) => new TinyAESRoundProtocol(impl, spec))
-    VerificationProblem.verify(p)
+    Paso(new FinalRound)(new TinyAESRoundProtocol(_)).proof()
   }
 
   "TinyAES ExpandKey128" should "refine its spec" in {
     StaticTables.rcon.foreach { ii =>
       val rc = ii.U(8.W)
-      val p = Elaboration()[ExpandKey128, AESKeyExpansionSpec](new ExpandKey128(rc), new AESKeyExpansionSpec(rc), (impl, spec) => new TinyAESExpandKeyProtocol(impl, spec))
-      VerificationProblem.verify(p)
+      Paso(new ExpandKey128(rc))(new TinyAESExpandKeyProtocol(_)).proof()
     }
   }
 

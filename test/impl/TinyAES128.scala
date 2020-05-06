@@ -48,7 +48,7 @@ class TinyAES128 extends Module {
 }
 
 // https://en.wikipedia.org/wiki/AES_key_schedule
-class ExpandKey128(rcon: UInt) extends Module {
+class ExpandKey128(val rcon: UInt) extends Module {
   val io = IO(new Bundle {
     val in = Input(UInt(128.W))
     val out = Output(UInt(128.W))
@@ -92,10 +92,11 @@ class RoundIO extends Bundle {
   val key = Input(UInt(128.W))
   val stateNext = Output(UInt(128.W))
 }
-trait HasRoundIO extends Module { val io: RoundIO }
+trait HasRoundIO extends Module { val io: RoundIO ; val isFinal: Boolean }
 
 class OneRound extends Module with HasRoundIO {
   val io = IO(new RoundIO)
+  val isFinal = false
 
   val s = Utils.split(io.state, 4)
   val k = Utils.split(io.key, 4)
@@ -126,6 +127,7 @@ object OneRound {
 
 class FinalRound extends Module with HasRoundIO {
   val io = IO(new RoundIO)
+  val isFinal = true
 
     val s = Utils.split(io.state, 4)
     val k = Utils.split(io.key, 4)
