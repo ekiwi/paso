@@ -109,11 +109,14 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     p.invariances.foreach(i => check.assumeAt(0, elim(i.toExpr)))
     // assume that the mapping function holds in the initial state
     p.mapping.foreach(m => check.assumeAt(0, elim(m.toExpr)))
+    // define method outputs
+    methods.foreach { case (_, sem) =>
+      sem.outputs.foreach { o => check.define(o.sym, o.expr) }
+      sem.outputs.foreach { o => check.define(smt.Symbol(o.sym.id + ".valid", smt.BoolType), o.guard) }
+    }
     // compute the results of all methods
     val method_state_subs = methods.map { case (name, sem) =>
-      sem.outputs.foreach{ o => check.define(o.sym, o.expr) }
-      sem.outputs.foreach{ o => check.define(smt.Symbol(o.sym.id + ".valid", smt.BoolType), o.guard) }
-      sem.updates.suffix(s".$name").foreach{ o => check.define(o.sym, o.expr) }
+      sem.updates.foreach{ o => check.define(o.sym.copy(id = o.sym.id + s".$name"), o.expr) }
       name -> sem.updates.map(_.sym).map(s => s -> s.copy(id = s.id + s".$name"))
     }
 
@@ -241,11 +244,6 @@ abstract class VerificationTask {
     execute(p)
     val end = System.nanoTime()
     println(s"Executed ${this.getClass.getSimpleName} with $solverName in ${(end - start)/1000/1000}ms")
-  }
-  // helper functions
-  implicit class namedSeq(x: Iterable[NamedExpr]) {
-    def prefix(p: String): Iterable[NamedExpr] = x.map(s => s.copy(sym = s.sym.copy(id = p + s.sym.id)))
-    def suffix(p: String): Iterable[NamedExpr] = x.map(s => s.copy(sym = s.sym.copy(id = s.sym.id + p)))
   }
 }
 
