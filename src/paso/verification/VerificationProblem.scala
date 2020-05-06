@@ -75,7 +75,7 @@ object VerificationProblem {
 class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelpers {
   override val solverName: String = "btormc"
 
-  private def checkBtor2(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): smt.ModelCheckResult = {
+  private def checkBtor2(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
     // beta reduce transition system (functions are not supported by btor)
     val beta = SMTBetaReduction(foos)
     val reducedSys = sys.copy(
@@ -89,7 +89,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     val checker = smt.Btor2.createBtorMC()
     //val checker = smt.Btor2.createCosa2MC()
 
-    checker.check(reducedSys, fileName=Some("test.btor"), kMax = k)
+    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k)
+    val sim = new smt.TransitionSystemSimulator(reducedSys)
+    (res, sim)
   }
 
   private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], sub: Seq[smt.TransitionSystem]): Unit = {
@@ -127,13 +129,13 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     }
 
     val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub)
-    val res = checkBtor2(check.getK, sys, foos)
+    val (res, sim) = checkBtor2(check.getK, sys, foos)
 
     // find failing property and print
     res match {
       case smt.ModelCheckFail(witness) =>
         println(s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
-        new smt.TransitionSystemSimulator(sys).run(witness, Some("test.vcd"))
+        sim.run(witness, Some("test.vcd"))
       case smt.ModelCheckSuccess() =>
     }
 
