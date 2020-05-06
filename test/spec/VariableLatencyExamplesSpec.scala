@@ -240,4 +240,20 @@ class VariableLatencyExamplesSpec extends FlatSpec {
       replace(impl.msb)(new RandomLatencyProtocols(_))
     }).proof()
   }
+
+  "VariableLatencyKeepToConst with full RTL" should "refine its spec" in {
+    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+      invariances { dut =>
+        assert(!dut.lsb.running)
+        assert(!dut.msb.running)
+      }
+    })
+  }
+
+  "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" in {
+    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_) {
+      replace(impl.lsb)(new RandomLatencyProtocols(_))
+      replace(impl.msb)(new RandomLatencyProtocols(_))
+    }).proof()
+  }
 }
