@@ -106,7 +106,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     )
 
 
-    val checker = new SMTModelChecker(new CVC4Interface(quantifierFree = false))
+    val checker = new SMTModelChecker(new CVC4Interface(quantifierFree = false), SMTModelCheckerOptions.Performance)
     val res = checker.check(reducedSys, kMax = k)
     val sim = new smt.TransitionSystemSimulator(reducedSys)
     (res, sim)

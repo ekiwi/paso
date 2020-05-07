@@ -10,12 +10,12 @@ import scala.collection.mutable
 
 case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean)
 object SMTModelCheckerOptions {
-  val default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
-  val performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false)
+  val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
+  val Performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false)
 }
 
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
-class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.default) extends SMTHelpers {
+class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Default) extends SMTHelpers {
   val name: String = "SMTModelChecker with " + solver.name
 
   def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
