@@ -81,6 +81,8 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
 
 
   def defineHeader(solver: Solver): Unit = {
+    solver.declare(stateType)
+
     val stateSymbol = smt.Symbol("state", stateType)
     val nextStateSymbol = smt.Symbol("next_state", stateType)
 
