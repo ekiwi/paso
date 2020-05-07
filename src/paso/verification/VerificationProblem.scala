@@ -95,20 +95,9 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
   }
 
   private def checkCVC4(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
-    // beta reduce transition system for testing // TODO: rely on native support
-    val beta = SMTBetaReduction(foos)
-    val reducedSys = sys.copy(
-      states = sys.states.map(s => s.copy(init = s.init.map(beta(_)), next = s.next.map(beta(_)))),
-      outputs = sys.outputs.map(o => (o._1, beta(o._2))),
-      constraints = sys.constraints.map(beta(_)),
-      bad = sys.bad.map(beta(_)),
-      fair = sys.fair.map(beta(_)),
-    )
-
-
     val checker = new SMTModelChecker(new CVC4Interface(quantifierFree = false), SMTModelCheckerOptions.Performance)
-    val res = checker.check(reducedSys, kMax = k)
-    val sim = new smt.TransitionSystemSimulator(reducedSys)
+    val res = checker.check(sys, kMax = k, defined = foos)
+    val sim = new smt.TransitionSystemSimulator(sys)
     (res, sim)
   }
 
