@@ -79,9 +79,9 @@ trait AESHelperFunctions {
     val p0 = rl(3) ## rl(0) ## rl(1) ## rl(2)
     rl = T(b(1))
     val p1 = rl(2) ## rl(3) ## rl(0) ## rl(1)
-    rl = T(b(1))
+    rl = T(b(2))
     val p2 = rl(1) ## rl(2) ## rl(3) ## rl(0)
-    rl = T(b(1))
+    rl = T(b(3))
     val p3 = rl(0) ## rl(1) ## rl(2) ## rl(3)
 
     Seq(p0, p1, p2, p3)
