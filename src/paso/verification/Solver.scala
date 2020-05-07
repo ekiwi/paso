@@ -4,7 +4,7 @@ import uclid.smt
 trait Solver {
   val name: String
   val supportsQuantifiers: Boolean
-  protected val ctx: smt.Context
+  protected val ctx: smt.SMTLIB2Interface
 
   def callCount: Int = pCallCount
   private var pCallCount = 0
@@ -15,15 +15,18 @@ trait Solver {
   def check(): smt.SolverResult = ctx.check()
   /** (define-fun ...) */
   def define(f: smt.DefineFun): Unit = {
-
+    ctx.writeCommand(f.toString)
   }
   /** (declare-fun ...)  */
   def declare(f: smt.Symbol): Unit = {
-
+    if(!ctx.variables.contains(f.id)) {
+      ctx.variables += (f.id -> f)
+      ctx.generateDeclaration(f)
+    }
   }
   /** (declare-sort ...) */
   def declare(f: smt.UninterpretedType): Unit = {
-
+    ctx.writeCommand(s"(declare-sort ${f.name} 0)")
   }
 
   def check(e: smt.Expr): smt.SolverResult = {
