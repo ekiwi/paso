@@ -17,7 +17,10 @@ trait Solver {
   def define(f: smt.DefineFun): Unit = {
     require(!ctx.variables.contains(f.id.id))
     ctx.variables += (f.id.id -> f.id)
-    ctx.writeCommand(f.toString)
+    val argString = f.args.map(a => s"(${a.id} ${a.typ})").mkString(" ")
+    val expr = ctx.translateExpr(f.e, true)
+    val cmd = s"(define-fun ${f.id} ($argString) ${f.e.typ} $expr)"
+    ctx.writeCommand(cmd)
   }
   /** (declare-fun ...)  */
   def declare(f: smt.Symbol): Unit = {
