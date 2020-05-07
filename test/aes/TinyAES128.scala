@@ -5,10 +5,9 @@
 // Chisel port of the OpenCores TinyAES core
 
 
-package impl
+package aes
 
 import chisel3._
-import chisel3.util._
 
 object Utils {
   def split(signal: UInt, by: Int): Vec[UInt] = {

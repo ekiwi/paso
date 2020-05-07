@@ -1,11 +1,8 @@
-package spec
+package aes
 
 import chisel3._
-import paso._
-import impl._
 import org.scalatest._
-import paso.chisel.Elaboration
-import paso.verification.VerificationProblem
+import paso._
 
 
 // this is based on a translation of the ILA from

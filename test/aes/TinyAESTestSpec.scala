@@ -1,10 +1,9 @@
-package test
+package aes
 
 import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
-import impl.{OneRound, OriginalPicoRV32Mul, PCPI, PCPIModule, PicoRV32Mul, RoundIO}
 import org.scalatest._
 
 class TinyAESTestSpec extends FlatSpec with ChiselScalatestTester {

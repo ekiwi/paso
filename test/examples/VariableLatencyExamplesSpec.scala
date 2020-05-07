@@ -1,11 +1,9 @@
-package spec
+package examples
 
 import chisel3._
 import chisel3.util._
-import paso._
 import org.scalatest._
-import paso.chisel.Elaboration
-import paso.verification.VerificationProblem
+import paso._
 
 /** Simply returns the input unmodified */
 class Identity[D <: Data](dataType: D) extends UntimedModule {

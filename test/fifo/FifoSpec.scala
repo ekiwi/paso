@@ -1,8 +1,7 @@
-package spec
+package fifo
 
 import chisel3._
 import chisel3.util._
-import impl.{CircularPointerFifo, IsFifo, ShiftRegisterFifo}
 import org.scalatest._
 import paso._
 

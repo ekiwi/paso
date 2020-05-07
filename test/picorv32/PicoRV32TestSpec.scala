@@ -1,10 +1,9 @@
-package test
+package picorv32
 
 import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
-import impl.{OriginalPicoRV32Mul, PCPI, PCPIModule, PicoRV32Mul}
 import org.scalatest._
 
 class PicoRV32TestSpec extends FlatSpec with ChiselScalatestTester {

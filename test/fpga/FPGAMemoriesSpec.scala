@@ -2,13 +2,12 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package spec
+package fpga
 
 import chisel3._
 import chisel3.util._
-import impl.{FPGAMem, LVTMemory, MemData, MemSize, ParallelWriteMem, SimulationMem, XorMemory}
-import paso._
 import org.scalatest._
+import paso._
 
 // NOTE: while the spec is currently hard coded for a certain number of read and write ports, one
 //       could write a spec generator that takes these numbers as inputs and generates the correct spec.
