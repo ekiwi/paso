@@ -8,8 +8,14 @@ import paso.chisel.SMTHelpers
 import uclid.smt
 import scala.collection.mutable
 
+case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean)
+object SMTModelCheckerOptions {
+  val default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
+  val performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false)
+}
+
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
-class SMTModelChecker(val solver: Solver, val checkConstraints: Boolean = false) extends SMTHelpers {
+class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.default) extends SMTHelpers {
   val name: String = "SMTModelChecker with " + solver.name
 
   def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
@@ -30,19 +36,33 @@ class SMTModelChecker(val solver: Solver, val checkConstraints: Boolean = false)
       sys.constraints.foreach(c => solver.assert(enc.getConstraint(c)))
 
       // make sure the constraints are not contradictory
-      if(checkConstraints) {
-        val res = solver.check()
+      if(options.checkConstraints) {
+        val res = solver.check(produceModel = false)
         assert(res.isTrue, s"Found unsatisfiable constraints in cycle $k")
       }
 
-      // check each bad state individually
-      sys.bad.foreach { b =>
+      if(options.checkBadStatesIndividually) {
+        // check each bad state individually
+        sys.bad.foreach { b =>
+          solver.push()
+          solver.assert(enc.getBadState(b))
+          val res = solver.check()
+          solver.pop()
+
+          // did we find an assignment for which the bas state is true?
+          if(res.isTrue) {
+            val w = getWitness(k)
+            return smt.ModelCheckFail(w)
+          }
+        }
+      } else {
+        val anyBad = disjunction(sys.bad.map(enc.getBadState))
         solver.push()
-        solver.assert(enc.getBadState(b))
+        solver.assert(anyBad)
         val res = solver.check()
         solver.pop()
 
-        // did we find an assignment for which the bas state is true?
+        // did we find an assignment for which at least one bad state is true?
         if(res.isTrue) {
           val w = getWitness(k)
           return smt.ModelCheckFail(w)
