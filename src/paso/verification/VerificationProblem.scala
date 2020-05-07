@@ -94,6 +94,24 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     (res, sim)
   }
 
+  private def checkCVC4(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
+    // beta reduce transition system for testing // TODO: rely on native support
+    val beta = SMTBetaReduction(foos)
+    val reducedSys = sys.copy(
+      states = sys.states.map(s => s.copy(init = s.init.map(beta(_)), next = s.next.map(beta(_)))),
+      outputs = sys.outputs.map(o => (o._1, beta(o._2))),
+      constraints = sys.constraints.map(beta(_)),
+      bad = sys.bad.map(beta(_)),
+      fair = sys.fair.map(beta(_)),
+    )
+
+
+    val checker = new SMTModelChecker(new CVC4Interface(quantifierFree = false))
+    val res = checker.check(reducedSys, kMax = k)
+    val sim = new smt.TransitionSystemSimulator(reducedSys)
+    (res, sim)
+  }
+
   private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], sub: Seq[smt.TransitionSystem]): Unit = {
     //println(s"Trying to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}...")
     val check = new BoundedCheckBuilder(p.impl)
@@ -133,7 +151,8 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     }
 
     val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub)
-    val (res, sim) = checkBtor2(check.getK, sys, foos)
+    //val (res, sim) = checkBtor2(check.getK, sys, foos)
+    val (res, sim) = checkCVC4(check.getK, sys, foos)
 
     // find failing property and print
     res match {
