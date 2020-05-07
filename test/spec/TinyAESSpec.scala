@@ -129,12 +129,10 @@ class TinyAESSpec extends FlatSpec {
     Paso(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()
   }
 
-  // TODO: this is broken, but why?
   "TinyAES OneRound" should "refine its spec" in {
     Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
   }
 
-  // TODO: this is broken, but why?
   "TinyAES FinalRound" should "refine its spec" in {
     Paso(new FinalRound)(new TinyAESRoundProtocol(_)).proof()
   }

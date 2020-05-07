@@ -138,10 +138,10 @@ class FinalRound extends Module with HasRoundIO {
       Utils.split(s4.io.out, 4)
     }
 
-    val z0 = p(0)(0) ^ p(1)(1) ^ p(2)(2) ^ p(3)(3) ^ k(0)
-    val z1 = p(1)(0) ^ p(2)(1) ^ p(3)(2) ^ p(0)(3) ^ k(1)
-    val z2 = p(2)(0) ^ p(3)(1) ^ p(0)(2) ^ p(1)(3) ^ k(2)
-    val z3 = p(3)(0) ^ p(0)(1) ^ p(1)(2) ^ p(2)(3) ^ k(3)
+    val z0 = (p(0)(0) ## p(1)(1) ## p(2)(2) ## p(3)(3)) ^ k(0)
+    val z1 = (p(1)(0) ## p(2)(1) ## p(3)(2) ## p(0)(3)) ^ k(1)
+    val z2 = (p(2)(0) ## p(3)(1) ## p(0)(2) ## p(1)(3)) ^ k(2)
+    val z3 = (p(3)(0) ## p(0)(1) ## p(1)(2) ## p(2)(3)) ^ k(3)
 
     io.stateNext := RegNext(z0 ## z1 ## z2 ## z3)
 }
