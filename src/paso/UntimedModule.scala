@@ -108,7 +108,9 @@ class UntimedModule extends MultiIOModule with MethodParent {
 }
 
 object UntimedModule {
-  def apply[M <: UntimedModule](m: M): M = m
+  def apply[M <: UntimedModule](m: => M): M = {
+    Module(m)
+  }
 }
 
 
