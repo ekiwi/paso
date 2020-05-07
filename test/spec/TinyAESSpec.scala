@@ -73,8 +73,8 @@ class AESFinalRoundSpec extends UntimedModule with AESHelperFunctions with IsRou
 
     val z0 = (p0(0) ## p1(1) ## p2(2) ## p3(3)) ^ K0_4(0)
     val z1 = (p1(0) ## p2(1) ## p3(2) ## p0(3)) ^ K0_4(1)
-    val z2 = (p3(0) ## p3(1) ## p0(2) ## p1(3)) ^ K0_4(2)
-    val z3 = (p0(0) ## p0(1) ## p1(2) ## p2(3)) ^ K0_4(3)
+    val z2 = (p2(0) ## p3(1) ## p0(2) ## p1(3)) ^ K0_4(2)
+    val z3 = (p3(0) ## p0(1) ## p1(2) ## p2(3)) ^ K0_4(3)
 
     nextState := z0 ## z1 ## z2 ## z3
   }
