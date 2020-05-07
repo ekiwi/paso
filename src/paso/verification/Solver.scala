@@ -12,7 +12,7 @@ trait Solver {
   def push(): Unit = ctx.push()
   def pop(): Unit = ctx.pop()
   def assert(e: smt.Expr): Unit = ctx.assert(e)
-  def check(): smt.SolverResult = ctx.check()
+  def check(produceModel: Boolean = true): smt.SolverResult = ctx.check(produceModel)
   /** (define-fun ...) */
   def define(f: smt.DefineFun): Unit = {
     require(!ctx.variables.contains(f.id.id))
