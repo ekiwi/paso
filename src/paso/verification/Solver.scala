@@ -15,6 +15,8 @@ trait Solver {
   def check(): smt.SolverResult = ctx.check()
   /** (define-fun ...) */
   def define(f: smt.DefineFun): Unit = {
+    require(!ctx.variables.contains(f.id.id))
+    ctx.variables += (f.id.id -> f.id)
     ctx.writeCommand(f.toString)
   }
   /** (declare-fun ...)  */
