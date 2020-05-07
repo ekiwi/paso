@@ -73,7 +73,7 @@ trait AESHelperFunctions {
     k0b ## k1b ## k2b ## k3b
   }
 
-  def tableLookup(s32: UInt): UInt = {
+  def tableLookup(s32: UInt): Seq[UInt] = {
     val b = slice32To8(s32)
     var rl = T(b(0))
     val p0 = rl(3) ## rl(0) ## rl(1) ## rl(2)
@@ -84,7 +84,7 @@ trait AESHelperFunctions {
     rl = T(b(1))
     val p3 = rl(0) ## rl(1) ## rl(2) ## rl(3)
 
-    p0 ## p1 ## p2 ## p3
+    Seq(p0, p1, p2, p3)
   }
 }
 
