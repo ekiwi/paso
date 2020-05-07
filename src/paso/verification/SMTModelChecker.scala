@@ -8,6 +8,21 @@ import paso.chisel.SMTHelpers
 import uclid.smt
 import scala.collection.mutable
 
+trait PasoModelChecker {
+  val name: String
+  def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun] = Seq(),
+            uninterpreted: Seq[smt.Symbol] = Seq(), filename: Option[String] = None): smt.ModelCheckResult
+}
+
+case class PasoBtorMC(btor: smt.ModelChecker) extends PasoModelChecker {
+  override val name: String = btor.name
+
+  override def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun],
+                     uninterpreted: Seq[smt.Symbol], filename: Option[String]): smt.ModelCheckResult = ???
+
+}
+
+
 case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean)
 object SMTModelCheckerOptions {
   val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
