@@ -113,7 +113,7 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
 
       // on a transition, the next state is equal to the result of the next state function applied to the old state
       val newState = smt.FunctionApplication(signalFuns(s.sym), List(nextStateSymbol))
-      val nextOldState = smt.FunctionApplication(fun, List(stateSymbol))
+      val nextOldState = smt.FunctionApplication(funSym, List(stateSymbol))
       eq(newState, nextOldState)
     }
 
@@ -124,7 +124,7 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
       solver.define(fun)
 
       // on init, the current state is equal to the init state
-      eq(signalSubs(s.sym), smt.FunctionApplication(fun, List(stateSymbol)))
+      eq(signalSubs(s.sym), smt.FunctionApplication(funSym, List(stateSymbol)))
     }
 
     // define init function
