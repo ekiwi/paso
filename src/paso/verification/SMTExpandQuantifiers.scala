@@ -59,3 +59,19 @@ object SMTExpandQuantifiers {
 
   def apply(e: smt.Expr): smt.Expr = smt.Context.rewriteExpr(e, onExpr, mutable.Map.empty)
 }
+
+object SMTFindFreeSymbols {
+  def onExpr(expr: smt.Expr, bound: Set[smt.Symbol]): Seq[smt.Symbol] = expr match {
+    case e : smt.Symbol => if(bound.contains(e)) Seq() else Seq(e)
+    case smt.OperatorApplication(smt.ForallOp(args, _), List(e)) => onExpr(e, bound ++ args.toSet)
+    case smt.OperatorApplication(smt.ExistsOp(args, _), List(e)) => onExpr(e, bound ++ args.toSet)
+    case e : smt.OperatorApplication => e.operands.flatMap(onExpr(_, bound))
+    case _ : smt.Literal => Seq()
+    case s : smt.ArraySelectOperation => onExpr(s.e, bound) ++ s.index.flatMap(onExpr(_, bound))
+    case s : smt.ArrayStoreOperation => onExpr(s.e, bound) ++ s.index.flatMap(onExpr(_, bound)) ++ onExpr(s.value, bound)
+    case f : smt.FunctionApplication => onExpr(f.e, bound) ++ f.args.flatMap(onExpr(_, bound))
+    case other => throw new NotImplementedError(s"TODO: deal with $other")
+  }
+
+  def apply(e: smt.Expr): Set[smt.Symbol] = onExpr(e, Set()).toSet
+}

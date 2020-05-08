@@ -69,7 +69,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
 
   def getCombinedSystem: smt.TransitionSystem = {
     val allExpr = steps.flatMap(s => s.assumptions ++ s.assertions) ++ defines.values
-    val allSymbols : Set[smt.Symbol] = allExpr.map(smt.Context.findSymbols).reduce((a,b) => a | b)
+    val allSymbols : Set[smt.Symbol] = allExpr.map(SMTFindFreeSymbols(_)).reduce((a,b) => a | b)
 
     // check that there are no aliases with a different type
     allSymbols.foreach { sym =>
