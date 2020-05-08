@@ -175,6 +175,14 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     }
     val methodFunctionDefinitions = p.subspecs.flatMap(s => UntimedModel.functionDefs(s.spec.untimed))
 
+    // TODO: potentially use this instead of doing the tree encoding
+    // encode the toplevle system for fun
+//    val methodFuns = UntimedModel.functionAppSubs(p.spec.untimed)
+//    val resetAssumption = VerificationTask.findReset(p.impl.inputs).map(not).getOrElse(tru)
+//    val encoder = VerificationAutomatonEncoder(methodFuns.toMap, p.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
+//    val toplevelAutomaton = encoder.run(combined, "", resetAssumption)
+
+
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
