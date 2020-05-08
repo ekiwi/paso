@@ -60,6 +60,7 @@ case class Elaboration() {
     (st.circuit, st.annotations)
   }
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
+  private def getNonMain(c: ir.Circuit): Seq[ir.Module] = c.modules.filter(_.name != c.main)map(_.asInstanceOf[ir.Module])
 
   private def elaborate(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation]) = {
     val start = System.nanoTime()
@@ -166,6 +167,7 @@ case class Elaboration() {
     val spec_state = FindState(spec.circuit).run()
 
     val spec_module = getMain(spec.circuit)
+    val submodules = getNonMain(spec.circuit)
     val methods = spec.untimed.methods.map { meth =>
       val (raw_firrtl, raw_annos) = elaborate(spec.untimed, meth.generate)
 
@@ -173,7 +175,7 @@ case class Elaboration() {
       val method_body = getMain(raw_firrtl).body
       val comb_body = ir.Block(Seq(spec_module.body, method_body))
       val comb_ports = spec_module.ports ++ getMain(raw_firrtl).ports
-      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)), spec_name)
+      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)) ++ submodules, spec_name)
 
       // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
       val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)

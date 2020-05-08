@@ -14,8 +14,7 @@ case class FixClockRef(clock: ir.Expression) {
     case other => other.mapStmt(onStmt)
   }
   def apply(c: ir.Circuit): ir.Circuit = {
-    assert(c.modules.length == 1)
-    c.copy(modules = Seq(c.modules.head.asInstanceOf[ir.Module].mapStmt(onStmt)))
+    c.copy(modules = c.modules.map(_.asInstanceOf[ir.Module].mapStmt(onStmt)))
   }
 
 }
