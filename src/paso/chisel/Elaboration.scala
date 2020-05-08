@@ -167,7 +167,15 @@ case class Elaboration() {
     val spec_state = FindState(spec.circuit).run()
 
     val (spec_module, spec_subinstances) = RemoveInstances().run(getMain(spec.circuit))
-    //val submodules = getNonMain(spec.circuit)
+
+    // for now we require all submodules to have no state (only pure functions can be inlined)
+    // this will need some engineering to fix
+    val submodules = getNonMain(spec.circuit)
+    submodules.foreach{ m =>
+      val st = FindState(ir.Circuit(NoInfo, Seq(m), m.name)).run()
+      assert(st.isEmpty, s"Submodules with state are not supported at the moment! ${m.name}, $st")
+    }
+
     val methods = spec.untimed.methods.map { meth =>
       val (raw_firrtl, raw_annos) = elaborate(spec.untimed, meth.generate)
 
