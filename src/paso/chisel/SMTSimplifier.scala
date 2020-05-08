@@ -198,6 +198,8 @@ class SMTSimplifier private() {
       assert(res.isFalse, s"$expr != $simple")
     }
   }
+
+  def clear(): Unit = simplified.clear()
 }
 
 object SMTSimplifier {
@@ -205,6 +207,8 @@ object SMTSimplifier {
   def forFirrtl(): SMTSimplifier = new SMTSimplifier() with FirrtlSymExecSimplifications
   private lazy val simplifier = forFirrtl()
   def simplify(e: Expr): Expr = simplifier.run(e)
+  def clear(): Unit = simplifier.clear()
+  def verifySimplifications(solver: Context): Unit = simplifier.verifySimplifications(solver)
 }
 
 trait FirrtlSymExecSimplifications extends SMTSimplifier {

@@ -64,6 +64,7 @@ class CVC4Interface(quantifierFree: Boolean = true) extends Solver  {
     if(quantifierFree) writeCommand("(set-logic QF_AUFBV)")
     else writeCommand("(set-logic AUFBV)")
   }
+  def getCtx: smt.Context = ctx
 }
 
 class Z3Interface extends Solver  {
