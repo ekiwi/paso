@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
-import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, ReplaceMemReadWithVectorAccess, State}
+import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
@@ -166,8 +166,8 @@ case class Elaboration() {
     val spec_name = spec.circuit.main
     val spec_state = FindState(spec.circuit).run()
 
-    val spec_module = getMain(spec.circuit)
-    val submodules = getNonMain(spec.circuit)
+    val (spec_module, spec_subinstances) = RemoveInstances().run(getMain(spec.circuit))
+    //val submodules = getNonMain(spec.circuit)
     val methods = spec.untimed.methods.map { meth =>
       val (raw_firrtl, raw_annos) = elaborate(spec.untimed, meth.generate)
 
@@ -175,7 +175,7 @@ case class Elaboration() {
       val method_body = getMain(raw_firrtl).body
       val comb_body = ir.Block(Seq(spec_module.body, method_body))
       val comb_ports = spec_module.ports ++ getMain(raw_firrtl).ports
-      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)) ++ submodules, spec_name)
+      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)), spec_name)
 
       // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
       val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)
