@@ -232,6 +232,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
         and(inState(state), update.guard) -> update.value
       }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
       smt.State(stateSym, next = Some(simplify(nextState)))
+      // TODO: add option to init the state (for bmc)
     }
 
     val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions)) ++ Seq(resetAssumption)
