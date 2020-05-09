@@ -45,8 +45,8 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
       NamedExpr(smt.Symbol(m.name, m.typ), substituteReads(getMemUpdates(m.name)))
     }
 
-    // find input types
-    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, inputs(from)) }
-    MethodSemantics(guard=guard, updates = (regUpdates ++ memUpdates).toSeq, outputs = outputs.toSeq, inputs = ins.toSeq)
+    // find input types (sorted in order to ensure deterministic argument order for undefined functions)
+    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, inputs(from)) }.toSeq.sortBy(_.id)
+    MethodSemantics(guard=guard, updates = (regUpdates ++ memUpdates).toSeq, outputs = outputs.toSeq, inputs = ins)
   }
 }
