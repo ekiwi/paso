@@ -5,7 +5,7 @@
 package paso
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
-import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
+import firrtl.annotations.{Annotation, ReferenceTarget, SingleTargetAnnotation}
 
 import scala.collection.mutable
 
@@ -28,16 +28,39 @@ case class MethodIOAnnotation(target: ReferenceTarget, isInput: Boolean) extends
 
 // TODO: rename to something more sensible
 case class NMethod(gen: MethodGenerator) {
-  def apply(): Unit = {}
+  def apply(): Unit = {
+    throw new NotImplementedError("Calling methods with side effects is currently not supported!")
+  }
 }
 case class IMethod[I <: Data](inputType: I, gen: MethodGenerator) {
-  def apply(in: I): Unit = {}
+  def apply(in: I): Unit = {
+    throw new NotImplementedError("Calling methods with side effects is currently not supported!")
+  }
 }
 case class OMethod[O <: Data](outputType: O, gen: MethodGenerator) {
-  def apply(): O = { Wire(outputType) }
+  def apply(): O = {
+    val ret = Wire(outputType).suggestName(s"${gen.name}_ret")
+    ret := DontCare
+    dontTouch(ret)
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(ret.toTarget, None) })
+    ret
+  }
 }
 case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator) {
-  def apply(in: I): O = { Wire(outputType) }
+  def apply(in: I): O = {
+    val arg = Wire(inputType).suggestName(s"${gen.name}_arg")
+    arg := in
+    val ret = Wire(outputType).suggestName(s"${gen.name}_ret")
+    ret := DontCare
+    dontTouch(ret)
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(ret.toTarget, Some(arg.toTarget)) })
+    ret
+  }
+}
+
+// TODO: turn into multi target annotation
+case class MethodCallAnnotation(target: ReferenceTarget, in: Option[ReferenceTarget]) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(target = n)
 }
 
 trait MethodBody { def generate(prefix: String): Unit }
