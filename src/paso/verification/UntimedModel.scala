@@ -20,6 +20,18 @@ object UntimedModel {
       // for state updated we need to add the s".$name" suffix to avoid name conflicts
       meth.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(_.functionDef)
   }
+  def functionDefAlias(m: UntimedModel, a: UntimedModel): Iterable[smt.DefineFun] = {
+    assert(m.state.isEmpty && a.state.isEmpty, "TODO: support submodules with state")
+    def alias(x: smt.DefineFun, y: smt.DefineFun): smt.DefineFun = {
+      x.copy(e = smt.FunctionApplication(y.id, x.args))
+    }
+    m.methods.flatMap { case (name, meth) => meth.outputs.flatMap { o =>
+      val aliasMeth = a.methods(name)
+      val outputName = o.sym.id.split('.').last
+      val ao = aliasMeth.outputs.find(_.sym.id.endsWith(outputName)).get
+      Seq(alias(o.functionDef, ao.functionDef), alias(o.guardFunctionDef, ao.guardFunctionDef))
+    }}
+  }
 }
 
 trait IsFunction {

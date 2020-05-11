@@ -173,7 +173,19 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
       val encoder = VerificationAutomatonEncoder(methodFuns.toMap, sub.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
       encoder.run(combined, sub.instance + ".", resetAssumption)
     }
-    val methodFunctionDefinitions = p.subspecs.flatMap(s => UntimedModel.functionDefs(s.spec.untimed))
+    val methodFunctionDefinitions = p.subspecs.flatMap { sub =>
+      sub.binding match {
+        case Some(name) =>
+          // find untimed submodule of the top level spec that we are bound to
+          assert(p.spec.untimed.sub.contains(name), s"Bound submodule $name not found. Maybe try: ${p.spec.untimed.sub.keys.mkString(" ")}")
+          val bound = p.spec.untimed.sub(name)
+          // ensure that we are binding equivalent specs
+          assert(bound.methods.keys.toSet == sub.spec.untimed.methods.keys.toSet) // TODO: this doesn't really show that they are equivalent
+          // define functions to alias with the functions of the spec this was bound to
+          UntimedModel.functionDefAlias(sub.spec.untimed, bound)
+        case None => UntimedModel.functionDefs(sub.spec.untimed)
+      }
+    }
 
     // TODO: potentially use this instead of doing the tree encoding
     // encode the toplevle system for fun
