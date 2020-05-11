@@ -50,7 +50,7 @@ case class OMethod[O <: Data](outputType: O, gen: MethodGenerator) {
     val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
     val call = IO(new OMethodCallBundle(outputType)).suggestName(name + "_" + ii)
-    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.toTarget, name, ii) })
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.ret.toTarget, name, ii, false) })
     call.ret
   }
 }
@@ -69,7 +69,8 @@ case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: Meth
     val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
     val call = IO(new IOMethodCallBundle(inputType, outputType)).suggestName(name + "_" + ii)
-    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.toTarget, name, ii) })
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.arg.toTarget, name, ii, true) })
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.ret.toTarget, name, ii, false) })
     call.arg := in
     call.ret
   }
@@ -86,7 +87,7 @@ object MethodCall {
   }
 }
 
-case class MethodCallAnnotation(target: ReferenceTarget, name: String, ii: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+case class MethodCallAnnotation(target: ReferenceTarget, name: String, ii: Int, isArg: Boolean) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
