@@ -9,7 +9,7 @@ import firrtl.annotations.{Annotation, ModuleTarget, ReferenceTarget, SingleTarg
 
 import scala.collection.mutable
 
-case class MethodGenerator(parent: ModuleTarget, name: String, guard: Option[() => Bool], body: MethodBody) {
+case class MethodGenerator(getParentName: () => String, name: String, guard: Option[() => Bool], body: MethodBody) {
   def generate(): Unit = {
     assert(name.nonEmpty)
     body.generate(name + "_")
@@ -46,7 +46,7 @@ class OMethodCallBundle[O <: Data](outputType: O) extends Bundle {
 
 case class OMethod[O <: Data](outputType: O, gen: MethodGenerator) {
   def apply(): O = {
-    val name = gen.parent.circuit + "." + gen.parent.module + "." + gen.name
+    val name = gen.getParentName() + "." + gen.name
     val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
     val call = IO(new OMethodCallBundle(outputType)).suggestName(name + "_" + ii)
@@ -65,7 +65,7 @@ class IOMethodCallBundle[I <: Data, O <: Data](inputType: I, outputType: O) exte
 
 case class IOMethod[I <: Data, O <: Data](inputType: I, outputType: O, gen: MethodGenerator) {
   def apply(in: I): O = {
-    val name = gen.parent.circuit + "." + gen.parent.module + "." + gen.name
+    val name = gen.getParentName() + "." + gen.name
     val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
     val call = IO(new IOMethodCallBundle(inputType, outputType)).suggestName(name + "_" + ii)
@@ -118,19 +118,19 @@ case class IOMethodBody[I <: Data, O <: Data](inputType: I, outputType: O, impl:
   override def generate(prefix: String): Unit = impl(makeInput(inputType, prefix), makeOutput(outputType, prefix))
 }
 
-trait MethodParent { def addMethod(m: MethodGenerator): Unit; def toTarget: ModuleTarget }
+trait MethodParent { def addMethod(m: MethodGenerator): Unit; def getName: String }
 case class NMethodBuilder(p: MethodParent, n: String, guard: Option[() => Bool] = None) {
   def in[I <: Data](inputType: I): IMethodBuilder[I] = IMethodBuilder(p, n, inputType, guard)
   def out[O <: Data](outputType: O): OMethodBuilder[O] = OMethodBuilder(p, n, outputType, guard)
   def when(cond: => Bool): NMethodBuilder = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: => Unit): NMethod = {
-    val m = MethodGenerator(p.toTarget, n, guard, NMethodBody(() => impl)) ; p.addMethod(m) ; NMethod(m)
+    val m = MethodGenerator(() => p.getName, n, guard, NMethodBody(() => impl)) ; p.addMethod(m) ; NMethod(m)
   }
 }
 case class OMethodBuilder[O <: Data](p: MethodParent, n: String, outputType: O, guard: Option[() => Bool] = None) {
   def when(cond: => Bool): OMethodBuilder[O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: O => Unit): OMethod[O] = {
-    val m = MethodGenerator(p.toTarget, n, guard, OMethodBody(outputType, impl)) ; p.addMethod(m)
+    val m = MethodGenerator(() => p.getName, n, guard, OMethodBody(outputType, impl)) ; p.addMethod(m)
     OMethod(outputType, m)
   }
 }
@@ -138,20 +138,21 @@ case class IMethodBuilder[I <: Data](p: MethodParent, n : String, inputType: I, 
   def out[O <: Data](outputType: O): IOMethodBuilder[I, O] = IOMethodBuilder(p, n, inputType, outputType, guard)
   def when(cond: => Bool): IMethodBuilder[I] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: I => Unit): IMethod[I] = {
-    val m = MethodGenerator(p.toTarget, n, guard, IMethodBody(inputType, impl)) ; p.addMethod(m)
+    val m = MethodGenerator(() => p.getName, n, guard, IMethodBody(inputType, impl)) ; p.addMethod(m)
     IMethod(inputType, m)
   }
 }
 case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inputType: I, outputType: O, guard: Option[() => Bool] = None) {
   def when(cond: => Bool): IOMethodBuilder[I,O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: (I, O) => Unit): IOMethod[I,O] = {
-    val m = MethodGenerator(p.toTarget, n, guard, IOMethodBody(inputType, outputType, impl)) ; p.addMethod(m)
+    val m = MethodGenerator(() => p.getName, n, guard, IOMethodBody(inputType, outputType, impl)) ; p.addMethod(m)
     IOMethod(inputType, outputType, m)
   }
 }
 
 class UntimedModule extends MultiIOModule with MethodParent {
   override def addMethod(m: MethodGenerator): Unit = methods.append(m)
+  override def getName: String = this.pathName
   val methods = mutable.ArrayBuffer[MethodGenerator]()
   // TODO: automagically infer names like Chisel does for its native constructs
   def fun(name: String) = NMethodBuilder(this, name)
