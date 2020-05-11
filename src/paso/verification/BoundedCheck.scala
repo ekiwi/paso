@@ -79,9 +79,9 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
         s"Type mismatch with defined symbol: ${sym.id} : ${defines(sym.id).typ} != ${sym.typ}")
     }
 
-    // all  unknown symbols are assumed to be symbolic constants
+    // all  unknown symbols which aren't functions are assumed to be symbolic constants
     val knownSymbols : Set[smt.Symbol] = (sysSymbols.map(i => smt.Symbol(i._1, i._2)) ++ defines.map(i => smt.Symbol(i._1, i._2.typ))).toSet
-    val symConsts : Seq[smt.Symbol] = (allSymbols diff knownSymbols).toSeq
+    val symConsts : Seq[smt.Symbol] = (allSymbols diff knownSymbols).filterNot(_.typ.isMap).toSeq
 
     // emulate defines and symbolic constants with states
     val constStates = symConsts.map(s => smt.State(s, next=Some(s)))
