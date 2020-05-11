@@ -20,7 +20,8 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
 
   // creates function applications for all method calls together with the substitution map
   private def getMethodCallExpressions(): Map[smt.Expr, smt.Expr] = methodCalls.groupBy(c => c.name + c.ii).flatMap { case (_, annos) =>
-    val name = annos.head.name
+    val methodName = annos.head.name.split('.').last
+    val name = annos.head.name + "." + methodName + "_outputs"
     val arg = annos.filter(_.isArg).map(_.target.ref).sorted.map(n => n -> getSimplifiedFinalValue(n).get.e)
     val inTypes = arg.map(_._2.typ).toList
     val ret = annos.filterNot(_.isArg).map(_.target.ref).sorted.map(n => smt.Symbol(n, inputs(n)))
