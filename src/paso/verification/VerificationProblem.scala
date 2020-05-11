@@ -78,36 +78,34 @@ object VerificationProblem {
 
 
 
-class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelpers {
-  override val solverName: String = "btormc"
+class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends VerificationTask with SMTHelpers {
+  val checker: smt.IsModelChecker = if(useBtor){
+    smt.Btor2.createBtorMC()
+  } else{
+    new SMTModelChecker(new CVC4Interface(quantifierFree = false), SMTModelCheckerOptions.Performance)
+  }
+  override val solverName: String = checker.name
 
-  private def checkBtor2(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
-    // beta reduce transition system (functions are not supported by btor)
-    val beta = SMTBetaReduction(foos)
-    val reducedSys = sys.copy(
-      states = sys.states.map(s => s.copy(init = s.init.map(beta(_)), next = s.next.map(beta(_)))),
-      outputs = sys.outputs.map(o => (o._1, beta(o._2))),
-      constraints = sys.constraints.map(beta(_)),
-      bad = sys.bad.map(beta(_)),
-      fair = sys.fair.map(beta(_)),
-    )
+  private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
+    val reducedSys = if(checker.supportsUF) { sys } else {
+      // beta reduce transition system (functions are not supported by btor)
+      val beta = SMTBetaReduction(foos)
+      sys.copy(
+        states = sys.states.map(s => s.copy(init = s.init.map(beta(_)), next = s.next.map(beta(_)))),
+        outputs = sys.outputs.map(o => (o._1, beta(o._2))),
+        constraints = sys.constraints.map(beta(_)),
+        bad = sys.bad.map(beta(_)),
+        fair = sys.fair.map(beta(_)),
+      )
+    }
 
-    val checker = smt.Btor2.createBtorMC()
-    //val checker = smt.Btor2.createCosa2MC()
-
-    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k)
+    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = foos, uninterpreted = uf)
     val sim = new smt.TransitionSystemSimulator(reducedSys)
     (res, sim)
   }
 
-  private def checkCVC4(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
-    val checker = new SMTModelChecker(new CVC4Interface(quantifierFree = false), SMTModelCheckerOptions.Performance)
-    val res = checker.check(sys, kMax = k, defined = foos)
-    val sim = new smt.TransitionSystemSimulator(sys)
-    (res, sim)
-  }
 
-  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], sub: Seq[smt.TransitionSystem]): Unit = {
+  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], ufs: Seq[smt.Symbol], sub: Seq[smt.TransitionSystem]): Unit = {
     //println(s"Trying to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}...")
     val check = new BoundedCheckBuilder(p.impl)
 
@@ -146,8 +144,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     }
 
     val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub)
-    //val (res, sim) = checkBtor2(check.getK, sys, foos)
-    val (res, sim) = checkCVC4(check.getK, sys, foos)
+    val (res, sim) = runCheck(check.getK, sys, foos, ufs)
 
     // find failing property and print
     res match {
@@ -173,7 +170,7 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
       val encoder = VerificationAutomatonEncoder(methodFuns.toMap, sub.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
       encoder.run(combined, sub.instance + ".", resetAssumption)
     }
-    val methodFunctionDefinitions = p.subspecs.flatMap { sub =>
+    val subSpecMethodFunctionDefinitions = p.subspecs.flatMap { sub =>
       sub.binding match {
         case Some(name) =>
           // find untimed submodule of the top level spec that we are bound to
@@ -186,6 +183,11 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
         case None => UntimedModel.functionDefs(sub.spec.untimed)
       }
     }
+    // remember which submodules should be modelled with UFs
+    val boundSubModules = p.subspecs.flatMap(s => s.binding.toSeq).toSet
+    val submoduleFoos = p.spec.untimed.sub.filterNot(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
+    val submoduleUFs = p.spec.untimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).map(_.id).toSeq
+
 
     // TODO: potentially use this instead of doing the tree encoding
     // encode the toplevle system for fun
@@ -198,10 +200,10 @@ class VerifyMethods(oneAtATime: Boolean) extends VerificationTask with SMTHelper
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), methodFunctionDefinitions, subTransitionsSystems)
+        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs, subTransitionsSystems)
       }
     } else {
-      verifyMethods(p, combined, p.spec.untimed.methods, methodFunctionDefinitions, subTransitionsSystems)
+      verifyMethods(p, combined, p.spec.untimed.methods, subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs, subTransitionsSystems)
     }
 
   }
