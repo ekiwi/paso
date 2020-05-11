@@ -98,6 +98,7 @@ object NamespaceIdentifiers {
       name = fullPrefix.dropRight(1),
       state = untimed.state.map(st => st.copy(sym = stateSubs(st.sym))), // we assume that all inits are constant
       methods = untimed.methods.map{ case (name, s) => (name,  rename(name, s))},
+      sub = untimed.sub,
     )
 
     (renamedUntimed, stateSubs)
