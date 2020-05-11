@@ -11,14 +11,17 @@ import paso.verification.VerificationProblem
 
 import scala.collection.mutable
 
-trait IsSubmodule { val makeSpec: () => ProtocolSpec[UntimedModule] ; val instancePath: String ; def getBindings: Seq[String] }
+trait IsSubmodule { val makeSpec: () => ProtocolSpec[UntimedModule] ; val instancePath: String ; def getBinding: Option[String] }
 
 abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val spec: SM) {
-  case class Submodule[I <: RawModule, S <: UntimedModule](instancePath: String, impl: I, spec: I => ProtocolSpec[S], var bindings: Seq[String] = Seq()) extends IsSubmodule {
+  case class Submodule[I <: RawModule, S <: UntimedModule](instancePath: String, impl: I, spec: I => ProtocolSpec[S], var binding: Option[String] = None) extends IsSubmodule {
     override val makeSpec = () => spec(impl)
-    override def getBindings: Seq[String] = bindings
+    override def getBinding: Option[String] = binding
     /** marks a RTL submodule as implementing an untimed submodule */
-    def bind(untimed: S): Unit = { bindings = bindings ++ Seq(untimed.instanceName) }
+    def bind(untimed: S): Unit = {
+      assert(binding.isEmpty)
+      binding = Some(untimed.instanceName)
+    }
   }
   val subspecs = mutable.ArrayBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
 
