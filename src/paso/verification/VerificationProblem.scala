@@ -56,7 +56,7 @@ case class ForAllAssertion(variable: smt.Symbol, start: Int, end: Int, guard: sm
 }
 
 case class Spec(untimed: UntimedModel, protocols: Map[String, StepNode])
-case class Subspec(instance: String, ioSymbols: Seq[smt.Symbol], spec: Spec)
+case class Subspec(instance: String, ioSymbols: Seq[smt.Symbol], spec: Spec, bindings: Seq[String])
 case class VerificationProblem(impl: smt.TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
                                invariances: Seq[Assertion], mapping: Seq[Assertion])
 

@@ -266,7 +266,7 @@ case class Elaboration() {
       val instance = s.instancePath
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.id.startsWith(instance + "_")).map(s => s.copy(id = s.id.substring(prefixLength)))
-      Subspec(instance, io, spec)
+      Subspec(instance, io, spec, s.getBindings)
     }
     val endSubSpec= System.nanoTime()
 
