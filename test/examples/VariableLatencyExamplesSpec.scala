@@ -209,7 +209,7 @@ class ConstantLatencyProtocols(impl: IsConstLatency) extends ProtocolSpec[Identi
 class IdentityWithSubId extends UntimedModule {
   val id32 = UntimedModule(new Identity(UInt(32.W)))
   val id = fun("id").in(UInt(64.W)).out(UInt(64.W)) { (in, out) =>
-    val msb = in(61,32)
+    val msb = in(63,32)
     val lsb = in(31, 0)
     out := id32.id(msb) ## id32.id(lsb)
   }
