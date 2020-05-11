@@ -186,8 +186,11 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
     // remember which submodules should be modelled with UFs
     val boundSubModules = p.subspecs.flatMap(s => s.binding.toSeq).toSet
     val submoduleFoos = p.spec.untimed.sub.filterNot(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
-    val submoduleUFs = p.spec.untimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).map(_.id).toSeq
+    val boundSubmoduleFoos = p.spec.untimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2))
+    val boundValidFoos = boundSubmoduleFoos.filter(_.id.id.endsWith(".valid"))
+    val submoduleUFs = boundSubmoduleFoos.filterNot(_.id.id.endsWith(".valid")).map(_.id).toSeq
 
+    val foos = boundValidFoos ++ subSpecMethodFunctionDefinitions ++ submoduleFoos
 
     // TODO: potentially use this instead of doing the tree encoding
     // encode the toplevle system for fun
@@ -200,10 +203,10 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs, subTransitionsSystems)
+        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), foos.toSeq, submoduleUFs, subTransitionsSystems)
       }
     } else {
-      verifyMethods(p, combined, p.spec.untimed.methods, subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs, subTransitionsSystems)
+      verifyMethods(p, combined, p.spec.untimed.methods, foos.toSeq, submoduleUFs, subTransitionsSystems)
     }
 
   }
