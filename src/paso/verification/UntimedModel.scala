@@ -7,7 +7,7 @@ package paso.verification
 import uclid.smt
 
 case class MethodSemantics(guard: smt.Expr, updates: Seq[NamedExpr], outputs: Seq[NamedGuardedExpr], inputs: Seq[smt.Symbol])
-case class UntimedModel(name: String, state: Seq[smt.State], methods: Map[String, MethodSemantics])
+case class UntimedModel(name: String, state: Seq[smt.State], methods: Map[String, MethodSemantics], sub: Map[String, UntimedModel] = Map())
 
 object UntimedModel {
   def functionAppSubs(m: UntimedModel): Iterable[(smt.Symbol, smt.FunctionApplication)] = m.methods.flatMap { case( name, meth) =>

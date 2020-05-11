@@ -9,9 +9,9 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
-import paso.chisel.passes.{ExposeSubModules, FindState, FixClockRef, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
+import paso.chisel.passes.{ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
+import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
 
 /** essentially a HighFirrtlCompiler + ToWorkingIR */
@@ -162,28 +162,36 @@ case class Elaboration() {
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
-  private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]) = {
+  private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]): Untimed[S] = {
     val spec_name = spec.circuit.main
-    val spec_state = FindState(spec.circuit).run()
+    val modules = spec.circuit.modules.map(_.asInstanceOf[ir.Module])
+    val (spec_state, untimed_model) = elaborateUntimed(spec_name, spec.untimed, modules, spec.annos)
+    Untimed(spec_state, untimed_model, spec.protos)
+  }
 
-    val (spec_module, spec_subinstances) = RemoveInstances().run(getMain(spec.circuit))
 
-    // for now we require all submodules to have no state (only pure functions can be inlined)
-    // this will need some engineering to fix
-    val submodules = getNonMain(spec.circuit)
-    submodules.foreach{ m =>
-      val st = FindState(ir.Circuit(NoInfo, Seq(m), m.name)).run()
-      assert(st.isEmpty, s"Submodules with state are not supported at the moment! ${m.name}, $st")
+  private def elaborateUntimed(spec_name: String, untimed: UntimedModule, modules: Seq[ir.Module], annos: Seq[Annotation]): (Seq[State], UntimedModel) = {
+    val main = modules.find(_.name == spec_name).get
+    val spec_state = FindModuleState().run(main)
+    val (spec_module, spec_subinstances) = RemoveInstances().run(main)
+
+    // elaborate submodules first
+    val subModules = spec_subinstances.map { case (instanceName, moduleName) =>
+      val instance = annos.collect{ case SubmoduleAnnotation(_, in) => in }.find(_.instanceName == instanceName).get
+      val (subState, subUntimed) =  elaborateUntimed(moduleName, instance, modules, annos)
+      assert(subState.isEmpty, s"Submodules with state are not supported at the moment! ${instanceName}, $subState")
+      instanceName -> subUntimed
     }
 
-    val methods = spec.untimed.methods.map { meth =>
-      val (raw_firrtl, raw_annos) = elaborate(spec.untimed, meth.generate)
+    val methods = untimed.methods.map { meth =>
+      val (raw_firrtl, raw_annos) = elaborate(untimed, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw_firrtl).body
       val comb_body = ir.Block(Seq(spec_module.body, method_body))
       val comb_ports = spec_module.ports ++ getMain(raw_firrtl).ports
-      val comb_c = ir.Circuit(NoInfo, Seq(spec_module.copy(ports=comb_ports, body=comb_body)), spec_name)
+      val comb_mod = spec_module.copy(ports=comb_ports, body=comb_body)
+      val comb_c = ir.Circuit(NoInfo, Seq(FixReset(comb_mod)), spec_name)
 
       // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
       val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)
@@ -211,8 +219,8 @@ case class Elaboration() {
       case State(name, tpe : ir.VectorType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitVec(tpe)))
       case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
     }
-    val untimed_model = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods)
-    Untimed(spec_state, untimed_model, spec.protos)
+    val ut = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, sub = subModules)
+    (spec_state, ut)
   }
 
   private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S]) = {

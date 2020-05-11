@@ -160,8 +160,14 @@ class UntimedModule extends MultiIOModule with MethodParent {
 
 object UntimedModule {
   def apply[M <: UntimedModule](m: => M): M = {
-    Module(m)
+    val sub = Module(m)
+    annotate(new ChiselAnnotation { override def toFirrtl = SubmoduleAnnotation(sub.toTarget, sub) })
+    sub
   }
+}
+
+case class SubmoduleAnnotation(target: ModuleTarget, untimed: UntimedModule) extends SingleTargetAnnotation[ModuleTarget] {
+  def duplicate(n: ModuleTarget) = this.copy(n)
 }
 
 
