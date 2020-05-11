@@ -102,6 +102,12 @@ trait ModelCheckResult {
 case class ModelCheckSuccess() extends ModelCheckResult { override def isFail: Boolean = false }
 case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override def isFail: Boolean = true }
 
+trait IsModelChecker {
+  val name: String
+  val supportsUF: Boolean = false
+  def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None, defined: Seq[DefineFun] = Seq(), uninterpreted: Seq[Symbol] = Seq()): ModelCheckResult
+}
+
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
 class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128) {

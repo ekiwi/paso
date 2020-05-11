@@ -101,12 +101,14 @@ class Cosa2ModelChecker extends ModelChecker {
   }
 }
 
-abstract class ModelChecker {
-  val name: String
+abstract class ModelChecker extends IsModelChecker {
+  override val name: String
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true
-  def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
+  override def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None, defined: Seq[DefineFun] = Seq(), uninterpreted: Seq[Symbol] = Seq()): ModelCheckResult = {
+    assert(defined.isEmpty, "UF not supported!")
+    assert(uninterpreted.isEmpty, "UF not supported!")
     val checkSys = if(supportsMultipleProperties) sys else sys.unifyProperties() //.unifyConstraints()
     fileName match {
       case None => checkWithPipe(checkSys, kMax)

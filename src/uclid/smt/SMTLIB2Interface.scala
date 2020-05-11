@@ -336,6 +336,7 @@ class SMTLIB2Interface(args: List[String]) extends Context with SMTLIB2Base {
 
   def writeCommand(str : String) {
     solverProcess.writeInput(str + "\n")
+    println(str)
   }
 
   def readResponse() : Option[String] = {

@@ -30,11 +30,13 @@ object SMTModelCheckerOptions {
 }
 
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
-class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Default) extends SMTHelpers {
-  val name: String = "SMTModelChecker with " + solver.name
+class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Default) extends SMTHelpers with smt.IsModelChecker {
+  override val name: String = "SMTModelChecker with " + solver.name
+  override val supportsUF: Boolean = true
 
-  def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
+  override def check(sys: smt.TransitionSystem, kMax: Int, fileName: Option[String] = None, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
     require(kMax > 0 && kMax <= 2000, s"unreasonable kMax=$kMax")
+    if(fileName.nonEmpty) println("WARN: dumping to file is not supported at the moment.")
 
     // create new context
     solver.push()
