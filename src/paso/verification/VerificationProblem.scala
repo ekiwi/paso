@@ -67,7 +67,7 @@ object VerificationProblem {
     // first we need to make sure to properly namespace all symbols in the Verification Problem
     val p = NamespaceIdentifiers(problem)
     //println(p)
-    val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true))
+    val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true, useBtor = true))
     tasks.foreach(_.run(p))
 
     // check all our simplifications
@@ -78,7 +78,7 @@ object VerificationProblem {
 
 
 
-class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends VerificationTask with SMTHelpers {
+class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationTask with SMTHelpers {
   val checker: smt.IsModelChecker = if(useBtor){
     smt.Btor2.createBtorMC()
   } else{
