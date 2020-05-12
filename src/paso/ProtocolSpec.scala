@@ -47,6 +47,11 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
       val w = Wire(Bool()).suggestName("step")
       annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
     }
+    def stepAndFork(): Unit = {
+      step()
+      val w = Wire(Bool()).suggestName("fork")
+      annotate(new ChiselAnnotation { override def toFirrtl = ForkAnnotation(w.toTarget) })
+    }
   }
 
   def do_while(cond: => Bool, max: Int)(block: => Unit) = {
@@ -109,3 +114,6 @@ case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotatio
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
+case class ForkAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}

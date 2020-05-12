@@ -82,7 +82,7 @@ class TinyAESRoundProtocol(impl: HasRoundIO) extends ProtocolSpec[IsRoundSpec] {
 
   protocol(spec.round)(impl.io) { (clock, dut, in, out) =>
     dut.state.poke(in.state)
-    clock.step()
+    clock.stepAndFork()
     dut.state.poke(DontCare)
     dut.key.poke(in.key)
     clock.step()
@@ -96,7 +96,7 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128) extends ProtocolSpec[AESKeyEx
 
   protocol(spec.expandKey128)(impl.io) { (clock, dut, in, out) =>
     dut.in.poke(in)
-    clock.step()
+    clock.stepAndFork()
     dut.in.poke(DontCare)
     dut.out.expect(out)
     clock.step()

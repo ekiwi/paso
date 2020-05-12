@@ -13,6 +13,7 @@ import scala.collection.mutable
 case class ProtocolState(
   name: String = "",                           // for debugging
   isEmpty: Boolean = true,                     // new states are empty until the first set/expect
+  hasForked: Boolean = false,                  // could there be another protocol running?
   parent: Option[ProtocolState] = None,        // prior protocol state
   inputs: Map[smt.Symbol, smt.Expr] = Map(),   // expressions that are applied to the inputs of the DUV
   outputs: Map[smt.Symbol, smt.Expr] = Map(),  // expected outputs of the DUV
@@ -60,6 +61,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     ProtocolState(
       name = getStateName,
       isEmpty = true,
+      hasForked = false,
       parent = Some(state),
       inputs = inputs,
       outputs = Map(),
@@ -67,6 +69,9 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
       pathCondition = None
     )
   }
+
+  // while `fork` takes a branch *within* the protocol this forks of the protocol in the background!
+  def forkProtocol(state: ProtocolState): ProtocolState = state.copy(hasForked = true)
 
 
   ///////// Callbacks
@@ -130,6 +135,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     activeStates = activeStates.map(step)
   }
 
+  def onFork(): Unit = {
+    if(debugPrint) println(s"FORK (${activeStates})")
+    activeStates = activeStates.map(forkProtocol)
+  }
+
   ///////// State Tree to Graph
   type State = ProtocolState
   private def merge[K,V](a: Map[K, Set[V]],b: Map[K, Set[V]]): Map[K, Set[V]] = {
@@ -145,28 +155,35 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
   }
 
   var nodeIdCounter: Int = 0
-  private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], mappedBits: BitMap): StepNode = {
+  private def getNodeId: Int = { val id = nodeIdCounter ; nodeIdCounter += 1 ; id }
+  private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], mappedBits: BitMap, hasForked: Boolean): StepNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
-    val id = nodeIdCounter ; nodeIdCounter += 1
+    assert(states.forall(_.hasForked == states.head.hasForked), "states should only differ in their outputs / pathCondition")
+    val nextHasForked = states.head.hasForked
+    val id = getNodeId
 
     // if we are at a final step
     if(states.head.isEmpty && !children.contains(states.head)) {
       assert(states.forall(s => s.isEmpty && !children.contains(s)))
-      return StepNode(Seq(), methods, id, isFork = true) // we treat the final step as a fork
+      return StepNode(Seq(), methods, id, isFork = !hasForked) // if it wasn't previously the case, we treat the final step as a fork
     }
 
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
 
     val outputs = states.map { st =>
       val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
-      val next = children.get(st).map(c => makeGraph(methods, c, children, outBits)).toSeq
-      OutputNode(next, methods, outConst ++ st.pathCondition.toSeq, outMap)
+      val next = children.get(st).map(
+        c => makeGraph(methods, c, children, outBits, nextHasForked)
+      ).getOrElse(StepNode(Seq(), methods, getNodeId, !nextHasForked))
+      OutputNode(Seq(next), methods, outConst ++ st.pathCondition.toSeq, outMap)
     }.toSeq
-    val hasSuccessor = outputs.head.next.nonEmpty
-    outputs.foreach(o => assert(o.next.nonEmpty == hasSuccessor))
 
     val inputs = Seq(InputNode(outputs, methods, inConst, inMap))
-    StepNode(inputs, methods, id, isFork = !hasSuccessor)
+
+    // a step is a fork if it is the first state to have hasForked set or
+    // if it is the last explicit step followed by some input/output
+    val isFinalExplicitStep = !children.contains(states.head)
+    StepNode(inputs, methods, id, isFork = (nextHasForked && !hasForked) || isFinalExplicitStep)
   }
 
   def getGraph(method: String): StepNode = {
@@ -174,7 +191,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     nodeIdCounter = 0
     // reverse connectivity
     val (children, roots) = reverseConnectivity(activeStates)
-    makeGraph(Set(method), roots, children, Map())
+    makeGraph(Set(method), roots, children, Map(), false)
   }
 
   def checkFinalStates(states: Iterable[ProtocolState]) = {

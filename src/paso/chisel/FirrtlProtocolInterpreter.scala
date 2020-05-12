@@ -7,7 +7,7 @@ package paso.chisel
 import firrtl.annotations.Annotation
 import firrtl.ir
 import paso.verification.ProtocolInterpreter
-import paso.{ExpectAnnotation, MethodIOAnnotation, StepAnnotation}
+import paso.{ExpectAnnotation, ForkAnnotation, MethodIOAnnotation, StepAnnotation}
 import uclid.smt
 import uclid.smt.Expr
 
@@ -25,11 +25,13 @@ trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
 /** protocols built on a custom extension of firrtl */
 class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
   private val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
+  private val forks = annos.collect{ case ForkAnnotation(target) => target.ref }.toSet
   private val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
   override val prefix = name + "."
 
   override def defWire(name: String, tpe: ir.Type): Unit = {
     if(steps.contains(name)) { interpreter.onStep() }
+    if(forks.contains(name)) { interpreter.onFork() }
     super.defWire(name, tpe)
   }
 
