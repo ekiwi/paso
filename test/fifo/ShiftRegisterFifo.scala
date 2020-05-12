@@ -6,6 +6,7 @@ import chisel3.util._
 // rewrite of Makai Mann's shift register based fifo in Chisel
 class ShiftRegisterFifo(val width: Int, val depth: Int, fixed: Boolean = false) extends IsFifo {
   require(isPow2(depth))
+  val readDelay = 0
   val io = IO(new FifoIO(width))
 
   val counter_init = 0.U((log2Ceil(depth) + 1).W)

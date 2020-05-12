@@ -38,6 +38,7 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
 
 class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]] {
   val spec = new UntimedFifo[UInt](impl.depth, UInt(impl.width.W))
+  val readDelay = impl.readDelay
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
   protocol(spec.push)(impl.io) { (clock, dut, in) =>
@@ -51,19 +52,28 @@ class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]
   protocol(spec.pop)(impl.io) { (clock, dut, out) =>
     dut.pop.set(true.B)
     dut.push.set(false.B)
-    dut.data_out.expect(out)
     dut.empty.expect(false.B)
-    clock.step()
+    if(readDelay == 0) {
+      dut.data_out.expect(out)
+      clock.step()
+    } else {
+      (0 until readDelay).foreach(_ => clock.step())
+      dut.data_out.expect(out)
+    }
   }
 
   protocol(spec.push_pop)(impl.io) { (clock, dut, in, out) =>
     dut.pop.set(true.B)
     dut.push.set(true.B)
     dut.data_in.set(in)
-    dut.data_out.expect(out)
     dut.empty.expect(false.B)
-    clock.step()
-  }
+    if(readDelay == 0) {
+      dut.data_out.expect(out)
+      clock.step()
+    } else {
+      (0 until readDelay).foreach(_ => clock.step())
+      dut.data_out.expect(out)
+    }  }
 
   protocol(spec.idle)(impl.io) { (clock, dut) =>
     dut.pop.set(false.B)

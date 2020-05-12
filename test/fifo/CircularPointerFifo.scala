@@ -12,11 +12,12 @@ class FifoIO(val dataWidth: Int) extends Bundle {
   val data_out = Output(UInt(dataWidth.W))
 }
 
-abstract class IsFifo extends Module { val io: FifoIO ; val width: Int ; val depth: Int }
+abstract class IsFifo extends Module { val io: FifoIO ; val width: Int ; val depth: Int ; val readDelay: Int }
 
 // rewrite of Makai Mann's circular fifo in Chisel
 class CircularPointerFifo(val width: Int, val depth: Int, fixed: Boolean = false) extends IsFifo {
   require(isPow2(depth))
+  val readDelay = 0
   val io = IO(new FifoIO(width))
 
   val counter_init = 0.U((log2Ceil(depth) + 1).W)
