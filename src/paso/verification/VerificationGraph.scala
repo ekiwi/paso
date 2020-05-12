@@ -174,6 +174,25 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
   }
 }
 
+
+case class PipelineAutomatonEncoder(spec: Spec) {
+  case class Location(proto: String, id: Int)
+  case class State(active: Seq[Location]) {
+    val locationString: String = "{" + active.map(l => l.proto + "@" + l.id).sorted.mkString(", ") + "}"
+  }
+  val states = mutable.HashMap[String, State]()
+
+  //val stack = mutable.ArrayStack[]()
+
+  // TODO: check that all protocols (including the guard) are mutually exclusive
+  def run(): Unit = {
+    spec.untimed.methods.foreach { case (meth, _) =>
+
+    }
+  }
+}
+
+
 case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], modelState: Seq[smt.Symbol], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
   // TODO: remove simplifications
   private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
