@@ -185,21 +185,26 @@ case class PipelineAutomatonEncoder(spec: Spec) {
   private def findSteps(node: StepNode): Seq[StepNode] = {
     Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
   }
-  val locIndex: Map[Loc, StepNode] = spec.protocols.flatMap { case (name, step) =>
+  private val locIndex: Map[Loc, StepNode] = spec.protocols.flatMap { case (name, step) =>
     findSteps(step).map(s => toLoc(name, s) -> s)
   }
-  val nextLoc: Map[Loc, Seq[Loc]] = spec.protocols.flatMap { case (name, step) =>
+  private val nextLoc: Map[Loc, Seq[Loc]] = spec.protocols.flatMap { case (name, step) =>
     findSteps(step).map(s => toLoc(name, s) -> findSucessors(s).map(x => toLoc(name, x)))
   }
   nextLoc.foreach(l => assert(l._2.length <= 1, "TODO: handle branches correctly!"))
-  case class InstanceLoc(instance: Int, loc: Loc)
-  val instanceCount = mutable.HashMap(spec.protocols.keys.map(_ -> 0).toSeq: _*)
+  case class InstanceLoc(instance: Int, loc: Loc) {
+    override def toString: String = loc.proto + "'" + instance + "@" + loc.id
+  }
+  private val instanceCount = mutable.HashMap(spec.protocols.keys.map(_ -> 0).toSeq: _*)
   case class State(active: Seq[InstanceLoc], isFork: Boolean) {
     override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
   }
-  val states = mutable.HashMap[String, State]()
+  private val states = mutable.HashMap[String, State]()
+  private val nextState = mutable.ArrayBuffer[Edge]()
 
-  //val stack = mutable.ArrayStack[]()
+  case class Edge(from: State, to: State, active: Seq[InstanceLoc]) {
+    override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
+  }
 
   /** returns the id of a free instance of the protocol specified */
   def getFreeInstance(active: Seq[InstanceLoc], proto: String): Int = {
@@ -210,24 +215,42 @@ case class PipelineAutomatonEncoder(spec: Spec) {
     smallestId
   }
 
-  def executeState(st: State): Seq[State] = {
-    val nextLocs: Seq[InstanceLoc] = st.active.flatMap(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
-    val isFork = nextLocs.exists(_.loc.isFork)
-    val active = nextLocs.filterNot(_.loc.isFinal)
-    val next = State(active, isFork)
-    // check if this state already exists
-    if(states.contains(next.toString)) {
-      Seq(states(next.toString))
-    } else {
-      states(next.toString) = next
-      executeState(next)
+  def executeState(st: State): Unit = {
+    println(s"executeState($st)")
+
+    val newLocs = if(!st.isFork) Seq(Seq()) else {
+      spec.protocols.map { case (proto, step) =>
+        val id = getFreeInstance(st.active, proto)
+        Seq(InstanceLoc(id, toLoc(proto, step)))
+      }
+    }.toSeq
+
+    newLocs.foreach { nl =>
+      if(nl.nonEmpty) println(s"FORK: ${nl.head}")
+      val currentLocs = nl ++ st.active
+      val nextLocs: Seq[InstanceLoc] = currentLocs.flatMap(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
+      val isFork = nextLocs.exists(_.loc.isFork)
+      val active = nextLocs.filterNot(_.loc.isFinal)
+      val next = State(active, isFork)
+      // check if this state already exists
+      val alreadyVisited = states.contains(next.toString)
+      val uniqueNext = states.getOrElseUpdate(next.toString, next)
+      // describe the edge
+      val e = Edge(st, uniqueNext, currentLocs)
+      nextState.append(e)
+      if(!alreadyVisited) {
+        executeState(uniqueNext)
+      }
     }
   }
 
   // TODO: check that all protocols (including the guard) are mutually exclusive
   def run(): Unit = {
     val initState = State(Seq(), isFork = true)
+    states(initState.toString) = initState
     executeState(initState)
+    println(s"${nextState.size} edges, ${states.size} nodes")
+    println()
   }
 }
 
