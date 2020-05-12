@@ -71,7 +71,7 @@ object VerificationProblem {
     tasks.foreach(_.run(p))
 
     // check all our simplifications
-    val cvc4 = new CVC4Interface(quantifierFree = true)
+    val cvc4 = new CVC4Interface(quantifierFree = false)
     SMTSimplifier.verifySimplifications(cvc4.getCtx)
   }
 }
