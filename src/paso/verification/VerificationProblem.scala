@@ -189,6 +189,8 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
     val boundSubmoduleFoos = p.spec.untimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2))
     val boundValidFoos = boundSubmoduleFoos.filter(_.id.id.endsWith(".valid"))
     val submoduleUFs = boundSubmoduleFoos.filterNot(_.id.id.endsWith(".valid")).map(_.id).toSeq
+    // for now we only support abstracted submodules if their output is always valid
+    boundValidFoos.foreach(v => assert(v.e == tru, s"Only always valid methods can be turned into UFs. Not $v!"))
 
     val foos = boundValidFoos ++ subSpecMethodFunctionDefinitions ++ submoduleFoos
 
