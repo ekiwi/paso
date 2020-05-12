@@ -187,15 +187,18 @@ class SMTSimplifier private() {
   def verifySimplifications(solver: Context): Unit = {
     simplified.foreach { case (expr, simple) =>
       assert(expr.typ == simple.typ, s"type mismatch: $expr vs $simple")
-      val eq = OperatorApplication(EqualityOp, List(expr, simple))
 
-      // check validity of equality
-      solver.push()
-      solver.assert(OperatorApplication(NegationOp, List(eq)))
-      val res = solver.check()
-      solver.pop()
+      if(expr != simple) {
+        val eq = OperatorApplication(EqualityOp, List(expr, simple))
 
-      assert(res.isFalse, s"$expr != $simple")
+        // check validity of equality
+        solver.push()
+        solver.assert(OperatorApplication(NegationOp, List(eq)))
+        val res = solver.check()
+        solver.pop()
+
+        assert(res.isFalse, s"$expr != $simple")
+      }
     }
   }
 
