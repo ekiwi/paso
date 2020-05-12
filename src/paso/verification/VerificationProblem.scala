@@ -88,6 +88,7 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
 
   private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
     val reducedSys = if(checker.supportsUF) { sys } else {
+      assert(uf.isEmpty, s"Uninterpreted Functions are not supported by the model checker ${checker.name}")
       // beta reduce transition system (functions are not supported by btor)
       val beta = SMTBetaReduction(foos)
       sys.copy(
@@ -98,8 +99,9 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
         fair = sys.fair.map(beta(_)),
       )
     }
+    val defined = if(checker.supportsUF) { foos } else { Seq() }
 
-    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = foos, uninterpreted = uf)
+    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = defined, uninterpreted = uf)
     val sim = new smt.TransitionSystemSimulator(reducedSys)
     (res, sim)
   }
@@ -157,6 +159,39 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
     assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
   }
 
+  private def resolveBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
+    val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub =>
+      sub.binding match {
+        case Some(name) =>
+          // find untimed submodule of the top level spec that we are bound to
+          assert(topUntimed.sub.contains(name), s"Bound submodule $name not found. Maybe try: ${topUntimed.sub.keys.mkString(" ")}")
+          val bound = topUntimed.sub(name)
+          // ensure that we are binding equivalent specs
+          assert(bound.methods.keys.toSet == sub.spec.untimed.methods.keys.toSet) // TODO: this doesn't really show that they are equivalent
+          // define functions to alias with the functions of the spec this was bound to
+          UntimedModel.functionDefAlias(sub.spec.untimed, bound)
+        case None => UntimedModel.functionDefs(sub.spec.untimed)
+      }
+    }
+    // remember which submodules should be modelled with UFs
+    val boundSubModules = subspecs.flatMap(s => s.binding.toSeq).toSet
+    val submoduleFoos = topUntimed.sub.filterNot(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
+    val boundSubmoduleFoos = topUntimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2))
+    val boundValidFoos = boundSubmoduleFoos.filter(_.id.id.endsWith(".valid"))
+    val submoduleUFs = boundSubmoduleFoos.filterNot(_.id.id.endsWith(".valid")).map(_.id).toSeq
+    // for now we only support abstracted submodules if their output is always valid
+    boundValidFoos.foreach(v => assert(v.e == tru, s"Only always valid methods can be turned into UFs. Not $v!"))
+
+    (boundValidFoos.toSeq ++ subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs)
+  }
+
+  private def ignoreBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
+    subspecs.filter(_.binding.isDefined).foreach(s => println(s"WARN: ignoring binding of ${s.instance} to ${s.binding.get} because the backend does not support UFs!"))
+    val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub => UntimedModel.functionDefs(sub.spec.untimed) }
+    val submoduleFoos = topUntimed.sub.flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
+    (subSpecMethodFunctionDefinitions ++ submoduleFoos, Seq())
+  }
+
   override protected def execute(p: VerificationProblem): Unit = {
     // first we need to merge the protocol graph to ensure that methods are independent
     // - independence in this case means that for common inputs, the expected outputs are not mutually exclusive
@@ -170,29 +205,12 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
       val encoder = VerificationAutomatonEncoder(methodFuns.toMap, sub.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
       encoder.run(combined, sub.instance + ".", resetAssumption)
     }
-    val subSpecMethodFunctionDefinitions = p.subspecs.flatMap { sub =>
-      sub.binding match {
-        case Some(name) =>
-          // find untimed submodule of the top level spec that we are bound to
-          assert(p.spec.untimed.sub.contains(name), s"Bound submodule $name not found. Maybe try: ${p.spec.untimed.sub.keys.mkString(" ")}")
-          val bound = p.spec.untimed.sub(name)
-          // ensure that we are binding equivalent specs
-          assert(bound.methods.keys.toSet == sub.spec.untimed.methods.keys.toSet) // TODO: this doesn't really show that they are equivalent
-          // define functions to alias with the functions of the spec this was bound to
-          UntimedModel.functionDefAlias(sub.spec.untimed, bound)
-        case None => UntimedModel.functionDefs(sub.spec.untimed)
-      }
-    }
-    // remember which submodules should be modelled with UFs
-    val boundSubModules = p.subspecs.flatMap(s => s.binding.toSeq).toSet
-    val submoduleFoos = p.spec.untimed.sub.filterNot(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
-    val boundSubmoduleFoos = p.spec.untimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2))
-    val boundValidFoos = boundSubmoduleFoos.filter(_.id.id.endsWith(".valid"))
-    val submoduleUFs = boundSubmoduleFoos.filterNot(_.id.id.endsWith(".valid")).map(_.id).toSeq
-    // for now we only support abstracted submodules if their output is always valid
-    boundValidFoos.foreach(v => assert(v.e == tru, s"Only always valid methods can be turned into UFs. Not $v!"))
 
-    val foos = boundValidFoos ++ subSpecMethodFunctionDefinitions ++ submoduleFoos
+    val (foos, ufs) = if(checker.supportsUF) {
+      resolveBindings(p.subspecs, p.spec.untimed)
+    } else {
+      ignoreBindings(p.subspecs, p.spec.untimed)
+    }
 
     // TODO: potentially use this instead of doing the tree encoding
     // encode the toplevle system for fun
@@ -205,10 +223,10 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean = false) extends Verif
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), foos.toSeq, submoduleUFs, subTransitionsSystems)
+        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), foos, ufs, subTransitionsSystems)
       }
     } else {
-      verifyMethods(p, combined, p.spec.untimed.methods, foos.toSeq, submoduleUFs, subTransitionsSystems)
+      verifyMethods(p, combined, p.spec.untimed.methods, foos, ufs, subTransitionsSystems)
     }
 
   }
