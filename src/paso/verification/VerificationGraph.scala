@@ -15,77 +15,17 @@ import uclid.smt.{BVGTUOp, ConjunctionOp}
 
 import scala.collection.mutable
 
-object VerificationGraph extends SMTHelpers with HasSolver {
-  lazy val solver = new CVC4Interface(quantifierFree = true)
-
-  private def not(exprs: Seq[smt.Expr]): Seq[smt.Expr] = exprs.map(app(smt.NegationOp, _))
-
-  // combine two edges into all three combinations
-  private def combineInputs(a: InputNode, b: InputNode): (InputNode, InputNode, InputNode) = (
-    // a /\ b
-    InputNode(mergeOutputs(a.next, b.next), a.methods | b.methods, a.constraints ++ b.constraints, a.mappings ++ b.mappings),
-    // a /\ ~b
-    a.copy(constraints = a.constraints ++ not(b.constraints)),
-    // a~ /\ b
-    b.copy(constraints = not(a.constraints) ++ b.constraints)
-  )
-
-  // returns old or new node plus remaining node that needs to be merged
-  // maintains the invariance that all child nodes are mutually exclusive
-  private def mergeInputs(oldNode: InputNode, newNode: Option[InputNode]): (Seq[InputNode], Option[InputNode]) = {
-    // fast exit for empty new edge
-    if(newNode.isEmpty) { return (Seq(oldNode), None) }
-
-    // generate constraints (these depend on the type of the edge)
-    val (oldCon, newCon) = (oldNode.constraintExpr, newNode.get.constraintExpr)
-
-    // if the edge constraints are mutually exclusive, there is nothing to do
-    if(Checker.isUnsat(and(oldCon, newCon))) { return (Seq(oldNode), Some(newNode.get)) }
-
-    // merge the two edges
-    val (o_and_n, o_and_not_n, not_o_and_n) = combineInputs(oldNode, newNode.get)
-
-    // merged edges
-    val edges = if(Checker.isSat(and(oldCon, not(newCon)))) { Seq(o_and_n, o_and_not_n) } else { Seq(o_and_n) }
-
-    // remaining edge
-    val remaining = if(Checker.isSat(and(not(oldCon), newCon))) { Some(not_o_and_n) } else { None }
-
-    (edges, remaining)
-  }
-
-  private def mergeOutputs(oldNode: OutputNode, newNode: Option[OutputNode]): (Seq[OutputNode], Option[OutputNode]) = {
-    // fast exit for empty new edge
-    if(newNode.isEmpty) { return (Seq(oldNode), None) }
-
-    throw new NotImplementedError("TODO: merge output edges!")
-  }
-
-  private def mergeSingleNode[N <: VerificationNode](aNodes: Seq[N], bNode: N, merge: (N, Option[N]) => (Seq[N], Option[N])): Seq[N] = {
-    var newNode: Option[N] = Some(bNode)
-    val newNodes = aNodes.flatMap { old =>
-      val (newN, remainingN) = merge(old, newNode)
-      newNode = remainingN
-      newN
-    }
-    newNode match {
-      case None => newNodes
-      case Some(e) => newNodes ++ Seq(e)
-    }
-  }
-
-  private def mergeNodes[N <: VerificationNode](aNodes: Seq[N], bNodes: Seq[N], merge: (N, Option[N]) => (Seq[N], Option[N])): Seq[N] = {
-    var newNodes = aNodes
-    bNodes.foreach { newN => newNodes = mergeSingleNode(newNodes, newN, merge) }
-    newNodes
-  }
-
-  private def mergeInputs(a: Seq[InputNode], b: Seq[InputNode]): Seq[InputNode] = mergeNodes(a, b, mergeInputs)
-  private def mergeOutputs(a: Seq[OutputNode], b: Seq[OutputNode]): Seq[OutputNode] = mergeNodes(a, b, mergeOutputs)
-
+object VerificationGraph extends SMTHelpers {
   def merge(a: StepNode, b: StepNode): StepNode = {
-    // TODO: the merge of `id` and `idFork` might not be meaningful...
-    StepNode(mergeInputs(a.next, b.next), a.methods | b.methods, a.id * 100 + b.id, a.isFork || b.isFork)
+    assert(!a.isFork && !b.isFork)
+    assert(a.id == 0 && b.id == 0)
+    a.next.foreach { aNext =>
+      b.next.foreach { bNext =>
+        val mutuallyExlusive = Checker.isUnsat(and(aNext.constraintExpr, bNext.constraintExpr))
+        assert(mutuallyExlusive, "We currently require all methods to have distinguishing inputs on the first cycle.")
+      }
+    }
+    StepNode(a.next ++ b.next, a.methods | b.methods, 0, isFork = false)
   }
 
 }
