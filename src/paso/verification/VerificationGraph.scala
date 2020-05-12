@@ -17,6 +17,7 @@ import scala.collection.mutable
 
 object VerificationGraph extends SMTHelpers {
   def merge(a: StepNode, b: StepNode): StepNode = {
+    // TODO: also consider guards (i.e. protocols can be identical as long as their method guards are mutually exclusive)
     assert(!a.isFork && !b.isFork)
     assert(a.id == 0 && b.id == 0)
     a.next.foreach { aNext =>
