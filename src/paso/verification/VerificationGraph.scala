@@ -90,13 +90,13 @@ object VerificationGraph extends SMTHelpers with HasSolver {
 
 }
 
-case class FinalNode(ii: Int, guard: smt.Expr, method: String, isStep: Boolean)
+case class ForkNode(ii: Int, guard: smt.Expr, method: String)
 class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, smt.Expr]) extends SMTHelpers {
 
   case class State(ii: Int, pathGuard: smt.Expr)
-  def run(proto: StepNode): Seq[FinalNode] = {
+  def run(proto: StepNode): Seq[ForkNode] = {
     visit(proto, State(-1, tru))
-    finalNodes
+    forkNodes
   }
 
   private var branchCounter: Int = 0
@@ -106,12 +106,11 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
     val names = (0 until choices).map(ii => base + ii.toString)
     names.map(smt.Symbol(_, smt.BoolType))
   }
-  private val finalNodes = mutable.ArrayBuffer[FinalNode]()
+  private val forkNodes = mutable.ArrayBuffer[ForkNode]()
 
-  private def addFinalNode(node: VerificationNode, state: State): Unit = {
-    assert(node.next.isEmpty, "Not a final node!")
-    assert(node.methods.size == 1, "Only a single method allowed in final node!")
-    finalNodes += FinalNode(state.ii, state.pathGuard, node.methods.head, node.isInstanceOf[StepNode])
+  private def addForkNode(node: StepNode, state: State): Unit = {
+    assert(node.methods.size == 1, "Only a single method allowed in fork node!")
+    forkNodes += ForkNode(state.ii, state.pathGuard, node.methods.head)
   }
 
   private def assumeAt(state: State, e: smt.Expr): Unit = check.assumeAt(state.ii, implies(state.pathGuard, e))
@@ -119,7 +118,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
 
   private def visit(node: StepNode, oldState: State): Unit = {
     val state = oldState.copy(ii = oldState.ii + 1)
-    if(node.isFinal) { addFinalNode(node, state); return }
+    if(node.isFork) { addForkNode(node, state); return }
 
     // either of the following input constraints could be true
     val inputConstraints = node.next.map { ii =>
@@ -169,7 +168,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
   }
 
   private def visit(node: OutputNode, state: State): Unit = {
-    if(node.isFinal) { addFinalNode(node, state); return }
+    assert(!node.isFinal, "OutputNodes not followed by a StepNode are no longer supported!")
     assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
     visit(node.next.head, state)
   }

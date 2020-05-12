@@ -137,8 +137,8 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
     val guards = methods.mapValues(_.guard)
     val final_edges = new VerificationTreeEncoder(check, guards).run(proto)
 
-    // make sure that in the final states the mapping as well as the invariances hold
-    final_edges.foreach { case FinalNode(ii, guard, method, isStep) =>
+    // make sure that in any fork state, the mapping as well as the invariances hold
+    final_edges.foreach { case ForkNode(ii, guard, method) =>
       // substitute any references to the state of the untimed model with the result of applying the method
       val subs: Map[smt.Expr, smt.Expr] = method_state_subs(method).toMap
       p.invariances.foreach(i => check.assertAt(ii, implies(guard, elim(i.toExpr))))
