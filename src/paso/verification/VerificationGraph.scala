@@ -84,7 +84,7 @@ object VerificationGraph extends SMTHelpers with HasSolver {
   private def mergeOutputs(a: Seq[OutputNode], b: Seq[OutputNode]): Seq[OutputNode] = mergeNodes(a, b, mergeOutputs)
 
   def merge(a: StepNode, b: StepNode): StepNode = {
-    StepNode(mergeInputs(a.next, b.next), a.methods | b.methods)
+    StepNode(mergeInputs(a.next, b.next), a.methods | b.methods, a.id * 100 + b.id)
   }
 
 }

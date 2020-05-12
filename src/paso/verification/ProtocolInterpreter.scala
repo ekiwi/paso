@@ -144,12 +144,15 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     (merge(parentToChildren, parentMap), roots | parentRoots)
   }
 
+  var nodeIdCounter: Int = 0
   private def makeGraph(methods: Set[String], states: Iterable[State], children: Map[State, Iterable[State]], mappedBits: BitMap): StepNode = {
     assert(states.forall(_.inputs == states.head.inputs), "states should only differ in their outputs / pathCondition")
+    val id = nodeIdCounter ; nodeIdCounter += 1
+
     // if we are at a final step
     if(states.head.isEmpty && !children.contains(states.head)) {
       assert(states.forall(s => s.isEmpty && !children.contains(s)))
-      return StepNode(Seq(), methods)
+      return StepNode(Seq(), methods, id)
     }
 
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
@@ -161,11 +164,12 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     }.toSeq
 
     val inputs = Seq(InputNode(outputs, methods, inConst, inMap))
-    StepNode(inputs, methods)
+    StepNode(inputs, methods, id)
   }
 
   def getGraph(method: String): StepNode = {
     checkFinalStates(activeStates)
+    nodeIdCounter = 0
     // reverse connectivity
     val (children, roots) = reverseConnectivity(activeStates)
     makeGraph(Set(method), roots, children, Map())

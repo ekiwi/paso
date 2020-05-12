@@ -106,7 +106,7 @@ object NamespaceIdentifiers {
 
 
   def renameProtocol(node: StepNode, subs: SymSub, sm: Map[String, String]): StepNode =
-    StepNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm))
+    StepNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm), node.id)
   def renameProtocol(node: InputNode, subs: SymSub, sm: Map[String, String]): InputNode =
     InputNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm),
       node.constraints.map(substituteSmt(_, subs)), node.mappings.map(apply(_, subs)))
