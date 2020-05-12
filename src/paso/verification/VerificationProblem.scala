@@ -32,7 +32,7 @@ sealed trait IONode {
   }
 }
 
-case class StepNode(next: Seq[InputNode], methods: Set[String], id: Int) extends VerificationNode
+case class StepNode(next: Seq[InputNode], methods: Set[String], id: Int, isFork: Boolean) extends VerificationNode
 case class InputNode(next: Seq[OutputNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[ArgumentEq]= Seq()) extends VerificationNode with IONode
 case class OutputNode(next: Seq[StepNode], methods: Set[String], constraints: Seq[smt.Expr] = Seq(), mappings: Seq[ArgumentEq]= Seq()) extends VerificationNode with IONode {
   override val hasGuardedMappings: Boolean = true

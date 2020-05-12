@@ -152,7 +152,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     // if we are at a final step
     if(states.head.isEmpty && !children.contains(states.head)) {
       assert(states.forall(s => s.isEmpty && !children.contains(s)))
-      return StepNode(Seq(), methods, id)
+      return StepNode(Seq(), methods, id, isFork = true) // we treat the final step as a fork
     }
 
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
@@ -162,9 +162,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
       val next = children.get(st).map(c => makeGraph(methods, c, children, outBits)).toSeq
       OutputNode(next, methods, outConst ++ st.pathCondition.toSeq, outMap)
     }.toSeq
+    val hasSuccessor = outputs.head.next.nonEmpty
+    outputs.foreach(o => assert(o.next.nonEmpty == hasSuccessor))
 
     val inputs = Seq(InputNode(outputs, methods, inConst, inMap))
-    StepNode(inputs, methods, id)
+    StepNode(inputs, methods, id, isFork = !hasSuccessor)
   }
 
   def getGraph(method: String): StepNode = {
