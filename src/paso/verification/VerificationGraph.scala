@@ -177,19 +177,57 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
 
 
 case class PipelineAutomatonEncoder(spec: Spec) {
-  case class Location(proto: String, id: Int)
-  case class State(active: Seq[Location]) {
-    val locationString: String = "{" + active.map(l => l.proto + "@" + l.id).sorted.mkString(", ") + "}"
+  case class Loc(proto: String, id: Int, isFork: Boolean, isFinal: Boolean) {
+    override def toString: String = proto + "@" + id
+  }
+  private def toLoc(proto: String, node: StepNode): Loc = Loc(proto, node.id, node.isFork, node.isFinal)
+  private def findSucessors(node: StepNode): Seq[StepNode] = node.next.flatMap(_.next.flatMap(_.next))
+  private def findSteps(node: StepNode): Seq[StepNode] = {
+    Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
+  }
+  val locIndex: Map[Loc, StepNode] = spec.protocols.flatMap { case (name, step) =>
+    findSteps(step).map(s => toLoc(name, s) -> s)
+  }
+  val nextLoc: Map[Loc, Seq[Loc]] = spec.protocols.flatMap { case (name, step) =>
+    findSteps(step).map(s => toLoc(name, s) -> findSucessors(s).map(x => toLoc(name, x)))
+  }
+  nextLoc.foreach(l => assert(l._2.length <= 1, "TODO: handle branches correctly!"))
+  case class InstanceLoc(instance: Int, loc: Loc)
+  val instanceCount = mutable.HashMap(spec.protocols.keys.map(_ -> 0).toSeq: _*)
+  case class State(active: Seq[InstanceLoc], isFork: Boolean) {
+    override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
   }
   val states = mutable.HashMap[String, State]()
 
   //val stack = mutable.ArrayStack[]()
 
+  /** returns the id of a free instance of the protocol specified */
+  def getFreeInstance(active: Seq[InstanceLoc], proto: String): Int = {
+    val activeIds = active.filter(_.loc.proto == proto).map(_.instance).toSet
+    val smallestId = (0 until 100).find(ii => !activeIds.contains(ii)).get
+    // ensure that the instance count is correct
+    if(instanceCount(proto) <= smallestId) instanceCount(proto) = smallestId + 1
+    smallestId
+  }
+
+  def executeState(st: State): Seq[State] = {
+    val nextLocs: Seq[InstanceLoc] = st.active.flatMap(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
+    val isFork = nextLocs.exists(_.loc.isFork)
+    val active = nextLocs.filterNot(_.loc.isFinal)
+    val next = State(active, isFork)
+    // check if this state already exists
+    if(states.contains(next.toString)) {
+      Seq(states(next.toString))
+    } else {
+      states(next.toString) = next
+      executeState(next)
+    }
+  }
+
   // TODO: check that all protocols (including the guard) are mutually exclusive
   def run(): Unit = {
-    spec.untimed.methods.foreach { case (meth, _) =>
-
-    }
+    val initState = State(Seq(), isFork = true)
+    executeState(initState)
   }
 }
 
