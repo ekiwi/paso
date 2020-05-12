@@ -118,7 +118,8 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
 
   private def visit(node: StepNode, oldState: State): Unit = {
     val state = oldState.copy(ii = oldState.ii + 1)
-    if(node.isFork) { addForkNode(node, state); return }
+    if(node.isFork) { addForkNode(node, state) }
+    if(node.isFinal) { return }
 
     // either of the following input constraints could be true
     val inputConstraints = node.next.map { ii =>
