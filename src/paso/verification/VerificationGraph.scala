@@ -117,31 +117,37 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
 }
 
 
-case class PipelineAutomatonEncoder(spec: Spec) {
-  case class Loc(proto: String, id: Int, isFork: Boolean, isFinal: Boolean) {
-    override def toString: String = proto + "@" + id
-  }
-  private def toLoc(proto: String, node: StepNode): Loc = Loc(proto, node.id, node.isFork, node.isFinal)
+/**this is the skeleton of a Paso Automaton,
+ * encoding the basic FSM without any of the actual constraints, arch state or argument mappings
+ * */
+case class PasoFsm(states: Seq[PasoState], edges: Seq[PasoEdge], instances: Map[String, Int])
+/** represents a StepNode in a protocol */
+case class Loc(proto: String, id: Int, isFork: Boolean, isFinal: Boolean) {
+  override def toString: String = proto + "@" + id
+}
+object Loc { def apply(proto: String, node: StepNode): Loc = Loc(proto, node.id, node.isFork, node.isFinal) }
+/** represents a StepNode in a specific instance of a protocol */
+case class InstanceLoc(instance: Int, loc: Loc) {
+  override def toString: String = loc.proto + "'" + instance + "@" + loc.id
+}
+case class PasoState(active: Seq[InstanceLoc], isFork: Boolean) {
+  override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
+}
+case class PasoEdge(from: PasoState, to: PasoState, active: Seq[InstanceLoc]) {
+  override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
+}
+
+case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
   private def findSucessors(node: StepNode): Seq[StepNode] = node.next.flatMap(_.next.flatMap(_.next))
   private def findSteps(node: StepNode): Seq[StepNode] = {
     Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
   }
-  private val nextLoc: Map[Loc, Seq[Loc]] = spec.protocols.flatMap { case (name, step) =>
-    findSteps(step).map(s => toLoc(name, s) -> findSucessors(s).map(x => toLoc(name, x)))
+  private val nextLoc: Map[Loc, Seq[Loc]] = protocols.flatMap { case (name, step) =>
+    findSteps(step).map(s => Loc(name, s) -> findSucessors(s).map(x => Loc(name, x)))
   }
-  case class InstanceLoc(instance: Int, loc: Loc) {
-    override def toString: String = loc.proto + "'" + instance + "@" + loc.id
-  }
-  private val instanceCount = mutable.HashMap(spec.protocols.keys.map(_ -> 0).toSeq: _*)
-  case class State(active: Seq[InstanceLoc], isFork: Boolean) {
-    override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
-  }
-  private val states = mutable.HashMap[String, State]()
-  private val nextState = mutable.ArrayBuffer[Edge]()
-
-  case class Edge(from: State, to: State, active: Seq[InstanceLoc]) {
-    override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
-  }
+  private val instanceCount = mutable.HashMap(protocols.keys.map(_ -> 0).toSeq: _*)
+  private val states = mutable.HashMap[String, PasoState]()
+  private val nextState = mutable.ArrayBuffer[PasoEdge]()
 
   /** returns the id of a free instance of the protocol specified */
   def getFreeInstance(active: Seq[InstanceLoc], proto: String): Int = {
@@ -156,13 +162,13 @@ case class PipelineAutomatonEncoder(spec: Spec) {
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
-  def executeState(st: State): Unit = {
+  def executeState(st: PasoState): Unit = {
     println(s"executeState($st)")
 
     val newLocs = if(!st.isFork) Seq(Seq()) else {
-      spec.protocols.map { case (proto, step) =>
+      protocols.map { case (proto, step) =>
         val id = getFreeInstance(st.active, proto)
-        Seq(InstanceLoc(id, toLoc(proto, step)))
+        Seq(InstanceLoc(id, Loc(proto, step)))
       }
     }.toSeq
 
@@ -175,12 +181,12 @@ case class PipelineAutomatonEncoder(spec: Spec) {
       product(paths).foreach { nextLocs =>
         val isFork = nextLocs.exists(_.loc.isFork)
         val active = nextLocs.filterNot(_.loc.isFinal)
-        val next = State(active, isFork)
+        val next = PasoState(active, isFork)
         // check if this state already exists
         val alreadyVisited = states.contains(next.toString)
         val uniqueNext = states.getOrElseUpdate(next.toString, next)
         // describe the edge
-        val e = Edge(st, uniqueNext, currentLocs)
+        val e = PasoEdge(st, uniqueNext, currentLocs)
         nextState.append(e)
         if(!alreadyVisited) {
           executeState(uniqueNext)
@@ -190,12 +196,11 @@ case class PipelineAutomatonEncoder(spec: Spec) {
   }
 
   // TODO: check that all protocols (including the guard) are mutually exclusive
-  def run(): Unit = {
-    val initState = State(Seq(), isFork = true)
+  def run(): PasoFsm = {
+    val initState = PasoState(Seq(), isFork = true)
     states(initState.toString) = initState
     executeState(initState)
-    println(s"${nextState.size} edges, ${states.size} nodes")
-    println()
+    PasoFsm(states.values.toSeq, nextState, instanceCount.toMap)
   }
 }
 
