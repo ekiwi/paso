@@ -288,6 +288,23 @@ object PasoCombinedAutomatonEncoder extends SMTHelpers {
   }
 }
 
+object DuplicateProtocolTree {
+  // TODO: this is very similar to code in `NamespaceIdentifiers`, could maybe be merged...
+  type Sub = Map[smt.Symbol, smt.Symbol]
+  private def apply(e: ArgumentEq, subs: Sub): ArgumentEq =
+    e.copy(range = apply(e.range, subs), argRange = apply(e.argRange, subs))
+  private def apply(r: Range, subs: Sub): Range =
+    if(subs.contains(r.sym)) r.copy(sym = subs(r.sym)) else r
+  private def apply(node: InputNode, subs: Sub): InputNode =
+    InputNode(node.next.map(apply(_, subs)), node.methods,
+      node.constraints.map(substituteSmtSymbols(_, subs)), node.mappings.map(apply(_, subs)))
+  private def apply(node: OutputNode, subs: Sub): OutputNode =
+    OutputNode(node.next.map(apply(_, subs)), node.methods,
+      node.constraints.map(substituteSmtSymbols(_, subs)), node.mappings.map(apply(_, subs)))
+  def apply(node: StepNode, subs: Sub): StepNode =
+    StepNode(node.next.map(apply(_, subs)), node.methods, node.id, node.isFork)
+}
+
 object NewVerificationAutomatonEncoder extends SMTHelpers {
 
   private def uniquePairs[N](s: Iterable[N]): Iterable[(N,N)] =
@@ -297,7 +314,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     val guards = spec.untimed.methods.mapValues(_.guard)
     spec.protocols.values.foreach(p => assert(p.next.length == 1))
     val inputConstraints = spec.protocols.mapValues(_.next.head.constraintExpr)
-    uniquePairs(spec.protocols.keys).foreach { case (a, b) =>
+    uniquePairs(spec.protocols.ksmt.Symbol(o)eys).foreach { case (a, b) =>
       val aConst = and(guards(a), inputConstraints(a))
       val bConst = and(guards(b), inputConstraints(b))
       val mutuallyExlusive = Checker.isUnsat(and(aConst, bConst))
@@ -319,7 +336,33 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     ???
   }
 
+  private def createProtocolInstance(name: String, instance: Int, node: StepNode, method: MethodSemantics): Iterable[(InstanceLoc, StepNode)] = {
+    require(instance >= 0)
+    if(instance == 0) {
+      findSteps(node).map(s => InstanceLoc(0, Loc(name, s)) -> s)
+    } else {
+      // rename non default instance
+      val args = method.inputs ++ method.outputs.flatMap(o => Seq(o.sym, o.guardSym))
+      val subs: Map[smt.Symbol, smt.Symbol] = args.map(a => a -> a.copy(id = a.id + "$" + instance)).toMap
+      val subNode = DuplicateProtocolTree(node, subs)
+      findSteps(subNode).map(s => InstanceLoc(instance, Loc(name, s)) -> s)
+    }
+  }
 
+  private def createFunctionAppSubs(name: String, instance: Int, method: MethodSemantics): Iterable[(smt.Symbol, smt.FunctionApplication)] = {
+    require(instance >= 0)
+    val rename: String => String = if(instance == 0) { id: String => id } else { id: String => id + "$" + instance }
+    def r(s: smt.Symbol): smt.Symbol = s.copy(id = rename(s.id))
+
+    // this is similar to UntimedModel.functionAppSubs, but renames the output symbols
+    val apps = method.outputs.flatMap(o => Seq(r(o.sym) -> o.functionApp, r(o.guardSym) -> o.guardFunctionApp)) ++
+      // for state updated we need to add the s".$name" suffix to avoid name conflicts
+      method.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(u => u.sym -> u.functionApp)
+
+    // replace the arguments to the function applications
+    val argSubs = method.inputs.map(a => a -> r(a)).toMap
+    apps.map{ case (sym, app) => (sym, app.copy(args = app.args.map(_.asInstanceOf[smt.Symbol]).map(argSubs))) }
+  }
 
   def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): smt.TransitionSystem = {
     // we check that all methods are mutually exclusive
@@ -328,12 +371,18 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     // we create the basic fsm that helps us keep track of the system
     val fsm = PasoFsmEncoder(spec.protocols).run()
 
-    // for now we aren't able to deal with multiple instances :(
+    // make copies of protocols where necessary to create unique protocol trees and function applications
+    val locToStep = spec.protocols.flatMap{ case (name, step) =>
+      (0 until fsm.instances(name)).flatMap(inst => createProtocolInstance(name, inst, step, spec.untimed.methods(name)))
+    }.toMap
+    val methodFuns = spec.untimed.methods.flatMap { case(name, meth) =>
+      (0 until fsm.instances(name)).flatMap(inst => createFunctionAppSubs(name, inst, meth))
+    }.toMap
+
     fsm.instances.foreach{ case (name, count) => assert(count == 1, s"TODO: support multiple instances of $name") }
 
     // encode states
     val edgesByFromId = fsm.edges.groupBy(_.from.id)
-    val locToStep = spec.protocols.flatMap{ case (name, step) => findSteps(step).map(s => Loc(name, s) -> s) }.toMap
     // at a fork, we expect one of the methods to be enabled (guard) and chosen (in)
     val forkAssumption = disjunction(spec.protocols.map { case (meth, step) =>
       val guard = spec.untimed.methods(meth).guard
