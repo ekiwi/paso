@@ -135,7 +135,10 @@ case class PasoFsmState(id: Int, active: Seq[InstanceLoc], isFork: Boolean, choi
   require(choices.forall(_.loc.id == 0), "Choices should only contain first steps!")
   override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
 }
-case class PasoFsmEdge(from: PasoFsmState, to: PasoFsmState, active: Seq[InstanceLoc]) {
+case class BranchLoc(branchId: Int, loc: InstanceLoc) {
+  override def toString: String = loc.toString + "b" + branchId
+}
+case class PasoFsmEdge(from: PasoFsmState, to: PasoFsmState, active: Seq[BranchLoc]) {
   override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
 }
 
@@ -180,12 +183,16 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
     newLocs.zipWithIndex.foreach { case (nl, forkId) =>
       // if(nl.nonEmpty) println(s"FORK: ${nl.head}")
       val currentLocs = nl ++ st.active
-      val paths = currentLocs.map(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
+
+      // branch ids rely on the fact that nextLoc keeps the order of next steps consistent with the order in the next field of the OutputNode
+      val paths = currentLocs.map(loc =>
+        nextLoc(loc.loc).zipWithIndex.map{ case (next, branchId) => BranchLoc(branchId, InstanceLoc(loc.instance, next)) }
+      )
 
       // create a new state for every possible path
       product(paths).foreach { nextLocs =>
-        val isFork = nextLocs.exists(_.loc.isFork)
-        val active = nextLocs.filterNot(_.loc.isFinal)
+        val isFork = nextLocs.exists(_.loc.loc.isFork)
+        val active = nextLocs.map(_.loc).filterNot(_.loc.isFinal)
         // check if this state already exists
         val key = (active.toSet, isFork)
         val alreadyVisited = states.contains(key)
@@ -194,7 +201,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
           PasoFsmState(states.size, active, isFork, choices)
         })
         // describe the edge
-        val e = PasoFsmEdge(st, uniqueNext, currentLocs)
+        val e = PasoFsmEdge(st, uniqueNext, nextLocs)
         nextState.append(e)
         if(!alreadyVisited) {
           executeState(uniqueNext)
