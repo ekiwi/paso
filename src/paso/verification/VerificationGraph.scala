@@ -163,7 +163,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
   def executeState(st: PasoState): Unit = {
-    println(s"executeState($st)")
+    // println(s"executeState($st)")
 
     val newLocs = if(!st.isFork) Seq(Seq()) else {
       protocols.map { case (proto, step) =>
@@ -173,7 +173,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
     }.toSeq
 
     newLocs.foreach { nl =>
-      if(nl.nonEmpty) println(s"FORK: ${nl.head}")
+      // if(nl.nonEmpty) println(s"FORK: ${nl.head}")
       val currentLocs = nl ++ st.active
       val paths = currentLocs.map(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
 
