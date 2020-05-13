@@ -286,6 +286,40 @@ object PasoCombinedAutomatonEncoder extends SMTHelpers {
       bad = Seq(badInInvalidState) ++ bads
     )
   }
+}
+
+object NewVerificationAutomatonEncoder extends SMTHelpers {
+
+  private def uniquePairs[N](s: Iterable[N]): Iterable[(N,N)] =
+    for { (x, ix) <- s.zipWithIndex ; (y, iy) <- s.zipWithIndex ;  if ix < iy } yield (x, y)
+
+  private def checkMethodsAreMutuallyExclusive(spec: Spec): Unit = {
+    val guards = spec.untimed.methods.mapValues(_.guard)
+    spec.protocols.values.foreach(p => assert(p.next.length == 1))
+    val inputConstraints = spec.protocols.mapValues(_.next.head.constraintExpr)
+    uniquePairs(spec.protocols.keys).foreach { case (a, b) =>
+      val aConst = and(guards(a), inputConstraints(a))
+      val bConst = and(guards(b), inputConstraints(b))
+      val mutuallyExlusive = Checker.isUnsat(and(aConst, bConst))
+      assert(mutuallyExlusive, s"We currently require all methods to have distinguishing inputs on the first cycle. This is not true for $a and $b!")
+    }
+  }
+
+  private def findSteps(node: StepNode): Seq[StepNode] =
+    Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
+
+  private def encodeState(st: PasoFsmState, next: Seq[PasoFsmEdge], forkAssumption: smt.Expr, locToStep: Map[Loc, StepNode]): PasoState = {
+    // TODO: deal with different instances and active inputs
+    // these are the transactions that are ongoing, all of their constraints need to be compatible
+    val activeInputs = st.active.map(a => locToStep(a.loc)).map(_.next.head)
+    assert(!st.isFork || activeInputs.isEmpty, "TODO: deal with active input during a fork!")
+    //val activeInputConstraints = activeInputs.map(_.constraintExpr)
+    //val activeInputMappings = activeInputs.map(_.mappingExpr)
+
+    ???
+  }
+
+
 
   def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): smt.TransitionSystem = {
     // we check that all methods are mutually exclusive
@@ -319,7 +353,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
   def run(proto: StepNode, prefix: String, resetAssumption: smt.Expr): smt.TransitionSystem = {
     val start_id = visit(proto)
     val start = states.find(_.id == start_id).get
-    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, start, states)
+    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, start, states, switchAssumesAndGuarantees)
   }
 
   private val StartId: Int = 0
