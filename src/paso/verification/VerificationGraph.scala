@@ -126,13 +126,9 @@ case class PipelineAutomatonEncoder(spec: Spec) {
   private def findSteps(node: StepNode): Seq[StepNode] = {
     Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
   }
-  private val locIndex: Map[Loc, StepNode] = spec.protocols.flatMap { case (name, step) =>
-    findSteps(step).map(s => toLoc(name, s) -> s)
-  }
   private val nextLoc: Map[Loc, Seq[Loc]] = spec.protocols.flatMap { case (name, step) =>
     findSteps(step).map(s => toLoc(name, s) -> findSucessors(s).map(x => toLoc(name, x)))
   }
-  nextLoc.foreach(l => assert(l._2.length <= 1, "TODO: handle branches correctly!"))
   case class InstanceLoc(instance: Int, loc: Loc) {
     override def toString: String = loc.proto + "'" + instance + "@" + loc.id
   }
@@ -156,6 +152,10 @@ case class PipelineAutomatonEncoder(spec: Spec) {
     smallestId
   }
 
+  // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
+  private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
+    xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
+
   def executeState(st: State): Unit = {
     println(s"executeState($st)")
 
@@ -169,18 +169,22 @@ case class PipelineAutomatonEncoder(spec: Spec) {
     newLocs.foreach { nl =>
       if(nl.nonEmpty) println(s"FORK: ${nl.head}")
       val currentLocs = nl ++ st.active
-      val nextLocs: Seq[InstanceLoc] = currentLocs.flatMap(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
-      val isFork = nextLocs.exists(_.loc.isFork)
-      val active = nextLocs.filterNot(_.loc.isFinal)
-      val next = State(active, isFork)
-      // check if this state already exists
-      val alreadyVisited = states.contains(next.toString)
-      val uniqueNext = states.getOrElseUpdate(next.toString, next)
-      // describe the edge
-      val e = Edge(st, uniqueNext, currentLocs)
-      nextState.append(e)
-      if(!alreadyVisited) {
-        executeState(uniqueNext)
+      val paths = currentLocs.map(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
+
+      // create a new state for every possible path
+      product(paths).foreach { nextLocs =>
+        val isFork = nextLocs.exists(_.loc.isFork)
+        val active = nextLocs.filterNot(_.loc.isFinal)
+        val next = State(active, isFork)
+        // check if this state already exists
+        val alreadyVisited = states.contains(next.toString)
+        val uniqueNext = states.getOrElseUpdate(next.toString, next)
+        // describe the edge
+        val e = Edge(st, uniqueNext, currentLocs)
+        nextState.append(e)
+        if(!alreadyVisited) {
+          executeState(uniqueNext)
+        }
       }
     }
   }
