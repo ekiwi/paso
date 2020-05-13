@@ -205,45 +205,24 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
   }
 }
 
+case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
+case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
+case class NextState(guard: smt.Expr, nextId: Int)
+case class StateUpdate(guard: smt.Expr, state: smt.Symbol, value: smt.Expr)
+case class PasoState(id: Int,
+   inputMappings: Seq[ArgMap], // mapping DUV inputs to method arguments (depending on input constraints)
+   environmentAssumptions: smt.Expr, // restrict the inputs space
+   nextStates: Seq[NextState], // the next state might depend on inputs and outputs
+   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
+   stateUpdates: Seq[StateUpdate], // updates to the architectural state
+  )
 
-object NewVerificationAutomatonEncoder extends SMTHelpers {
+object PasoCombinedAutomatonEncoder extends SMTHelpers {
   // TODO: remove simplifications
   private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
   private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
 
-  private case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
-  private case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
-  private case class NextState(guard: smt.Expr, nextId: Int)
-  private case class StateUpdate(guard: smt.Expr, state: smt.Symbol, value: smt.Expr)
-  private case class State(id: Int,
-                   inputMappings: Seq[ArgMap], // mapping DUV inputs to method arguments (depending on input constraints)
-                   environmentAssumptions: smt.Expr, // restrict the inputs space
-                   nextStates: Seq[NextState], // the next state might depend on inputs and outputs
-                   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
-                   stateUpdates: Seq[StateUpdate], // updates to the architectural state
-                  )
-
-
-  private def uniquePairs[N](s: Iterable[N]): Iterable[(N,N)] =
-    for { (x, ix) <- s.zipWithIndex ; (y, iy) <- s.zipWithIndex ;  if ix < iy } yield (x, y)
-
-  private def checkMethodsAreMutuallyExclusive(spec: Spec): Unit = {
-    val guards = spec.untimed.methods.mapValues(_.guard)
-    spec.protocols.values.foreach(p => assert(p.next.length == 1))
-    val inputConstraints = spec.protocols.mapValues(_.next.head.constraintExpr)
-    uniquePairs(spec.protocols.keys).foreach { case (a, b) =>
-      val aConst = and(guards(a), inputConstraints(a))
-      val bConst = and(guards(b), inputConstraints(b))
-      val mutuallyExlusive = Checker.isUnsat(and(aConst, bConst))
-      assert(mutuallyExlusive, s"We currently require all methods to have distinguishing inputs on the first cycle. This is not true for $a and $b!")
-    }
-  }
-
-  private def encodeState(st: PasoState, next: Seq[PasoEdge]): State = {
-    // TODO!
-  }
-
-  private def encodeStatesIntoTransitionSystem(prefix: String, resetAssumption: smt.Expr, start: State, states: Seq[State], switchAssumesAndGuarantees: Boolean): smt.TransitionSystem = {
+  def run(prefix: String, resetAssumption: smt.Expr, start: PasoState, states: Seq[PasoState], switchAssumesAndGuarantees: Boolean): smt.TransitionSystem = {
     // calculate transition function for the "state" state, i.e. the state of our automaton
     val stateBits = log2Ceil(states.length + 1)
     val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
@@ -320,109 +299,35 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
 
     // encode states
     val edgesByFromId = fsm.edges.groupBy(_.from.id)
-    val states = fsm.states.map(s => encodeState(s, edgesByFromId(s.id)))
+    val locToStep = spec.protocols.flatMap{ case (name, step) => findSteps(step).map(s => Loc(name, s) -> s) }.toMap
+    // at a fork, we expect one of the methods to be enabled (guard) and chosen (in)
+    val forkAssumption = disjunction(spec.protocols.map { case (meth, step) =>
+      val guard = spec.untimed.methods(meth).guard
+      val in = step.next.head.constraintExpr
+      and(guard, in)
+    })
+    val states = fsm.states.map(s => encodeState(s, edgesByFromId(s.id), forkAssumption, locToStep))
 
     // turn states into state transition system
     assert(states.head.id == 0, "Expected first state to be the start state!")
-    encodeStatesIntoTransitionSystem(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees)
+    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees)
   }
 }
 
 case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], modelState: Seq[smt.Symbol], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
-  // TODO: remove simplifications
-  private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
-  private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
-
-  type StateId = Int
-  case class ArgMap(guard: smt.Expr, eq: ArgumentEq)
-  case class OutputConstraint(guard: smt.Expr, constraint: smt.Expr)
-  case class NextState(guard: smt.Expr, nextId: StateId)
-  case class StateUpdate(guard: smt.Expr, state: smt.Symbol, value: smt.Expr)
-  case class State(id: StateId,
-                   inputMappings: Seq[ArgMap], // mapping DUV inputs to method arguments (depending on input constraints)
-                   environmentAssumptions: smt.Expr, // restrict the inputs space
-                   nextStates: Seq[NextState], // the next state might depend on inputs and outputs
-                   systemAssertions: Seq[OutputConstraint], // expected outputs depending on the input path taken
-                   stateUpdates: Seq[StateUpdate], // updates to the architectural state
-                  )
-
-  def encodeStatesIntoTransitionSystem(prefix: String, resetAssumption: smt.Expr, start: State, states: Seq[State]): smt.TransitionSystem = {
-    // calculate transition function for the "state" state, i.e. the state of our automaton
-    val stateBits = log2Ceil(states.length + 1)
-    val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
-    def inState(id: Int): smt.Expr = eq(stateSym, smt.BitVectorLit(id, stateBits))
-
-    // if we ever get into this state, we have done something wrong
-    val invalidState = smt.BitVectorLit(states.length, stateBits)
-    val badInInvalidState = eq(stateSym, invalidState)
-
-    // calculate the next state
-    val nextStateAndGuard= states.flatMap(s => s.nextStates.map(n => (n.nextId, and(n.guard, inState(s.id)))))
-    val nextState = nextStateAndGuard.groupBy(_._1).foldLeft[smt.Expr](invalidState){ case (other, (stateId, guards)) =>
-      ite(disjunction(guards.map(_._2)), smt.BitVectorLit(stateId, stateBits), other)
-    }
-    val stateState = smt.State(stateSym, init = Some(smt.BitVectorLit(start.id, stateBits)), next = Some(simplify(nextState)))
-
-    // besides the "state" we need to keep track of argument mapped in earlier cycles
-    // so that we can use them in output constraints in a later cycle
-    // to do this we create a state for every argument
-    val mappingsByArgName = states.flatMap(s => s.inputMappings.map((s.id,_))).groupBy(_._2.eq.argRange.sym.id)
-    val args = mappingsByArgName.map { case(_, m) =>
-      val stateSym = m.head._2.eq.argRange.sym
-      val nextArg = m.groupBy(_._1).map { case (state, updates) =>
-        // TODO: for now we only support a single full update --> need to implement partial updates at some point
-        assert(updates.length == 1)
-        assert(updates.head._2.eq.argRange.isFullRange)
-        and(inState(state), updates.head._2.guard) -> updates.head._2.eq.range.toExpr()
-      }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
-      smt.State(stateSym, next = Some(simplify(nextArg)))
-    }
-
-    // we also need to keep track of the architectural state of the untimed model
-    val updatesByState = states.flatMap(s => s.stateUpdates.map((s.id, _))).groupBy(_._2.state.id)
-    val untimedState = updatesByState.map { case (_, u) =>
-      val stateSym = u.head._2.state
-      val nextState = u.map { case (state, update) =>
-        and(inState(state), update.guard) -> update.value
-      }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
-      smt.State(stateSym, next = Some(simplify(nextState)))
-      // TODO: add option to init the state (for bmc)
-    }
-
-    val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions)) ++ Seq(resetAssumption)
-    val guarantees = states.flatMap(s => s.systemAssertions.map(a => implies(inState(s.id), implies(a.guard, a.constraint))))
-
-    val assumptionsSimple = simplify(assumptions)
-    val guaranteesSimple  = simplify(guarantees)
-
-    // turn environment assumptions or system assertions into constraints
-    val constraints = if(switchAssumesAndGuarantees) guaranteesSimple else assumptionsSimple
-
-    // turn system assertions or environment assumptions into bad states (requires negation)
-    val asserts = if(switchAssumesAndGuarantees) assumptionsSimple else guaranteesSimple
-    val bads = asserts.map(not)
-
-    smt.TransitionSystem(
-      name = Some(prefix.dropRight(1)),
-      inputs = Seq(),
-      states = Seq(stateState) ++ args ++ untimedState,
-      constraints = constraints,
-      bad = Seq(badInInvalidState) ++ bads
-    )
-  }
 
   def run(proto: StepNode, prefix: String, resetAssumption: smt.Expr): smt.TransitionSystem = {
     val start_id = visit(proto)
     val start = states.find(_.id == start_id).get
-    encodeStatesIntoTransitionSystem(prefix, resetAssumption, start, states)
+    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, start, states)
   }
 
-  private val StartId: StateId = 0
+  private val StartId: Int = 0
   private var stateCounter: Int = StartId
-  private val states = mutable.ArrayBuffer[State]()
-  private def getStateId: StateId = { val ii = stateCounter; stateCounter += 1; ii}
+  private val states = mutable.ArrayBuffer[PasoState]()
+  private def getStateId: Int = { val ii = stateCounter; stateCounter += 1; ii}
 
-  private def visit(node: StepNode): StateId = {
+  private def visit(node: StepNode): Int = {
     if(node.isFinal) { return StartId }
 
     val id = getStateId
@@ -441,7 +346,7 @@ case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Function
     val nextState = ir.flatMap(_._3)
     val stateUpdates = ir.flatMap(_._4)
 
-    val s = State(id, inputMappings, environmentAssumptions, nextState, systemAssertions, stateUpdates)
+    val s = PasoState(id, inputMappings, environmentAssumptions, nextState, systemAssertions, stateUpdates)
     states.append(s)
     s.id
   }
