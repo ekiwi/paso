@@ -177,7 +177,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
 
     val newLocs = if(!st.isFork) Seq(Seq()) else st.choices.map(Seq(_))
 
-    newLocs.foreach { nl =>
+    newLocs.zipWithIndex.foreach { case (nl, forkId) =>
       // if(nl.nonEmpty) println(s"FORK: ${nl.head}")
       val currentLocs = nl ++ st.active
       val paths = currentLocs.map(loc => nextLoc(loc.loc).map(InstanceLoc(loc.instance, _)))
@@ -339,7 +339,6 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
                                  modelState: Seq[smt.Symbol])
   private def encodeState(st: PasoFsmState, next: Seq[PasoFsmEdge], info: EncodeState): PasoState = {
     val (ir, environmentAssumptions) = if(st.isFork) {
-      assert(st.active.isEmpty, "TODO: deal with active input during a fork!")
 
       // TODO: what do we do if non of the guards are true and we are stuck?
       val inputGuards = st.choices.map { loc =>
@@ -348,7 +347,16 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
         and(guard, const)
       }
 
-      val environmentAssumptions = disjunction(inputGuards)
+      // other transactions that are currently executing, and will continue executing in parallel with the new transactions
+      val activeInputs = st.active.map(info.locToStep(_).next.head)
+      val activeInputInstances = st.active.map(_.instance)
+
+      // TODO: check that the environment assumptions of all inputs are compatible
+      val environmentAssumptions = conjunction(activeInputs.map(_.constraintExpr) ++ Seq(disjunction(inputGuards)))
+
+      // the environment needs to follow the constraints of the active transaction
+      // TODO: check that all inputs map different bits!
+      val activeMappings = activeInputs.flatMap(_.mappings.map(ArgMap(tru, _)))
 
       val ii = st.choices.zip(inputGuards).map { case (loc, inGuard) =>
         val step = info.locToStep(loc)
@@ -357,22 +365,25 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
 
         assert(step.next.length == 1)
         val input = step.next.head
+        val inputMap = input.mappings.map(ArgMap(inGuard, _))
 
-        encodeInputStep(instance, inGuard, input, inputNext, info)
+        encodeInputStep(Seq(instance) ++ activeInputInstances, inGuard, Seq(input) ++ activeInputs, inputMap ++ activeMappings, inputNext, info)
       }
 
       (ii, environmentAssumptions)
     } else {
-      assert(st.active.length == 1, "TODO: deal with active input during a fork!")
-      val step = info.locToStep(st.active.head)
-      val inputNext = next.filter(_.active.contains(st.active.head))
-      val instance = st.active.head.instance
+      val activeInputs = st.active.map(info.locToStep(_).next.head)
+      val activeInputInstances = st.active.map(_.instance)
+      val inputNext = next // no need to filter since this is not a fork => all active inputs are active on all branches
 
-      assert(step.next.length == 1)
-      val input = step.next.head
-      val environmentAssumptions = input.constraintExpr
+      // TODO: check that the environment assumptions of all inputs are compatible
+      val environmentAssumptions = conjunction(activeInputs.map(_.constraintExpr))
 
-      (Seq(encodeInputStep(instance, tru, input, inputNext, info)), environmentAssumptions)
+      // the environment needs to follow the constraints of the active transaction
+      // TODO: check that all inputs map different bits!
+      val activeMappings = activeInputs.flatMap(_.mappings.map(ArgMap(tru, _)))
+
+      (Seq(encodeInputStep(activeInputInstances, tru, activeInputs, activeMappings, inputNext, info)), environmentAssumptions)
     }
 
     val inputMappings = ir.flatMap(_._1)
