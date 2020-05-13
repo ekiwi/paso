@@ -342,19 +342,37 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
       assert(st.active.isEmpty, "TODO: deal with active input during a fork!")
 
       // TODO: what do we do if non of the guards are true and we are stuck?
-      val environmentAssumptions = disjunction(inputGuards.values)
+      val inputGuards = st.choices.map { loc =>
+        val const = info.locToStep(loc).next.head.constraintExpr
+        val guard = info.guards(loc.loc.proto)
+        and(guard, const)
+      }
 
-      (Seq(), environmentAssumptions)
+      val environmentAssumptions = disjunction(inputGuards)
+
+      val ii = st.choices.zip(inputGuards).map { case (loc, inGuard) =>
+        val step = info.locToStep(loc)
+        val inputNext = next.filter(_.active.contains(loc))
+        val instance = loc.instance
+
+        assert(step.next.length == 1)
+        val input = step.next.head
+
+        encodeInputStep(instance, inGuard, input, inputNext, info)
+      }
+
+      (ii, environmentAssumptions)
     } else {
       assert(st.active.length == 1, "TODO: deal with active input during a fork!")
       val step = info.locToStep(st.active.head)
+      val inputNext = next.filter(_.active.contains(st.active.head))
       val instance = st.active.head.instance
 
       assert(step.next.length == 1)
       val input = step.next.head
       val environmentAssumptions = input.constraintExpr
 
-      (Seq(encodeInputStep(instance, tru, input, next, info)), environmentAssumptions)
+      (Seq(encodeInputStep(instance, tru, input, inputNext, info)), environmentAssumptions)
     }
 
     val inputMappings = ir.flatMap(_._1)
@@ -459,7 +477,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
 
     // replace the arguments to the function applications
     val argSubs = method.inputs.map(a => a -> r(a)).toMap
-    apps.map{ case (sym, app) => (sym, app.copy(args = app.args.map(_.asInstanceOf[smt.Symbol]).map(argSubs))) }
+    apps.map{ case (sym, app) => (sym, app.copy(args = app.args.map(_.asInstanceOf[smt.Symbol]).map(a => argSubs.getOrElse(a, a)))) }
   }
 
   def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): smt.TransitionSystem = {
@@ -490,7 +508,8 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
   }
 }
 
-case class VerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], modelState: Seq[smt.Symbol], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
+/** Much Simpler Version of PasoFsmEncoder + NewVerificationAutomatonEncoder but Cannot Deal with Fork/Pipelining :( */
+case class OldVerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.FunctionApplication], modelState: Seq[smt.Symbol], switchAssumesAndGuarantees: Boolean = false) extends SMTHelpers {
 
   def run(proto: StepNode, prefix: String, resetAssumption: smt.Expr): smt.TransitionSystem = {
     val start_id = visit(proto)
