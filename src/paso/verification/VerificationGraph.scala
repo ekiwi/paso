@@ -120,7 +120,7 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
 /**this is the skeleton of a Paso Automaton,
  * encoding the basic FSM without any of the actual constraints, arch state or argument mappings
  * */
-case class PasoFsm(states: Seq[PasoState], edges: Seq[PasoEdge], instances: Map[String, Int])
+case class PasoFsm(states: Seq[PasoFsmState], edges: Seq[PasoFsmEdge], instances: Map[String, Int])
 /** represents a StepNode in a protocol */
 case class Loc(proto: String, id: Int, isFork: Boolean, isFinal: Boolean) {
   override def toString: String = proto + "@" + id
@@ -130,10 +130,10 @@ object Loc { def apply(proto: String, node: StepNode): Loc = Loc(proto, node.id,
 case class InstanceLoc(instance: Int, loc: Loc) {
   override def toString: String = loc.proto + "'" + instance + "@" + loc.id
 }
-case class PasoState(id: Int, active: Seq[InstanceLoc], isFork: Boolean) {
+case class PasoFsmState(id: Int, active: Seq[InstanceLoc], isFork: Boolean) {
   override def toString: String = "{" + active.map(_.toString).sorted.mkString(", ") + "}" + (if(isFork) " (F)" else "")
 }
-case class PasoEdge(from: PasoState, to: PasoState, active: Seq[InstanceLoc]) {
+case class PasoFsmEdge(from: PasoFsmState, to: PasoFsmState, active: Seq[InstanceLoc]) {
   override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
 }
 
@@ -146,8 +146,8 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
     findSteps(step).map(s => Loc(name, s) -> findSucessors(s).map(x => Loc(name, x)))
   }
   private val instanceCount = mutable.HashMap(protocols.keys.map(_ -> 0).toSeq: _*)
-  private val states = mutable.HashMap[String, PasoState]()
-  private val nextState = mutable.ArrayBuffer[PasoEdge]()
+  private val states = mutable.HashMap[String, PasoFsmState]()
+  private val nextState = mutable.ArrayBuffer[PasoFsmEdge]()
 
   /** returns the id of a free instance of the protocol specified */
   def getFreeInstance(active: Seq[InstanceLoc], proto: String): Int = {
@@ -162,7 +162,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
-  def executeState(st: PasoState): Unit = {
+  def executeState(st: PasoFsmState): Unit = {
     // println(s"executeState($st)")
 
     val newLocs = if(!st.isFork) Seq(Seq()) else {
@@ -181,12 +181,12 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
       product(paths).foreach { nextLocs =>
         val isFork = nextLocs.exists(_.loc.isFork)
         val active = nextLocs.filterNot(_.loc.isFinal)
-        val next = PasoState(states.size, active, isFork)
+        val next = PasoFsmState(states.size, active, isFork)
         // check if this state already exists
         val alreadyVisited = states.contains(next.toString)
         val uniqueNext = states.getOrElseUpdate(next.toString, next)
         // describe the edge
-        val e = PasoEdge(st, uniqueNext, currentLocs)
+        val e = PasoFsmEdge(st, uniqueNext, currentLocs)
         nextState.append(e)
         if(!alreadyVisited) {
           executeState(uniqueNext)
@@ -197,10 +197,10 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
 
   // TODO: check that all protocols (including the guard) are mutually exclusive
   def run(): PasoFsm = {
-    val initState = PasoState(0, Seq(), isFork = true)
+    val initState = PasoFsmState(0, Seq(), isFork = true)
     states(initState.toString) = initState
     executeState(initState)
-    val sts: Seq[PasoState] = states.values.toSeq.sortBy(_.id).toVector
+    val sts: Seq[PasoFsmState] = states.values.toSeq.sortBy(_.id).toVector
     PasoFsm(sts, nextState, instanceCount.toMap)
   }
 }
