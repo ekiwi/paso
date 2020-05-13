@@ -314,7 +314,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     val guards = spec.untimed.methods.mapValues(_.guard)
     spec.protocols.values.foreach(p => assert(p.next.length == 1))
     val inputConstraints = spec.protocols.mapValues(_.next.head.constraintExpr)
-    uniquePairs(spec.protocols.ksmt.Symbol(o)eys).foreach { case (a, b) =>
+    uniquePairs(spec.protocols.keys).foreach { case (a, b) =>
       val aConst = and(guards(a), inputConstraints(a))
       val bConst = and(guards(b), inputConstraints(b))
       val mutuallyExlusive = Checker.isUnsat(and(aConst, bConst))
@@ -325,15 +325,105 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
   private def findSteps(node: StepNode): Seq[StepNode] =
     Seq(node) ++ node.next.flatMap(_.next.flatMap(_.next.flatMap(findSteps)))
 
-  private def encodeState(st: PasoFsmState, next: Seq[PasoFsmEdge], forkAssumption: smt.Expr, locToStep: Map[Loc, StepNode]): PasoState = {
-    // TODO: deal with different instances and active inputs
-    // these are the transactions that are ongoing, all of their constraints need to be compatible
-    val activeInputs = st.active.map(a => locToStep(a.loc)).map(_.next.head)
-    assert(!st.isFork || activeInputs.isEmpty, "TODO: deal with active input during a fork!")
-    //val activeInputConstraints = activeInputs.map(_.constraintExpr)
-    //val activeInputMappings = activeInputs.map(_.mappingExpr)
+  private case class EncodeState(locToStep: Map[InstanceLoc, StepNode],
+                                 guards: Map[String, smt.Expr],
+                                 methodFuns: Map[smt.Symbol, smt.FunctionApplication],
+                                 modelState: Seq[smt.Symbol])
+  private def encodeState(st: PasoFsmState, next: Seq[PasoFsmEdge], info: EncodeState): PasoState = {
+    val (ir, environmentAssumptions) = if(st.isFork) {
+      assert(st.active.isEmpty, "TODO: deal with active input during a fork!")
 
-    ???
+      // TODO: what do we do if non of the guards are true and we are stuck?
+      val environmentAssumptions = disjunction(inputGuards.values)
+
+      (Seq(), environmentAssumptions)
+    } else {
+      assert(st.active.length == 1, "TODO: deal with active input during a fork!")
+      val step = info.locToStep(st.active.head)
+      val instance = st.active.head.instance
+
+      assert(step.next.length == 1)
+      val input = step.next.head
+      val environmentAssumptions = input.constraintExpr
+
+      (Seq(encodeInputStep(instance, tru, input, next, info)), environmentAssumptions)
+    }
+
+    val inputMappings = ir.flatMap(_._1)
+    val systemAssertions = ir.flatMap(_._2)
+    val nextState = ir.flatMap(_._3)
+    val stateUpdates = ir.flatMap(_._4)
+
+    PasoState(st.id, inputMappings, environmentAssumptions, nextState, systemAssertions, stateUpdates)
+  }
+
+  private def encodeInputStep(instance: Int, inGuard: smt.Expr, input: InputNode, next: Seq[PasoFsmEdge], info: EncodeState): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState], Seq[StateUpdate]) = {
+    // the environment needs to follow the constraints of the active transaction
+    val mappings = input.mappings.map(ArgMap(inGuard, _))
+
+    // there could be more than one OutputNode b/c of a branch in the protocol
+    assert(input.next.length == next.length)
+    val isBranch = input.next.length > 1
+
+    // at least one of the following output constraints has to be true
+    val systemAssertion = disjunction(input.next.map(_.constraintExpr))
+
+    val oo = input.next.zip(next).map { case (output, nextEdge) =>
+      val outGuard = if(isBranch) and(inGuard, output.constraintExpr) else inGuard
+      val (const, update) = encodeOutputStep(instance, outGuard, mappings, output, info)
+      val nextState = NextState(outGuard, nextEdge.to.id)
+      (nextState, const, update)
+    }
+
+    val nextStates = oo.map(_._1)
+    val constraints = Seq(OutputConstraint(inGuard, systemAssertion)) ++ oo.flatMap(_._2)
+    val stateUpdates = oo.flatMap(_._3)
+    (mappings, constraints, nextStates, stateUpdates)
+  }
+
+  private def encodeOutputStep(instance: Int, outGuard: smt.Expr, inputMap: Seq[ArgMap], node: OutputNode,
+                               info: EncodeState): (Seq[OutputConstraint], Seq[StateUpdate]) = {
+    assert(!node.isBranchPoint, "Cannot branch on steps! No way to distinguish between steps.")
+    assert(!node.isFinal, "An output step cannot be final!")
+
+    val mappings = node.mappings.map { m =>
+      // substitute argument to refer to the correct mapping
+      val argValue = callWithLatestArgumentValue(info.methodFuns(m.argRange.sym), inputMap)
+      val guard = smt.Symbol(m.argRange.sym.id + ".valid", smt.BoolType)
+      val guardValue = callWithLatestArgumentValue(info.methodFuns(guard), inputMap)
+      // build constraint expressions
+      val argExpr = if(m.argRange.isFullRange) argValue else app(smt.BVExtractOp(hi=m.argRange.hi, lo=m.argRange.lo), argValue)
+      val equality = eq(m.range.toExpr(), argExpr)
+      OutputConstraint(outGuard, implies(guardValue, equality))
+    }
+
+    // if this is a fork node --> commit any updates to the architectural state
+    val updates = if(node.next.head.isFork) {
+      assert(node.methods.size == 1, "Cannot have overlapping methods at the commit point!")
+      val meth = node.methods.head
+
+      // find all state updates for this method
+      info.modelState.map { state =>
+        val suffix = if(instance == 0) "." + meth else "." + meth + "$" + instance
+        val stateUpdate = state.copy(id = state.id + suffix)
+        val updateValue = callWithLatestArgumentValue(info.methodFuns(stateUpdate), inputMap)
+        StateUpdate(outGuard, state, updateValue)
+      }
+    } else { Seq() }
+
+    (mappings, updates)
+  }
+
+  private def callWithLatestArgumentValue(foo: smt.FunctionApplication, map: Seq[ArgMap]): smt.FunctionApplication = {
+    val args = foo.args.map(a => getLatestArgumentValue(a.asInstanceOf[smt.Symbol], map))
+    foo.copy(args = args)
+  }
+
+  /** Returns the argument state if the argument is not mapped in the current cycle. */
+  private def getLatestArgumentValue(arg: smt.Symbol, map: Seq[ArgMap]): smt.Expr = {
+    // TODO: for now we only support a single full update --> need to implement partial updates at some point
+    assert(map.forall(_.eq.argRange.isFullRange))
+    map.find(_.eq.argRange.sym == arg).map(_.eq.range.toExpr()).getOrElse(arg)
   }
 
   private def createProtocolInstance(name: String, instance: Int, node: StepNode, method: MethodSemantics): Iterable[(InstanceLoc, StepNode)] = {
@@ -357,7 +447,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     // this is similar to UntimedModel.functionAppSubs, but renames the output symbols
     val apps = method.outputs.flatMap(o => Seq(r(o.sym) -> o.functionApp, r(o.guardSym) -> o.guardFunctionApp)) ++
       // for state updated we need to add the s".$name" suffix to avoid name conflicts
-      method.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(u => u.sym -> u.functionApp)
+      method.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(u => r(u.sym) -> u.functionApp)
 
     // replace the arguments to the function applications
     val argSubs = method.inputs.map(a => a -> r(a)).toMap
@@ -379,17 +469,12 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
       (0 until fsm.instances(name)).flatMap(inst => createFunctionAppSubs(name, inst, meth))
     }.toMap
 
-    fsm.instances.foreach{ case (name, count) => assert(count == 1, s"TODO: support multiple instances of $name") }
 
     // encode states
     val edgesByFromId = fsm.edges.groupBy(_.from.id)
-    // at a fork, we expect one of the methods to be enabled (guard) and chosen (in)
-    val forkAssumption = disjunction(spec.protocols.map { case (meth, step) =>
-      val guard = spec.untimed.methods(meth).guard
-      val in = step.next.head.constraintExpr
-      and(guard, in)
-    })
-    val states = fsm.states.map(s => encodeState(s, edgesByFromId(s.id), forkAssumption, locToStep))
+    val guards = spec.untimed.methods.mapValues(_.guard)
+    val info = EncodeState(locToStep, guards, methodFuns, spec.untimed.state.map(_.sym))
+    val states = fsm.states.map(s => encodeState(s, edgesByFromId(s.id), info))
 
     // turn states into state transition system
     assert(states.head.id == 0, "Expected first state to be the start state!")
