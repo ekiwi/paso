@@ -70,4 +70,17 @@ class TinyAESTest extends FlatSpec with ChiselScalatestTester {
     }
   }
 
+  // https://kavaliro.com/wp-content/uploads/2014/03/AES.pdf
+  "TinyAES128" should "compute another block correctly" in {
+    test(new TinyAES128).withAnnotations(withVcd) { dut =>
+      val state  = "h54776F204F6E65204E696E652054776F".U
+      val key    = "h5468617473206D79204B756E67204675".U
+      val result = "h29C3505F571420F6402299B31A02D73A".U
+      aesProtocol(dut.clock, dut.io, key, state, result)
+    }
+  }
+
+
+
+
 }
