@@ -17,12 +17,13 @@ object Utils {
   }
 }
 
+class TinyAES128IO extends Bundle {
+  val state = Input(UInt(128.W))
+  val key = Input(UInt(128.W))
+  val out = Output(UInt(128.W))
+}
 class TinyAES128 extends Module {
-  val io = IO(new Bundle {
-    val state = Input(UInt(128.W))
-    val key = Input(UInt(128.W))
-    val out = Output(UInt(128.W))
-  })
+  val io = IO(new TinyAES128IO)
   val s0 = RegNext(io.state ^ io.key)
   val k0 = RegNext(io.key)
 
