@@ -48,7 +48,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
     enc.defineHeader(solver)
     enc.init(solver)
 
-    (0 until kMax).foreach { k =>
+    (0 to kMax).foreach { k =>
       // assume all constraints hold in this step
       sys.constraints.foreach(c => solver.assert(enc.getConstraint(c)))
 
@@ -63,7 +63,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
         sys.bad.foreach { b =>
           solver.push()
           solver.assert(enc.getBadState(b))
-          val res = solver.check()
+          val res = solver.check(produceModel = false)
           solver.pop()
 
           // did we find an assignment for which the bas state is true?
@@ -76,7 +76,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
         val anyBad = disjunction(sys.bad.map(enc.getBadState))
         solver.push()
         solver.assert(anyBad)
-        val res = solver.check()
+        val res = solver.check(produceModel = false)
         solver.pop()
 
         // did we find an assignment for which at least one bad state is true?
