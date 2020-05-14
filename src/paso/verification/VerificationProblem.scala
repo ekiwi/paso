@@ -84,7 +84,9 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
   val checker: smt.IsModelChecker = if(useBtor){
     smt.Btor2.createBtorMC()
   } else{
-    new SMTModelChecker(new CVC4Interface(quantifierFree = false), SMTModelCheckerOptions.Performance)
+    val solver = new CVC4Interface(quantifierFree = false)
+    //val solver = new YicesInterface
+    new SMTModelChecker(solver, SMTModelCheckerOptions.Performance)
   }
   override val solverName: String = checker.name
 
