@@ -100,6 +100,19 @@ class PipelinedMacProtocol(impl: PipelinedMac) extends ProtocolSpec[Mac32Spec] w
 }
 
 
+class Mac32SpecWithSubSpec extends UntimedModule {
+  val multiplier = UntimedModule(new Mul32Spec)
+  val mac = fun("mac").in(new Args3).out(UInt(32.W)) { (in, out) =>
+    val m = Wire(new Args2) ; m.a := in.b ; m.b := in.c
+    out := in.a + multiplier.mul(m)
+  }
+}
+
+class PipelinedMacProtocolWithSubSpec(impl: PipelinedMac) extends ProtocolSpec[Mac32SpecWithSubSpec] with MacProto {
+  val spec = new Mac32SpecWithSubSpec
+  protocol(spec.mac)(impl.io) { proto }
+}
+
 class PipeliningExamplesSpec extends FlatSpec {
   "A simple register" should "refine its spec" in {
     Paso(new Register)(new RegisterProtocol(_)).proof()
@@ -116,6 +129,12 @@ class PipeliningExamplesSpec extends FlatSpec {
   "A pipelined 32-bit mac with abstract adder" should "refine its spec" in {
     Paso(new PipelinedMac)(new PipelinedMacProtocol(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_))
+    }).proof()
+  }
+
+  "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
+    Paso(new PipelinedMac)(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_,_){
+      replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
     }).proof()
   }
 }
