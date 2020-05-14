@@ -174,7 +174,7 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
       val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
       val next = children.get(st).map(
         c => makeGraph(methods, c, children, outBits, nextHasForked)
-      ).getOrElse(StepNode(Seq(), methods, getNodeId, !nextHasForked))
+      ).getOrElse(StepNode(Seq(), methods, getNodeId, false))
       OutputNode(Seq(next), methods, outConst ++ st.pathCondition.toSeq, outMap)
     }.toSeq
 
