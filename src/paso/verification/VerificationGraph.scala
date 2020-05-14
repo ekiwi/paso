@@ -45,7 +45,9 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
     val base = s"branch_${branchCounter}_c"
     branchCounter += 1
     val names = (0 until choices).map(ii => base + ii.toString)
-    names.map(smt.Symbol(_, smt.BoolType))
+    val syms = names.map(smt.Symbol(_, smt.BoolType))
+    syms.foreach(check.declare)
+    syms
   }
   private val forkNodes = mutable.ArrayBuffer[ForkNode]()
 
