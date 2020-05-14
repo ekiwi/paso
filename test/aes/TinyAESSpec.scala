@@ -193,28 +193,8 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128) extends ProtocolSpec[AESKeyEx
   }
 }
 
-class AESTableLookup extends UntimedModule with AESHelperFunctions {
-  val lookup = fun("lookup").in(UInt(32.W)).out(Vec(4, UInt(32.W))) { (in, out) =>
-    out := tableLookup(in)
-  }
-}
-class TinyAESTableLookupProtocol(impl: TableLookup) extends ProtocolSpec[AESTableLookup] {
-  val spec = new AESTableLookup
-  protocol(spec.lookup)(impl.io) { (clock, dut, in, out) =>
-    dut.state.poke(in)
-    clock.step()
-    dut.p(0).expect(out(0))
-    dut.p(1).expect(out(1))
-    dut.p(2).expect(out(2))
-    dut.p(3).expect(out(3))
-  }
-}
 
 class TinyAESSpec extends FlatSpec {
-  "TinyAES TableLookup" should "refine its spec" in {
-    Paso(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()
-  }
-
   "TinyAES OneRound" should "refine its spec" in {
     Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
   }
