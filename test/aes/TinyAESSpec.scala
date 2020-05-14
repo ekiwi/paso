@@ -227,8 +227,8 @@ class TinyAESProtocol(impl: TinyAES128) extends ProtocolSpec[AES128Spec] {
     dut.state.poke(DontCare)
     dut.key.poke(DontCare)
 
-    // wait 10 cycles
-    (0 until 10).foreach(_ => clock.step())
+    // wait 20 cycles (for a total of 21 = 10 rounds with delay 2 + 1 initial round)
+    (0 until 20).foreach(_ => clock.step())
     dut.out.expect(out)
   }
 }
