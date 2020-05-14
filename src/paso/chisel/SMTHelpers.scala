@@ -66,6 +66,12 @@ trait SMTHelpers {
     val bb = smt.BitVectorLit(b, w)
     app(op(w), a, bb)
   }
+  def eqConst(a: smt.Expr, b: BigInt): smt.Expr = {
+    val w = getBits(a.typ)
+    assert(w > 1, "TODO: support bools")
+    val bb = smt.BitVectorLit(b, w)
+    app(smt.EqualityOp, a, bb)
+  }
 }
 
 object SMTHelper extends SMTHelpers {}

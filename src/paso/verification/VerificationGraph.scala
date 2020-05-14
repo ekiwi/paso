@@ -11,9 +11,9 @@ import chisel3.util.log2Ceil
 import scala.sys.process._
 import paso.chisel.{SMTHelpers, SMTSimplifier}
 import uclid.smt
-import uclid.smt.{BVGTUOp, ConjunctionOp}
 
 import scala.collection.mutable
+import scala.math
 
 object VerificationGraph extends SMTHelpers {
   def merge(a: StepNode, b: StepNode): StepNode = {
@@ -320,6 +320,8 @@ object DuplicateProtocolTree {
     StepNode(node.next.map(apply(_, subs)), node.methods, node.id, node.isFork)
 }
 
+case class PasoAutomaton(sys: smt.TransitionSystem, k: Int, inForkState: smt.Expr)
+
 object NewVerificationAutomatonEncoder extends SMTHelpers {
 
   private def uniquePairs[N](s: Iterable[N]): Iterable[(N,N)] =
@@ -520,7 +522,11 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     apps.map{ case (sym, app) => (sym, app.copy(args = app.args.map(_.asInstanceOf[smt.Symbol]).map(a => argSubs.getOrElse(a, a)))) }
   }
 
-  def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): smt.TransitionSystem = {
+  private def pathLength(step: StepNode): Int = if(step.isFinal) { 0 } else {
+    step.next.head.next.map(o => pathLength(o.next.head)).reduce(math.max) + 1
+  }
+
+  def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): PasoAutomaton = {
     // we check that all methods are mutually exclusive
     checkMethodsAreMutuallyExclusive(spec)
 
@@ -544,7 +550,18 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
 
     // turn states into state transition system
     assert(states.head.id == 0, "Expected first state to be the start state!")
-    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees)
+    val sys = PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees)
+
+    // find all fork states (it is important for sub modules to return to a fork state)
+    val forkStates = fsm.states.filter(_.isFork).map(_.id)
+    val stateSym = sys.states.find(_.sym.id == prefix + "state").get.sym
+    val inForkState = disjunction(forkStates.map(eqConst(stateSym, _)))
+
+    // find longest path (this will be the k needed for a refinement proof)
+    // TODO: is k off by one?
+    val longestPath = spec.protocols.values.map(pathLength).reduce(math.max)
+
+    PasoAutomaton(sys, longestPath, inForkState)
   }
 }
 

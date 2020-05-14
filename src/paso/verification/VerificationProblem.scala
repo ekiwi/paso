@@ -109,7 +109,7 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
   }
 
 
-  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], ufs: Seq[smt.Symbol], sub: Seq[smt.TransitionSystem]): Unit = {
+  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], ufs: Seq[smt.Symbol], sub: Seq[PasoAutomaton]): Unit = {
     //println(s"Trying to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}...")
     val check = new BoundedCheckBuilder(p.impl)
 
@@ -145,9 +145,11 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
       val subs: Map[smt.Expr, smt.Expr] = method_state_subs(method).toMap
       p.invariances.foreach(i => check.assertAt(ii, implies(guard, elim(i.toExpr))))
       p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(ii, implies(guard, elim(m.toExpr))))
+      // any subsystem needs to also be in a fork state
+      sub.foreach(s => check.assertAt(ii, implies(guard, s.inForkState)))
     }
 
-    val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub)
+    val sys = smt.TransitionSystem.merge(check.getCombinedSystem, sub.map(_.sys))
     val (res, sim) = runCheck(check.getK, sys, foos, ufs)
 
     // find failing property and print
