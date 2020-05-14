@@ -124,6 +124,10 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
     p.invariances.foreach(i => check.assumeAt(0, elim(i.toExpr)))
     // assume that the mapping function holds in the initial state
     p.mapping.foreach(m => check.assumeAt(0, elim(m.toExpr)))
+    // declare starting state
+    p.spec.untimed.state.map(_.sym).foreach(check.declare)
+    // declare method inputs
+    methods.values.flatMap(_.inputs).foreach(check.declare)
     // define method outputs
     methods.foreach { case (_, sem) =>
       sem.outputs.foreach { o => check.define(o.sym, o.expr) }

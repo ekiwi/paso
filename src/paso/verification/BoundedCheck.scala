@@ -24,6 +24,7 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     (sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) } ++ sys.inputs ++ sys.states.map(_.sym))
       .map(s => s.id -> s.typ).toMap
   private val defines = mutable.HashMap[String, smt.Expr]()
+  private val symConsts = mutable.HashMap[String, smt.Type]()
 
   private def extendTo(ii: Int): Unit = {
     while(steps.length <= ii) {
@@ -63,8 +64,16 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     require(name.typ == expr.typ, s"Type mismatch: ${name.typ} != ${expr.typ}")
     require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
     require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
+    require(!symConsts.contains(name.id), s"Name collision with previously declared symbol: ${name.id} : ${symConsts(name.id)}")
     defines(name.id) = expr
     if(debugPrint) println(s"define: $name := $expr")
+  }
+
+  def declare(name: smt.Symbol): Unit = {
+    require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
+    require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
+    require(!symConsts.contains(name.id), s"Name collision with previously declared symbol: ${name.id} : ${symConsts(name.id)}")
+    symConsts(name.id) = name.typ
   }
 
   def getCombinedSystem: smt.TransitionSystem = {
@@ -77,14 +86,12 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
         s"Type mismatch with symbol in Transition System: ${sym.id} : ${sysSymbols(sym.id)} != ${sym.typ}")
       assert(defines.get(sym.id).forall(sym.typ == _.typ),
         s"Type mismatch with defined symbol: ${sym.id} : ${defines(sym.id).typ} != ${sym.typ}")
+      assert(symConsts.get(sym.id).forall(sym.typ == _),
+        s"Type mismatch with declared symbol: ${sym.id} : ${symConsts(sym.id)} != ${sym.typ}")
     }
-
-    // all  unknown symbols which aren't functions are assumed to be symbolic constants
-    val knownSymbols : Set[smt.Symbol] = (sysSymbols.map(i => smt.Symbol(i._1, i._2)) ++ defines.map(i => smt.Symbol(i._1, i._2.typ))).toSet
-    val symConsts : Seq[smt.Symbol] = (allSymbols diff knownSymbols).filterNot(_.typ.isMap).toSeq
-
+    
     // emulate defines and symbolic constants with states
-    val constStates = symConsts.map(s => smt.State(s, next=Some(s)))
+    val constStates = symConsts.map(c => smt.Symbol(c._1, c._2)).map(s => smt.State(s, next=Some(s)))
     // TODO: inline defines (at least at an option to)
     val defineStates = defines.map{ case (name, expr) =>
       val s = smt.Symbol(name, expr.typ)
