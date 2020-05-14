@@ -174,8 +174,37 @@ class Add3Spec extends UntimedModule {
   }
 }
 
+class Add3CompositionalSpec extends UntimedModule {
+  val add2 = UntimedModule(new Add2Spec)
+  val add3 = fun("add3").in(new Args3).out(UInt(32.W)) { (in, out) =>
+    val a0 = Wire(new Args2)
+    a0.a := in.a
+    a0.b := in.b
+    val a1 = Wire(new Args2)
+    a1.a := add2.add(a0)
+    a1.b := in.c
+    out := add2.add(a1)
+  }
+}
+
 class PipelinedAdd3Protocol(impl: PipelinedAdd3) extends ProtocolSpec[Add3Spec] {
   val spec = new Add3Spec
+
+  protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
+    dut.a.set(in.a)
+    dut.b.set(in.b)
+    clock.step()
+    dut.a.set(DontCare)
+    dut.b.set(DontCare)
+    dut.c.set(in.c)
+    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    dut.c.set(DontCare)
+    dut.out.expect(out)
+  }
+}
+
+class PipelinedAdd3CompositionalProtocol(impl: PipelinedAdd3) extends ProtocolSpec[Add3CompositionalSpec] {
+  val spec = new Add3CompositionalSpec
 
   protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
     dut.a.set(in.a)
@@ -205,6 +234,24 @@ class PipelinedAdd3Delay2(withBug: Boolean = false) extends Module {
 
 class PipelinedAdd3Delay2Protocol(impl: PipelinedAdd3Delay2) extends ProtocolSpec[Add3Spec] {
   val spec = new Add3Spec
+
+  protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
+    dut.first.set(true.B)
+    dut.a.set(in.a)
+    dut.b.set(in.b)
+    clock.step()
+    dut.first.set(false.B)
+    dut.a.set(DontCare)
+    dut.b.set(in.c)
+    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    dut.first.set(DontCare)
+    dut.b.set(DontCare)
+    dut.out.expect(out)
+  }
+}
+
+class PipelinedAdd3Delay2ProtocolCompisitional(impl: PipelinedAdd3Delay2) extends ProtocolSpec[Add3CompositionalSpec] {
+  val spec = new Add3CompositionalSpec
 
   protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
     dut.first.set(true.B)
@@ -254,6 +301,12 @@ class PipeliningExamplesSpec extends FlatSpec {
     }).proof()
   }
 
+  "A pipelined 32-bit add3 with abstract add2 and compositional spec" should "refine its spec" in {
+    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_,_){
+      impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
+    }).proof()
+  }
+
   "A pipelined 32-bit add3 with bug" should "fail" in {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
@@ -267,6 +320,12 @@ class PipeliningExamplesSpec extends FlatSpec {
 
   "A pipelined 32-bit add3 with delay=2 with abstract add2" should "refine its spec" in {
     Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _){
+      replace(impl.a)(new PipelinedAdd2Protocol(_))
+    }).proof()
+  }
+
+  "A pipelined 32-bit add3 with delay=2 with abstract add2 and compositional spec" should "refine its spec" in {
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _){
       replace(impl.a)(new PipelinedAdd2Protocol(_))
     }).proof()
   }
