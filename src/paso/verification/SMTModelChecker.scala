@@ -65,26 +65,28 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
           solver.push()
           solver.assert(enc.getBadState(b))
           val res = solver.check(produceModel = false)
-          solver.pop()
 
           // did we find an assignment for which the bas state is true?
           if(res.isTrue) {
-            val w = getWitness(k)
+            val w = getWitness(sys, enc, k)
+            solver.pop()
             return smt.ModelCheckFail(w)
           }
+          solver.pop()
         }
       } else {
         val anyBad = disjunction(sys.bad.map(enc.getBadState))
         solver.push()
         solver.assert(anyBad)
         val res = solver.check(produceModel = false)
-        solver.pop()
 
         // did we find an assignment for which at least one bad state is true?
         if(res.isTrue) {
-          val w = getWitness(k)
+          val w = getWitness(sys, enc, k)
+          solver.pop()
           return smt.ModelCheckFail(w)
         }
+        solver.pop()
       }
 
       // advance
@@ -96,7 +98,14 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
     smt.ModelCheckSuccess()
   }
 
-  private def getWitness(k: Int): smt.Witness = ???
+  private def getWitness(sys: smt.TransitionSystem, enc: CompactEncoding, k: Int): smt.Witness = {
+    sys.inputs.foreach { ii =>
+      val sk = enc.getSignalAt(ii, k)
+      println(solver.getValue(sk))
+    }
+    // TODO: get all inputs and states etc....
+    ???
+  }
 
 }
 
@@ -219,6 +228,13 @@ class CompactEncoding(sys: smt.TransitionSystem, doSimplify: Boolean = false) ex
     assert(states.nonEmpty)
     val foo = badFuns(e)
     smt.FunctionApplication(foo, List(states.last))
+  }
+
+  def getSignalAt(signal: smt.Symbol, k: Int): smt.Expr = {
+    assert(states.length > k, s"no state s$k")
+    val state = states(k)
+    val foo = smt.Symbol(signal.id + "_f", smt.MapType(List(stateType), signal.typ))
+    smt.FunctionApplication(foo, List(state))
   }
 
 }
