@@ -508,9 +508,10 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     require(instance >= 0)
     val rename: String => String = if(instance == 0) { id: String => id } else { id: String => id + "$" + instance }
     def r(s: smt.Symbol): smt.Symbol = s.copy(id = rename(s.id))
+    def rValid(s: smt.Symbol): smt.Symbol = smt.Symbol(rename(s.id) + ".valid", smt.BoolType)
 
     // this is similar to UntimedModel.functionAppSubs, but renames the output symbols
-    val apps = method.outputs.flatMap(o => Seq(r(o.sym) -> o.functionApp, r(o.guardSym) -> o.guardFunctionApp)) ++
+    val apps = method.outputs.flatMap(o => Seq(r(o.sym) -> o.functionApp, rValid(o.sym) -> o.guardFunctionApp)) ++
       // for state updated we need to add the s".$name" suffix to avoid name conflicts
       method.updates.map(u => u.copy(sym = u.sym.copy(id = u.sym.id + s".$name"))).map(u => r(u.sym) -> u.functionApp)
 
