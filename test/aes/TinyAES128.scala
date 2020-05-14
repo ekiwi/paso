@@ -31,12 +31,12 @@ class TinyAES128 extends Module {
   val kb = Seq.tabulate(10)(_ => Wire(UInt(128.W)))
 
   val eOuts = k.drop(1) ++ Seq(Wire(UInt(128.W)))
-  k.zip(eOuts).zip(kb).zip(StaticTables.rcon).zipWithIndex.foreach {
+  val expandKey = k.zip(eOuts).zip(kb).zip(StaticTables.rcon).zipWithIndex.map {
     case ((((in, out), outDelayed), rcon), ii) => ExpandKey128(rcon, in, out, outDelayed).suggestName(s"a$ii")
   }
 
   val oOuts = s.drop(1) ++ Seq(Wire(UInt(128.W)))
-  s.zip(kb).zip(oOuts).zipWithIndex.foreach{
+  val rounds = s.zip(kb).zip(oOuts).zipWithIndex.map {
     case (((state, key), stateNext), ii) => OneRound(state, key, stateNext).suggestName(s"r$ii")
   }
 

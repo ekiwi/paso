@@ -193,6 +193,45 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128) extends ProtocolSpec[AESKeyEx
   }
 }
 
+class AES128Spec extends UntimedModule with AESHelperFunctions {
+  val round = UntimedModule(new AESRoundSpec)
+  val finalRound = UntimedModule(new AESFinalRoundSpec)
+  val expand = rcon.map(r => UntimedModule(new AESKeyExpansionSpec(r.U(8.W))))
+
+  val aes128 = fun("aes128").in(new RoundIn).out(UInt(128.W)) { (in, out) =>
+    val r = Seq.tabulate(10)(_ => Wire(new RoundIn))
+
+    // first round
+    r(0).state := in.state ^ in.key
+    r(0).key := expand(0).expandKey128(in.key)
+
+    // mid rounds
+    (0 until 10).foreach { ii =>
+      r(ii + 1).state := round.round(r(ii))
+      r(ii + 1).key := expand(ii + 1).expandKey128(r(ii).key)
+    }
+
+    // final round
+    out := finalRound.round(r(10))
+  }
+}
+
+class TinyAESProtocol(impl: TinyAES128) extends ProtocolSpec[AES128Spec] {
+  val spec = new AES128Spec
+
+  protocol(spec.aes128)(impl.io) { (clock, dut, in, out) =>
+    // apply state and key for one cycle
+    dut.state.poke(in.state)
+    dut.key.poke(in.key)
+    clock.stepAndFork()
+    dut.state.poke(DontCare)
+    dut.key.poke(DontCare)
+
+    // wait 10 cycles
+    (0 until 10).foreach(_ => clock.step())
+    dut.out.expect(out)
+  }
+}
 
 class TinyAESSpec extends FlatSpec {
   "TinyAES OneRound" should "refine its spec" in {
@@ -208,6 +247,14 @@ class TinyAESSpec extends FlatSpec {
       val rc = ii.U(8.W)
       Paso(new ExpandKey128(rc))(new TinyAESExpandKeyProtocol(_)).proof()
     }
+  }
+
+  "TinyAES128" should "correctly connect all submodules" in {
+    Paso(new TinyAES128)(new TinyAESProtocol(_))(new SubSpecs(_, _) {
+      replace(impl.finalRound)(new TinyAESRoundProtocol(_)).bind(spec.finalRound)
+      impl.rounds.foreach(r => replace(r)(new TinyAESRoundProtocol(_)).bind(spec.round))
+      impl.expandKey.zip(spec.expand).foreach{ case (i,s) => replace(i)(new TinyAESExpandKeyProtocol(_)).bind(s) }
+    }).proof()
   }
 
 }
