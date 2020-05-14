@@ -248,6 +248,12 @@ class PipeliningExamplesSpec extends FlatSpec {
     Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_)).proof()
   }
 
+  "A pipelined 32-bit add3 with abstract add2" should "refine its spec" in {
+    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_))(new SubSpecs(_,_){
+      impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
+    }).proof()
+  }
+
   "A pipelined 32-bit add3 with bug" should "fail" in {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
@@ -257,6 +263,12 @@ class PipeliningExamplesSpec extends FlatSpec {
 
   "A pipelined 32-bit add3 with delay=2" should "refine its spec" in {
     Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_)).proof()
+  }
+
+  "A pipelined 32-bit add3 with delay=2 with abstract add2" should "refine its spec" in {
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _){
+      replace(impl.a)(new PipelinedAdd2Protocol(_))
+    }).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with bug" should "fail" in {
