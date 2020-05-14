@@ -9,7 +9,7 @@ import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
 import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
-import paso.chisel.passes.{ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
+import paso.chisel.passes.{ChangeAnnotationCircuit, ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
@@ -196,8 +196,12 @@ case class Elaboration() {
       // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
       val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)
 
+      // fix annotations by changing the circuit name
+      val fixAnno = ChangeAnnotationCircuit(comb_c.main)
+      val fixed_annos = raw_annos.map(fixAnno(_))
+
       // compile combined module down to low firrtl
-      val (ff, annos) = toLowFirrtl(comb_c_fixed, raw_annos)
+      val (ff, annos) = toLowFirrtl(comb_c_fixed, fixed_annos)
 
       // println(ff.serialize)
 
