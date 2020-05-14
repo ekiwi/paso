@@ -6,7 +6,7 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
-import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr, substituteSmt}
+import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr, substituteSmt, substituteSmtSymbols}
 import paso.{GuardAnnotation, MethodCallAnnotation, MethodIOAnnotation}
 import uclid.smt
 
@@ -20,7 +20,7 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
 
   // creates function applications for all method calls together with the substitution map
   private def getMethodCallExpressions(): Map[smt.Symbol, smt.Expr] = {
-    val subs = methodCalls.groupBy(c => c.name + c.ii).flatMap { case (_, annos) =>
+    val originalSubs = methodCalls.groupBy(c => c.name + c.ii).flatMap { case (_, annos) =>
       val methodName = annos.head.name.split('.').last
       val name = annos.head.name + "." + methodName + "_outputs"
       val arg = annos.filter(_.isArg).map(_.target.ref).sorted.map(n => n -> getSimplifiedFinalValue(n).get.e)
@@ -34,6 +34,24 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
         r -> funCall
       }
     }.toMap
+
+    // handle method call that are arguments to other method calls
+    var fuel = 1000
+    var subs = originalSubs
+    while(fuel > 0) {
+      val nextFuel = fuel - 1
+      fuel = -1
+      subs = subs.map { case (sym, app) =>
+        val newArgs = app.args.map(substituteSmtSymbols(_, subs))
+        val changed = newArgs.zip(app.args).map(p => p._1 != p._2).reduce((a,b) => a || b)
+        if(changed) {
+          fuel = nextFuel
+          sym -> app.copy(args=newArgs)
+        } else { sym -> app }
+      }
+    }
+    assert(fuel < 0, "Ran out of fuel. Do you have a recursive method call?")
+
     subs
   }
 
