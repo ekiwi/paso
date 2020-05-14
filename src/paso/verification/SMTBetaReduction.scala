@@ -26,9 +26,11 @@ case class SMTBetaReduction(foos: Seq[smt.DefineFun]) {
       val resolvedArgs = args.map(onExpr(_, subs))
       assert(resolvedArgs.length == foo.args.length)
       val newSubs = foo.args.zip(resolvedArgs).toMap
-      onExpr(foo.e, subs ++ newSubs)
+       smt.Context.rewriteExpr(foo.e, onExpr(_, subs ++ newSubs), mutable.Map.empty)
     case other => other
   }
 
-  def apply(e: smt.Expr): smt.Expr = smt.Context.rewriteExpr(e, onExpr(_, Map()), mutable.Map.empty)
+  def apply(e: smt.Expr): smt.Expr = {
+    smt.Context.rewriteExpr(e, onExpr(_, Map()), mutable.Map.empty)
+  }
 }
