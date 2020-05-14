@@ -296,19 +296,19 @@ class PipeliningExamplesSpec extends FlatSpec {
   }
 
   "A pipelined 32-bit add3 with abstract add2" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_))(new SubSpecs(_,_){
+    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with abstract add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_,_){
+    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with abstract and bound add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_,_){
+    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)).bind(spec.add2))
     }).proof()
   }
@@ -325,19 +325,19 @@ class PipeliningExamplesSpec extends FlatSpec {
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract add2" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _){
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _){
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract and bound add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _){
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_)).bind(spec.add2)
     }).proof()
   }
@@ -348,7 +348,10 @@ class PipeliningExamplesSpec extends FlatSpec {
     }
     assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
   }
+}
 
+// the multiplication makes some of the SMT solvers struggle...
+class PipeliningExamplesWithMulSpec extends FlatSpec {
   "A pipelined 32-bit multiplier" should "refine its spec" in {
     Paso(new PipelinedMul)(new PipelinedMulProtocol(_)).proof()
   }
