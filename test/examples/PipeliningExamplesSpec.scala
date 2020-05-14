@@ -121,6 +121,75 @@ class PipelinedMacProtocolWithSubSpec(impl: PipelinedMac) extends ProtocolSpec[M
   protocol(spec.mac)(impl.io) { proto }
 }
 
+class Add2Spec extends UntimedModule {
+  val add = fun("add").in(new Args2).out(UInt(32.W)) { (in, out) =>
+    out := in.a + in.b
+  }
+}
+
+class PipelinedAdd2(withBug: Boolean = false) extends Module {
+  val io = IO(new Bundle{
+    val a = Input(UInt(32.W))
+    val b = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+  if(withBug) {
+    io.out := RegNext(io.a - io.b)
+  } else {
+    io.out := RegNext(io.a + io.b)
+  }
+}
+
+class PipelinedAdd2Protocol(impl: PipelinedAdd2) extends ProtocolSpec[Add2Spec] {
+  val spec = new Add2Spec
+
+  protocol(spec.add)(impl.io) { (clock, dut, in, out) =>
+    dut.a.set(in.a)
+    dut.b.set(in.b)
+    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    dut.a.set(DontCare)
+    dut.b.set(DontCare)
+    dut.out.expect(out)
+  }
+}
+
+class PipelinedAdd3(withBug: Boolean = false) extends Module {
+  val io = IO(new Bundle{
+    val a = Input(UInt(32.W))
+    val b = Input(UInt(32.W))
+    val c = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+  val a = Seq.tabulate(2)(_ => Module(new PipelinedAdd2))
+  a(0).io.a := io.a
+  a(0).io.b := (if(withBug) io.a else io.b)
+  a(1).io.a := a(0).io.out
+  a(1).io.b := io.c
+  io.out := a(1).io.out
+}
+
+class Add3Spec extends UntimedModule {
+  val add3 = fun("add3").in(new Args3).out(UInt(32.W)) { (in, out) =>
+    out := in.a + in.b + in.c
+  }
+}
+
+class PipelinedAdd3Protocol(impl: PipelinedAdd3) extends ProtocolSpec[Add3Spec] {
+  val spec = new Add3Spec
+
+  protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
+    dut.a.set(in.a)
+    dut.b.set(in.b)
+    clock.step()
+    dut.a.set(DontCare)
+    dut.b.set(DontCare)
+    dut.c.set(in.c)
+    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    dut.c.set(DontCare)
+    dut.out.expect(out)
+  }
+}
+
 class PipeliningExamplesSpec extends FlatSpec {
   "A simple register" should "refine its spec" in {
     Paso(new Register)(new RegisterProtocol(_)).proof()
@@ -131,6 +200,28 @@ class PipeliningExamplesSpec extends FlatSpec {
       Paso(new Register(withBug = true))(new RegisterProtocol(_)).proof()
     }
     assert(fail.getMessage.contains("Failed to verify id on IdentityNoIdle"))
+  }
+
+  "A pipelined 32-bit adder" should "refine its spec" in {
+    Paso(new PipelinedAdd2)(new PipelinedAdd2Protocol(_)).proof()
+  }
+
+  "A pipelined 32-bit adder with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedAdd2(withBug = true))(new PipelinedAdd2Protocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify add on Add2Spec"))
+  }
+
+  "A pipelined 32-bit add3" should "refine its spec" in {
+    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_)).proof()
+  }
+
+  "A pipelined 32-bit add3 with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
   }
 
   "A pipelined 32-bit multiplier" should "refine its spec" in {
