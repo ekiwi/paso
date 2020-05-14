@@ -9,12 +9,16 @@ class IdentityNoIdle[D <: Data](dataType: D) extends UntimedModule {
   val id = fun("id").in(dataType).out(dataType) { (in, out) => out := in }
 }
 
-class Register extends Module {
+class Register(withBug: Boolean = false) extends Module {
   val io = IO(new Bundle{
     val in = Input(UInt(32.W))
     val out = Output(UInt(32.W))
   })
-  io.out := RegNext(io.in)
+  if(withBug) {
+    io.out := RegNext(Mux(io.in === 0.U, 1.U, io.in))
+  } else {
+    io.out := RegNext(io.in)
+  }
 }
 
 class RegisterProtocol(impl: Register) extends ProtocolSpec[IdentityNoIdle[UInt]] {
@@ -32,13 +36,17 @@ class Mul32Spec extends UntimedModule {
   val mul = fun("mul").in(new Args2).out(UInt(32.W)) { (in, out) => out := in.a * in.b }
 }
 
-class PipelinedMul extends Module {
+class PipelinedMul(withBug: Boolean = false) extends Module {
   val io = IO(new Bundle{
     val a = Input(UInt(32.W))
     val b = Input(UInt(32.W))
     val out = Output(UInt(32.W))
   })
-  io.out := RegNext(io.a * io.b)
+  if(withBug) {
+    io.out := RegNext(io.a - io.b)
+  } else {
+    io.out := RegNext(io.a * io.b)
+  }
 }
 
 class PipelinedMulProtocol(impl: PipelinedMul) extends ProtocolSpec[Mul32Spec] {
@@ -118,8 +126,22 @@ class PipeliningExamplesSpec extends FlatSpec {
     Paso(new Register)(new RegisterProtocol(_)).proof()
   }
 
+  "A simple register with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new Register(withBug = true))(new RegisterProtocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify id on IdentityNoIdle"))
+  }
+
   "A pipelined 32-bit multiplier" should "refine its spec" in {
     Paso(new PipelinedMul)(new PipelinedMulProtocol(_)).proof()
+  }
+
+  "A pipelined 32-bit multiplier with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify mul on Mul32Spec"))
   }
 
   "A pipelined 32-bit mac" should "refine its spec" in {
