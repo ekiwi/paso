@@ -101,22 +101,17 @@ class AESKeyExpansionSpec(rc: UInt) extends UntimedModule with AESHelperFunction
 
   val expandKey128 = fun("expandKey128").in(UInt(128.W)).out(UInt(128.W)) { (in, out) =>
     val K = slice128To32(in)
-    val v0 = K(0)(31, 24) ^ rc ## K(0)(23,0)
+    val v0 = (K(0)(31, 24) ^ rc) ## K(0)(23,0)
     val v1 = v0 ^ K(1)
     val v2 = v1 ^ K(2)
     val v3 = v2 ^ K(3)
 
-    val k0a = v0
-    val k1a = v1
-    val k2a = v2
-    val k3a = v3
-
     val k4a = S4(K(3)(23, 0) ## K(3)(31, 24))
 
-    val k0b = k0a ^ k4a
-    val k1b = k1a ^ k4a
-    val k2b = k2a ^ k4a
-    val k3b = k3a ^ k4a
+    val k0b = v0 ^ k4a
+    val k1b = v1 ^ k4a
+    val k2b = v2 ^ k4a
+    val k3b = v3 ^ k4a
 
     out := k0b ## k1b ## k2b ## k3b
   }
