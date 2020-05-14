@@ -211,17 +211,6 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
       ignoreBindings(p.subspecs, p.spec.untimed)
     }
 
-    // TODO: potentially use this instead of doing the tree encoding
-    // encode the toplevle system for fun
-//    val methodFuns = UntimedModel.functionAppSubs(p.spec.untimed)
-//    val resetAssumption = VerificationTask.findReset(p.impl.inputs).map(not).getOrElse(tru)
-//    val encoder = VerificationAutomatonEncoder(methodFuns.toMap, p.spec.untimed.state.map(_.sym), switchAssumesAndGuarantees = true)
-//    val toplevelAutomaton = encoder.run(combined, "", resetAssumption)
-
-    // TODO: remove debug code
-    // NewVerificationAutomatonEncoder.run(p.spec, "")
-
-
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
       p.spec.untimed.methods.foreach { case (name, semantics) =>
