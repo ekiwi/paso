@@ -138,8 +138,8 @@ case class PasoFsmState(id: Int, active: Seq[InstanceLoc], isFork: Boolean, choi
 case class BranchLoc(branchId: Int, loc: InstanceLoc) {
   override def toString: String = loc.toString + "b" + branchId
 }
-case class PasoFsmEdge(from: PasoFsmState, to: PasoFsmState, active: Seq[BranchLoc]) {
-  override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "}"
+case class PasoFsmEdge(from: PasoFsmState, to: PasoFsmState, active: Seq[BranchLoc], choiceId: Int) {
+  override def toString: String = from + " -> " + to + " : {" + active.map(_.toString).sorted.mkString(", ") + "} C" + choiceId
 }
 
 case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
@@ -201,7 +201,7 @@ case class PasoFsmEncoder(protocols: Map[String, StepNode]) {
           PasoFsmState(states.size, active, isFork, choices)
         })
         // describe the edge
-        val e = PasoFsmEdge(st, uniqueNext, nextLocs)
+        val e = PasoFsmEdge(st, uniqueNext, nextLocs, forkId)
         nextState.append(e)
         if(!alreadyVisited) {
           executeState(uniqueNext)
@@ -325,6 +325,10 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
   private def uniquePairs[N](s: Iterable[N]): Iterable[(N,N)] =
     for { (x, ix) <- s.zipWithIndex ; (y, iy) <- s.zipWithIndex ;  if ix < iy } yield (x, y)
 
+  // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
+  private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
+    xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
+
   private def checkMethodsAreMutuallyExclusive(spec: Spec): Unit = {
     val guards = spec.untimed.methods.mapValues(_.guard)
     spec.protocols.values.foreach(p => assert(p.next.length == 1))
@@ -365,9 +369,9 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
       // TODO: check that all inputs map different bits!
       val activeMappings = activeInputs.flatMap(_.mappings.map(ArgMap(tru, _)))
 
-      val ii = st.choices.zip(inputGuards).map { case (loc, inGuard) =>
+      val ii = st.choices.zipWithIndex.zip(inputGuards).map { case ((loc, choiceId), inGuard) =>
         val step = info.locToStep(loc)
-        val inputNext = next.filter(_.active.contains(loc))
+        val inputNext = next.filter(_.choiceId == choiceId)
         val instance = loc.instance
 
         assert(step.next.length == 1)
@@ -401,22 +405,39 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     PasoState(st.id, inputMappings, environmentAssumptions, nextState, systemAssertions, stateUpdates)
   }
 
-  private def encodeInputStep(instance: Int, inGuard: smt.Expr, input: InputNode, next: Seq[PasoFsmEdge], info: EncodeState): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState], Seq[StateUpdate]) = {
-    // the environment needs to follow the constraints of the active transaction
-    val mappings = input.mappings.map(ArgMap(inGuard, _))
+  private def encodeInputStep(instances: Seq[Int], inGuard: smt.Expr, inputs: Seq[InputNode], mappings: Seq[ArgMap], next: Seq[PasoFsmEdge], info: EncodeState): (Seq[ArgMap], Seq[OutputConstraint], Seq[NextState], Seq[StateUpdate]) = {
+    // for each input, at least one of the following output constraints has to be true
+    // TODO: check that the system assertions of all inputs are compatible
+    val systemAssertion = conjunction(inputs.map(i => disjunction(i.next.map(_.constraintExpr))))
 
-    // there could be more than one OutputNode b/c of a branch in the protocol
-    assert(input.next.length == next.length)
-    val isBranch = input.next.length > 1
+    // there may be several outputs for a single input, we remember them with "branchId"
+    val outputsPerProtocol: Seq[Seq[(OutputNode, Int)]] = inputs.map(_.next.zipWithIndex)
+    val outGuards: Seq[Seq[(OutputNode, Int, smt.Expr)]] = outputsPerProtocol
+      .map{
+        os => if(os.length == 1) Seq((os.head._1, os.head._2, inGuard))
+              else  os.map(o => (o._1, o._2, and(inGuard, o._1.constraintExpr)))
+      }
 
-    // at least one of the following output constraints has to be true
-    val systemAssertion = disjunction(input.next.map(_.constraintExpr))
+    val oo = product(outGuards).map { outputs =>
+      // find the correct edge (TODO: this could probably be simplified through a smarter PasoEdge encoding)
+      val branchAndInstanceAndProto = outputs.map(_._2).zip(instances).zip(inputs.map(_.methods.head))
+      def matches(active: Seq[BranchLoc]): Boolean = {
+        active.length == branchAndInstanceAndProto.length &&
+          active.zip(branchAndInstanceAndProto).forall { case (loc, t) =>
+             ((loc.branchId, loc.loc.instance), loc.loc.loc.proto) == t
+          }
+      }
+      val nextEdge = next.find(e => matches(e.active)).get
 
-    val oo = input.next.zip(next).map { case (output, nextEdge) =>
-      val outGuard = if(isBranch) and(inGuard, output.constraintExpr) else inGuard
-      val (const, update) = encodeOutputStep(instance, outGuard, mappings, output, info)
+      // take the conjunction of all outputs guards
+      val constAndUpdate = outputs.zip(instances).map {
+        case ((output, _, outGuard), instance) =>
+        encodeOutputStep(instance, outGuard, mappings, output, info)
+      }
+
+      val outGuard = conjunction(outputs.map(_._3))
       val nextState = NextState(outGuard, nextEdge.to.id)
-      (nextState, const, update)
+      (nextState, constAndUpdate.flatMap(_._1), constAndUpdate.flatMap(_._2))
     }
 
     val nextStates = oo.map(_._1)
