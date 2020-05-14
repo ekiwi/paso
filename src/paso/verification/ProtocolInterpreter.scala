@@ -171,7 +171,11 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     val (inMap, inConst, inBits) = findMappingsAndConstraints(destructEquality(states.head.inputs), mappedBits)
 
     val outputs = states.map { st =>
-      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), inBits)
+      // TODO: for now we treat all output mappings as mappings, not constraints, because
+      //       the automaton encoding relies on that (it does not remember the previous value as that would increase the state)
+      //       The question is, whether is would be more efficient to increase the state instead of "recomputing" values.
+      val emptyBits = inBits.mapValues(_ => BigInt(0))
+      val (outMap, outConst, outBits) = findMappingsAndConstraints(destructEquality(st.outputs), emptyBits)
       val next = children.get(st).map(
         c => makeGraph(methods, c, children, outBits, nextHasForked)
       ).getOrElse(StepNode(Seq(), methods, getNodeId, false))
