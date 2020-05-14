@@ -1,5 +1,6 @@
 package paso.verification
 import uclid.smt
+import uclid.smt.SExprParser
 
 trait Solver {
   val name: String
@@ -32,6 +33,32 @@ trait Solver {
   /** (declare-sort ...) */
   def declare(f: smt.UninterpretedType): Unit = {
     ctx.writeCommand(s"(declare-sort ${f.name} 0)")
+  }
+
+  private def parseValue(v: String): BigInt = {
+    require(v.startsWith("((("))
+    require(v.endsWith("))"))
+    val bare = v.drop(3).dropRight(2)
+    val parts = v.split(')')
+    require(parts.length == 2)
+    val valueStr = parts.last.trim
+    if(valueStr == "true") { BigInt(1) }
+    else if(valueStr == "false") { BigInt(0) }
+    else {
+      require(valueStr.startsWith("#b"), s"Only binary format supported, not: $valueStr")
+      BigInt(valueStr.drop(2), 2)
+    }
+  }
+
+  def getValue(e: smt.Expr): BigInt = {
+    require(e.typ.isBitVector || e.typ.isBool, s"unsupported type $e.typ")
+    val exprStr = ctx.translateExpr(e, true)
+    val cmd = s"(get-value ($exprStr))"
+    ctx.writeCommand(cmd)
+    ctx.readResponse() match {
+      case Some(strModel) => parseValue(strModel.trim)
+      case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
+    }
   }
 
   def check(e: smt.Expr): smt.SolverResult = {
