@@ -190,6 +190,37 @@ class PipelinedAdd3Protocol(impl: PipelinedAdd3) extends ProtocolSpec[Add3Spec] 
   }
 }
 
+class PipelinedAdd3Delay2(withBug: Boolean = false) extends Module {
+  val io = IO(new Bundle{
+    val first = Input(Bool())
+    val a = Input(UInt(32.W))
+    val b = Input(UInt(32.W))
+    val out = Output(UInt(32.W))
+  })
+  val a = Module(new PipelinedAdd2)
+  a.io.a := (if(withBug) io.a else Mux(io.first, io.a, a.io.out))
+  a.io.b := io.b
+  io.out := a.io.out
+}
+
+class PipelinedAdd3Delay2Protocol(impl: PipelinedAdd3Delay2) extends ProtocolSpec[Add3Spec] {
+  val spec = new Add3Spec
+
+  protocol(spec.add3)(impl.io) { (clock, dut, in, out) =>
+    dut.first.set(true.B)
+    dut.a.set(in.a)
+    dut.b.set(in.b)
+    clock.step()
+    dut.first.set(false.B)
+    dut.a.set(DontCare)
+    dut.b.set(in.c)
+    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    dut.first.set(DontCare)
+    dut.b.set(DontCare)
+    dut.out.expect(out)
+  }
+}
+
 class PipeliningExamplesSpec extends FlatSpec {
   "A simple register" should "refine its spec" in {
     Paso(new Register)(new RegisterProtocol(_)).proof()
@@ -220,6 +251,17 @@ class PipeliningExamplesSpec extends FlatSpec {
   "A pipelined 32-bit add3 with bug" should "fail" in {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
+  }
+
+  "A pipelined 32-bit add3 with delay=2" should "refine its spec" in {
+    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_)).proof()
+  }
+
+  "A pipelined 32-bit add3 with delay=2 with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedAdd3Delay2(withBug = true))(new PipelinedAdd3Delay2Protocol(_)).proof()
     }
     assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
   }
