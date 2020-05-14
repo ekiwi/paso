@@ -68,11 +68,11 @@ class MacIO extends Bundle{
   val out = Output(UInt(32.W))
 }
 
-class PipelinedMac extends Module {
+class PipelinedMac(withBug: Boolean = false) extends Module {
   val io = IO(new MacIO)
   val mul = Module(new PipelinedMul)
   mul.io.a := io.b
-  mul.io.b := io.c
+  mul.io.b := (if(withBug) io.b else io.c)
   io.out := RegNext(io.a + mul.io.out)
 }
 
@@ -126,15 +126,40 @@ class PipeliningExamplesSpec extends FlatSpec {
     Paso(new PipelinedMac)(new PipelinedMacProtocol(_)).proof()
   }
 
+  "A pipelined 32-bit mac with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
+  }
+
   "A pipelined 32-bit mac with abstract adder" should "refine its spec" in {
     Paso(new PipelinedMac)(new PipelinedMacProtocol(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_))
     }).proof()
   }
 
+  "A pipelined 32-bit mac with abstract adder with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_))(new SubSpecs(_, _) {
+        replace(impl.mul)(new PipelinedMulProtocol(_))
+      }).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
+  }
+
   "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
     Paso(new PipelinedMac)(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
     }).proof()
+  }
+
+  "A pipelined 32-bit mac with abstract adder and subspec with bug" should "fail" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_, _) {
+        replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
+      }).proof()
+    }
+    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
   }
 }
