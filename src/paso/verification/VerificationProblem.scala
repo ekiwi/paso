@@ -67,7 +67,7 @@ object VerificationProblem {
     // first we need to make sure to properly namespace all symbols in the Verification Problem
     val p = NamespaceIdentifiers(problem)
     //println(p)
-    val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true, useBtor = true))
+    val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true, useBtor = false))
     tasks.foreach(_.run(p))
 
     // check all our simplifications
@@ -84,8 +84,8 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
   val checker: smt.IsModelChecker = if(useBtor){
     smt.Btor2.createBtorMC()
   } else{
-    val solver = new CVC4Interface(quantifierFree = false)
-    //val solver = new YicesInterface
+    //val solver = new CVC4Interface(quantifierFree = false)
+    val solver = new YicesInterface
     new SMTModelChecker(solver, SMTModelCheckerOptions.Performance)
   }
   override val solverName: String = checker.name
