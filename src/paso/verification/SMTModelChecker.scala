@@ -4,8 +4,9 @@
 
 package paso.verification
 
-import paso.chisel.SMTHelpers
+import paso.chisel.{SMTHelpers, SMTSimplifier}
 import uclid.smt
+
 import scala.collection.mutable
 
 trait PasoModelChecker {
@@ -23,10 +24,10 @@ case class PasoBtorMC(btor: smt.ModelChecker) extends PasoModelChecker {
 }
 
 
-case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean)
+case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean, simplify: Boolean)
 object SMTModelCheckerOptions {
-  val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
-  val Performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false)
+  val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true, false)
+  val Performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false, true)
 }
 
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
@@ -44,7 +45,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
     // declare/define functions and encode the transition system
     uninterpreted.foreach(solver.declare)
     defined.foreach(solver.define)
-    val enc = new CompactEncoding(sys)
+    val enc = new CompactEncoding(sys, options.simplify)
     enc.defineHeader(solver)
     enc.init(solver)
 
@@ -103,7 +104,8 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
  * This Transition System encoding is directly inspired by yosys' SMT backend:
  * https://github.com/YosysHQ/yosys/blob/master/backends/smt2/smt2.cc
  * */
-class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
+class CompactEncoding(sys: smt.TransitionSystem, doSimplify: Boolean = false) extends SMTHelpers {
+  val simplify: smt.Expr => smt.Expr = if(doSimplify) { SMTSimplifier.simplify } else { e => e }
   private val name = sys.name.get
   private val stateType = smt.UninterpretedType(name + "_s")
   private val stateInitFun = smt.Symbol(name + "_is", smt.MapType(List(stateType), smt.BoolType))
@@ -118,6 +120,7 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
 
 
   def defineHeader(solver: Solver): Unit = {
+    def define(f: smt.DefineFun): Unit = solver.define(f.copy(e = simplify(f.e)))
     solver.declare(stateType)
 
     val stateSymbol = smt.Symbol("state", stateType)
@@ -137,7 +140,7 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
       val funExpr = substituteSmtSymbols(expr, signalSubs)
       val funSym = signalFuns(smt.Symbol(name, expr.typ))
       val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      solver.define(fun)
+      define(fun)
     }
 
     // define state next and init functions
@@ -146,7 +149,7 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
       val funExpr = substituteSmtSymbols(s.next.get, signalSubs)
       val funSym = smt.Symbol(s.sym.id + "_next", smt.MapType(List(stateType), funExpr.typ))
       val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      solver.define(fun)
+      define(fun)
 
       // on a transition, the next state is equal to the result of the next state function applied to the old state
       val newState = smt.FunctionApplication(signalFuns(s.sym), List(nextStateSymbol))
@@ -158,30 +161,30 @@ class CompactEncoding(sys: smt.TransitionSystem) extends SMTHelpers {
       val funExpr = substituteSmtSymbols(init, signalSubs)
       val funSym = smt.Symbol(s.sym.id + "_init", smt.MapType(List(stateType), funExpr.typ))
       val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      solver.define(fun)
+      define(fun)
 
       // on init, the current state is equal to the init state
       eq(signalSubs(s.sym), smt.FunctionApplication(funSym, List(stateSymbol)))
     }
 
     // define init function
-    solver.define(smt.DefineFun(stateInitFun, List(stateSymbol), conjunction(initRelations)))
+    define(smt.DefineFun(stateInitFun, List(stateSymbol), conjunction(initRelations)))
 
     // define transition function
-    solver.define(smt.DefineFun(stateTransitionFun, List(stateSymbol, nextStateSymbol), conjunction(transitionRelations)))
+    define(smt.DefineFun(stateTransitionFun, List(stateSymbol, nextStateSymbol), conjunction(transitionRelations)))
 
     // define constraint functions
     constraintFuns.foreach { case (expr, funSym) =>
       val funExpr = substituteSmtSymbols(expr, signalSubs)
       val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      solver.define(fun)
+      define(fun)
     }
 
     // define bad state functions
     badFuns.foreach { case (expr, funSym) =>
       val funExpr = substituteSmtSymbols(expr, signalSubs)
       val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      solver.define(fun)
+      define(fun)
     }
   }
 
