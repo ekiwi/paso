@@ -67,7 +67,11 @@ object Paso {
     VerificationProblem.verify(elaborated, opt)
     true
   }
-  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???
+  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default): Boolean = {
+    val elaborated = Elaboration()[I, S](impl, spec, subspecs, NoProofCollateral(_, _))
+    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax)
+    true
+  }
   private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???
 
   val MCBotr = ProofOptions(CVC4, Btormc)

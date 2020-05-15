@@ -82,6 +82,19 @@ object VerificationProblem {
       SMTSimplifier.verifySimplifications(cvc4.getCtx)
     }
   }
+
+  def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
+    assert(problem.mapping.isEmpty)
+    assert(problem.invariances.isEmpty)
+
+    // reset any simplifications that might be globally cached
+    SMTSimplifier.clear()
+    // first we need to make sure to properly namespace all symbols in the Verification Problem
+    val p = NamespaceIdentifiers(problem)
+
+    throw new NotImplementedError("TODO: add model checking task!")
+
+  }
 }
 
 

@@ -148,4 +148,8 @@ class FifoSpec extends FlatSpec {
 
     Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(new ShiftProof(_, _))
   }
+
+  "ShiftFifo with bug" should "not fail BMC" in {
+    Paso(new ShiftRegisterFifo(8, 8, true))(new FifoProtocols(_)).bmc(10)
+  }
 }
