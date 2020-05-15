@@ -61,14 +61,14 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
 
       if(options.checkBadStatesIndividually) {
         // check each bad state individually
-        sys.bad.foreach { b =>
+        sys.bad.zipWithIndex.foreach { case (b, bi) =>
           solver.push()
           solver.assert(enc.getBadState(b))
           val res = solver.check(produceModel = false)
 
           // did we find an assignment for which the bas state is true?
           if(res.isTrue) {
-            val w = getWitness(sys, enc, k)
+            val w = getWitness(sys, enc, k, Seq(bi))
             solver.pop()
             return smt.ModelCheckFail(w)
           }
@@ -82,7 +82,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
 
         // did we find an assignment for which at least one bad state is true?
         if(res.isTrue) {
-          val w = getWitness(sys, enc, k)
+          val w = getWitness(sys, enc, k, (0 until sys.bad.length).toSeq)
           solver.pop()
           return smt.ModelCheckFail(w)
         }
@@ -98,13 +98,21 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
     smt.ModelCheckSuccess()
   }
 
-  private def getWitness(sys: smt.TransitionSystem, enc: CompactEncoding, k: Int): smt.Witness = {
-    sys.inputs.foreach { ii =>
-      val sk = enc.getSignalAt(ii, k)
-      println(solver.getValue(sk))
+  private def getWitness(sys: smt.TransitionSystem, enc: CompactEncoding, kMax: Int, failedBad: Seq[Int]): smt.Witness = {
+    val regInit = sys.states.zipWithIndex.map { case (state, i) =>
+      assert(!state.sym.typ.isArray, "TODO: support arrays!")
+      val value = solver.getValue(enc.getSignalAt(state.sym, 0))
+      i -> value
+    }.toMap
+
+    val inputs = (0 to kMax).map { k =>
+      sys.inputs.zipWithIndex.map { case (input, i) =>
+        val value = solver.getValue(enc.getSignalAt(input, k))
+        i -> value
+      }.toMap
     }
-    // TODO: get all inputs and states etc....
-    ???
+
+    smt.Witness(failedBad, regInit, Map(), inputs)
   }
 
 }
