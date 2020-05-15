@@ -207,6 +207,7 @@ object Btor2Serializer {
         line(s"ite ${t(expr.typ)} ${s(cond)} ${s(a)} ${s(b)}")
       case BooleanLit(value) => lit(if(value) BigInt(1) else BigInt(0), 1)
       case BitVectorLit(value, w) => lit(value, w)
+      case ConstArray(BitVectorLit(value, width), arrTyp) if value == 0 => lit(value, width)
       case other => throw new NotImplementedError(s"TODO: implement serialization for $other")
     }})
 
