@@ -239,7 +239,7 @@ object PasoCombinedAutomatonEncoder extends SMTHelpers {
   private def simplify(e: smt.Expr): smt.Expr = SMTSimplifier.simplify(e)
   private def simplify(e: Seq[smt.Expr]): Seq[smt.Expr] = e.map(SMTSimplifier.simplify).filterNot(_ == tru)
 
-  def run(prefix: String, resetAssumption: smt.Expr, start: PasoState, states: Seq[PasoState], switchAssumesAndGuarantees: Boolean): smt.TransitionSystem = {
+  def run(prefix: String, resetAssumption: smt.Expr, start: PasoState, states: Seq[PasoState], switchAssumesAndGuarantees: Boolean, archInits: Map[smt.Symbol, smt.Expr]): smt.TransitionSystem = {
     // calculate transition function for the "state" state, i.e. the state of our automaton
     val stateBits = log2Ceil(states.length + 1)
     val stateSym = smt.Symbol(prefix + "state", smt.BitVectorType(stateBits))
@@ -278,8 +278,8 @@ object PasoCombinedAutomatonEncoder extends SMTHelpers {
       val nextState = u.map { case (state, update) =>
         and(inState(state), update.guard) -> update.value
       }.foldLeft[smt.Expr](stateSym){ case (other, (cond, value)) => ite(cond, value, other) }
-      smt.State(stateSym, next = Some(simplify(nextState)))
-      // TODO: add option to init the state (for bmc)
+      val init = archInits.get(stateSym).map(simplify)
+      smt.State(stateSym, init = init, next = Some(simplify(nextState)))
     }
 
     val assumptions = states.map(s => implies(inState(s.id), s.environmentAssumptions)) ++ Seq(resetAssumption)
@@ -528,7 +528,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     step.next.head.next.map(o => pathLength(o.next.head)).reduce(math.max) + 1
   }
 
-  def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false): PasoAutomaton = {
+  def run(spec: Spec, prefix: String, resetAssumption: smt.Expr = tru, switchAssumesAndGuarantees: Boolean = false, initArchState: Boolean): PasoAutomaton = {
     // we check that all methods are mutually exclusive
     checkMethodsAreMutuallyExclusive(spec)
 
@@ -552,7 +552,8 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
 
     // turn states into state transition system
     assert(states.head.id == 0, "Expected first state to be the start state!")
-    val sys = PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees)
+    val init: Map[smt.Symbol, smt.Expr] = if(initArchState) spec.untimed.state.map(s => s.sym -> s.init.get).toMap else Map()
+    val sys = PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, states.head, states, switchAssumesAndGuarantees, init)
 
     // find all fork states (it is important for sub modules to return to a fork state)
     val forkStates = fsm.states.filter(_.isFork).map(_.id)
@@ -573,7 +574,7 @@ case class OldVerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Funct
   def run(proto: StepNode, prefix: String, resetAssumption: smt.Expr): smt.TransitionSystem = {
     val start_id = visit(proto)
     val start = states.find(_.id == start_id).get
-    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, start, states, switchAssumesAndGuarantees)
+    PasoCombinedAutomatonEncoder.run(prefix, resetAssumption, start, states, switchAssumesAndGuarantees, Map())
   }
 
   private val StartId: Int = 0

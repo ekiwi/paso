@@ -229,7 +229,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     // if there are subspecs, we need to generate a transition system simulating them
     val subTransitionsSystems = p.subspecs.map { sub =>
       val resetAssumption = VerificationTask.findReset(sub.ioSymbols).map(not).getOrElse(tru)
-      NewVerificationAutomatonEncoder.run(sub.spec, sub.instance + ".", resetAssumption, switchAssumesAndGuarantees = true)
+      NewVerificationAutomatonEncoder.run(sub.spec, sub.instance + ".", resetAssumption, switchAssumesAndGuarantees = true, initArchState = false)
     }
 
     val (foos, ufs) = if(checker.supportsUF) {
