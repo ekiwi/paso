@@ -285,7 +285,7 @@ class VariableLatencyExamplesSpec extends FlatSpec {
     Paso(new VariableLatencyToConst)(new ConstantLatencyWithSubIdProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_)).bind(spec.id32)
       replace(impl.msb)(new RandomLatencyProtocols(_)).bind(spec.id32)
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
   "VariableLatencyKeepToConst with full RTL" should "refine its spec" in {

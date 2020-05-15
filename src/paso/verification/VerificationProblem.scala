@@ -7,6 +7,7 @@
 
 package paso.verification
 
+import paso.Btormc
 import paso.chisel.{SMTHelper, SMTHelpers, SMTSimplifier}
 import uclid.smt
 import uclid.smt.Expr
@@ -61,17 +62,22 @@ case class VerificationProblem(impl: smt.TransitionSystem, spec: Spec, subspecs:
                                invariances: Seq[Assertion], mapping: Seq[Assertion])
 
 object VerificationProblem {
-  def verify(problem: VerificationProblem, checkSimplifications: Boolean = false): Unit = {
+  def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
     // reset any simplifications that might be globally cached
     SMTSimplifier.clear()
+    // check to see if the mappings contain quantifiers
+    val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
     // first we need to make sure to properly namespace all symbols in the Verification Problem
     val p = NamespaceIdentifiers(problem)
-    //println(p)
-    val tasks = Seq(new VerifyMapping, new VerifyBaseCase, new VerifyMethods(oneAtATime = true, useBtor = false))
+
+    val tasks = Seq(
+      new VerifyMapping(opt.baseCaseSolver, quantifierFree),
+      new VerifyBaseCase(opt.baseCaseSolver),
+      new VerifyMethods(opt.oneMethodAtATime, opt.modelChecker, quantifierFree))
     tasks.foreach(_.run(p))
 
     // check all our simplifications
-    if(checkSimplifications) {
+    if(opt.checkSimplifications) {
       val cvc4 = new CVC4Interface(quantifierFree = false)
       SMTSimplifier.verifySimplifications(cvc4.getCtx)
     }
@@ -80,14 +86,14 @@ object VerificationProblem {
 
 
 
-class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationTask with SMTHelpers {
-  val checker: smt.IsModelChecker = if(useBtor){
-    smt.Btor2.createBtorMC()
-  } else{
-    //val solver = new CVC4Interface(quantifierFree = false)
-    val solver = new YicesInterface
-    new SMTModelChecker(solver, SMTModelCheckerOptions.Performance)
+class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree: Boolean) extends VerificationTask with SMTHelpers {
+  val checker: smt.IsModelChecker = solver match {
+    case paso.Btormc => smt.Btor2.createBtorMC()
+    case paso.Z3 => new SMTModelChecker(new Z3Interface, SMTModelCheckerOptions.Performance)
+    case paso.CVC4 => new SMTModelChecker(new CVC4Interface(quantifierFree), SMTModelCheckerOptions.Performance)
+    case paso.Yices2 => assert(quantifierFree) ; new SMTModelChecker(new YicesInterface, SMTModelCheckerOptions.Performance)
   }
+
   override val solverName: String = checker.name
 
   private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
@@ -235,8 +241,8 @@ class RefEqHashMap[A <: AnyRef, B] extends scala.collection.mutable.HashMap[A, B
   protected override def elemEquals(key1: A, key2: A): Boolean = (key1 eq key2)
 }
 
-class VerifyMapping extends VerificationTask with SMTHelpers with HasSolver {
-  val solver = new CVC4Interface(quantifierFree = false)
+class VerifyMapping(sol: paso.SolverName, quantifierFree: Boolean) extends VerificationTask with SMTHelpers with HasSolver {
+  val solver = getSolver(sol, quantifierFree)
   override val solverName: String = solver.name
 
   override protected def execute(p: VerificationProblem): Unit = {
@@ -279,8 +285,8 @@ class VerifyMapping extends VerificationTask with SMTHelpers with HasSolver {
   }
 }
 
-class VerifyBaseCase extends VerificationTask with SMTHelpers with HasSolver {
-  val solver = new CVC4Interface
+class VerifyBaseCase(sol: paso.SolverName) extends VerificationTask with SMTHelpers with HasSolver {
+  val solver = getSolver(sol, quantifierFree = true)
   override val solverName: String = solver.name
 
   override protected def execute(p: VerificationProblem): Unit = {
@@ -302,6 +308,12 @@ abstract class VerificationTask {
     execute(p)
     val end = System.nanoTime()
     println(s"Executed ${this.getClass.getSimpleName} with $solverName in ${(end - start)/1000/1000}ms")
+  }
+  protected def getSolver(sol: paso.SolverName, quantifierFree: Boolean): Solver = sol match {
+    case paso.Btormc => throw new RuntimeException("btormc cannot be used to verify the base case or the mappings")
+    case paso.Z3 => new Z3Interface
+    case paso.Yices2 => assert(quantifierFree) ; new YicesInterface
+    case paso.CVC4 => new CVC4Interface(quantifierFree)
   }
 }
 

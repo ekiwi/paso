@@ -310,7 +310,7 @@ class PipeliningExamplesSpec extends FlatSpec {
   "A pipelined 32-bit add3 with abstract and bound add2 and compositional spec" should "refine its spec" in {
     Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)).bind(spec.add2))
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
   "A pipelined 32-bit add3 with bug" should "fail" in {
@@ -339,7 +339,7 @@ class PipeliningExamplesSpec extends FlatSpec {
   "A pipelined 32-bit add3 with delay=2 with abstract and bound add2 and compositional spec" should "refine its spec" in {
     Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_)).bind(spec.add2)
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
   "A pipelined 32-bit add3 with delay=2 with bug" should "fail" in {
@@ -392,15 +392,14 @@ class PipeliningExamplesWithMulSpec extends FlatSpec {
   "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
     Paso(new PipelinedMac)(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
   "A pipelined 32-bit mac with abstract adder and subspec with bug" should "fail" in {
-    val fail = intercept[AssertionError] {
+    assertThrows[AssertionError] {
       Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_, _) {
         replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
-      }).proof()
+      }).proof(Paso.MCYices2)
     }
-    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
   }
 }
