@@ -214,7 +214,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
 
   private def arrayDepth(arrayType: Type): Int = {
     val addrWidth = arrayType.asInstanceOf[ArrayType].inTypes.head.asInstanceOf[BitVectorType].width
-    ((BigInt(1) << addrWidth) - 1).toInt
+    ((BigInt(1) << addrWidth)).toInt
   }
 
   private def printData(): Unit = {
