@@ -86,18 +86,114 @@ object VerificationProblem {
   def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
     assert(problem.mapping.isEmpty)
     assert(problem.invariances.isEmpty)
-
     // reset any simplifications that might be globally cached
     SMTSimplifier.clear()
     // first we need to make sure to properly namespace all symbols in the Verification Problem
     val p = NamespaceIdentifiers(problem)
-
-    throw new NotImplementedError("TODO: add model checking task!")
-
+    new RunBmc(solver, kMax).run(p)
   }
 }
 
+class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with SMTHelpers {
+  val checker: smt.IsModelChecker = solver match {
+    case paso.Btormc => smt.Btor2.createBtorMC()
+    case paso.Z3 => new SMTModelChecker(new Z3Interface, SMTModelCheckerOptions.Performance)
+    case paso.CVC4 => new SMTModelChecker(new CVC4Interface(quantifierFree = true), SMTModelCheckerOptions.Performance)
+    case paso.Yices2 => new SMTModelChecker(new YicesInterface, SMTModelCheckerOptions.Performance)
+  }
 
+  override val solverName: String = checker.name
+
+  private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
+    val reducedSys = if(checker.supportsUF) { sys } else {
+      assert(uf.isEmpty, s"Uninterpreted Functions are not supported by the model checker ${checker.name}")
+      // beta reduce transition system (functions are not supported by btor)
+      val beta = SMTBetaReduction(foos)
+      sys.copy(
+        states = sys.states.map(s => s.copy(init = s.init.map(beta(_)), next = s.next.map(beta(_)))),
+        outputs = sys.outputs.map(o => (o._1, beta(o._2))),
+        constraints = sys.constraints.map(beta(_)),
+        bad = sys.bad.map(beta(_)),
+        fair = sys.fair.map(beta(_)),
+      )
+    }
+    val defined = if(checker.supportsUF) { foos } else { Seq() }
+
+    val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = defined, uninterpreted = uf)
+    val sim = new smt.TransitionSystemSimulator(reducedSys, functionDefinitions = defined)
+    (res, sim)
+  }
+
+  private def resolveBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
+    val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub =>
+      sub.binding match {
+        case Some(name) =>
+          // find untimed submodule of the top level spec that we are bound to
+          assert(topUntimed.sub.contains(name), s"Bound submodule $name not found. Maybe try: ${topUntimed.sub.keys.mkString(" ")}")
+          val bound = topUntimed.sub(name)
+          // ensure that we are binding equivalent specs
+          assert(bound.methods.keys.toSet == sub.spec.untimed.methods.keys.toSet) // TODO: this doesn't really show that they are equivalent
+          // define functions to alias with the functions of the spec this was bound to
+          UntimedModel.functionDefAlias(sub.spec.untimed, bound)
+        case None => UntimedModel.functionDefs(sub.spec.untimed)
+      }
+    }
+    // remember which submodules should be modelled with UFs
+    val boundSubModules = subspecs.flatMap(s => s.binding.toSeq).toSet
+    val submoduleFoos = topUntimed.sub.filterNot(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
+    val boundSubmoduleFoos = topUntimed.sub.filter(s => boundSubModules.contains(s._1)).flatMap(s => UntimedModel.functionDefs(s._2))
+    val boundValidFoos = boundSubmoduleFoos.filter(_.id.id.endsWith(".valid"))
+    val submoduleUFs = boundSubmoduleFoos.filterNot(_.id.id.endsWith(".valid")).map(_.id).toSeq
+    // for now we only support abstracted submodules if their output is always valid
+    boundValidFoos.foreach(v => assert(v.e == tru, s"Only always valid methods can be turned into UFs. Not $v!"))
+
+    (boundValidFoos.toSeq ++ subSpecMethodFunctionDefinitions ++ submoduleFoos, submoduleUFs)
+  }
+
+  private def ignoreBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
+    subspecs.filter(_.binding.isDefined).foreach(s => println(s"WARN: ignoring binding of ${s.instance} to ${s.binding.get} because the backend does not support UFs!"))
+    val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub => UntimedModel.functionDefs(sub.spec.untimed) }
+    val submoduleFoos = topUntimed.sub.flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
+    (subSpecMethodFunctionDefinitions ++ submoduleFoos, Seq())
+  }
+
+  override protected def execute(p: VerificationProblem): Unit = {
+    // first we need to merge the protocol graph to ensure that methods are independent
+    // - independence in this case means that for common inputs, the expected outputs are not mutually exclusive
+    val combined = p.spec.protocols.values.reduce(VerificationGraph.merge) // this will fail if methods are not independent
+
+    // if there are subspecs, we need to generate a transition system simulating them
+    val subTransitionsSystems = p.subspecs.map { sub =>
+      val resetAssumption = VerificationTask.findReset(sub.ioSymbols).map(not).getOrElse(tru)
+      NewVerificationAutomatonEncoder.run(sub.spec, sub.instance + ".", resetAssumption, switchAssumesAndGuarantees = true, initArchState = true)
+    }
+
+    val (foos, ufs) = if(checker.supportsUF) {
+      resolveBindings(p.subspecs, p.spec.untimed)
+    } else {
+      ignoreBindings(p.subspecs, p.spec.untimed)
+    }
+
+    // generate the toplevel transition system
+    val resetAssumption = VerificationTask.findReset(p.impl.inputs).map(not).getOrElse(tru)
+    val toplevelFoos = UntimedModel.functionDefs(p.spec.untimed)
+    val topTransitionSystem = NewVerificationAutomatonEncoder.run(p.spec, "", resetAssumption, switchAssumesAndGuarantees = false, initArchState = true)
+
+    // combine systems
+    val sys = smt.TransitionSystem.merge(p.impl, Seq(topTransitionSystem.sys) ++ subTransitionsSystems.map(_.sys))
+    val (res, sim) = runCheck(kMax, sys, foos ++ toplevelFoos, ufs)
+
+    // find failing property and print
+    res match {
+      case smt.ModelCheckFail(witness) =>
+        println(s"Failed to verify ${p.impl.name.get} against ${p.spec.untimed.name}")
+        sim.run(witness, Some("test.vcd"))
+      case smt.ModelCheckSuccess() =>
+    }
+
+    assert(res.isSuccess, s"Failed to verify ${p.impl.name.get} against ${p.spec.untimed.name}")
+  }
+}
 
 class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree: Boolean) extends VerificationTask with SMTHelpers {
   val checker: smt.IsModelChecker = solver match {
