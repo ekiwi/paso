@@ -106,7 +106,7 @@ class VerifyMethods(oneAtATime: Boolean, useBtor: Boolean) extends VerificationT
     val defined = if(checker.supportsUF) { foos } else { Seq() }
 
     val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = defined, uninterpreted = uf)
-    val sim = new smt.TransitionSystemSimulator(reducedSys)
+    val sim = new smt.TransitionSystemSimulator(reducedSys, functionDefinitions = defined)
     (res, sim)
   }
 

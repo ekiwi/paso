@@ -110,7 +110,7 @@ trait IsModelChecker {
 
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
-class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128) {
+class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128, functionDefinitions: Seq[DefineFun] = Seq()) {
   private val inputs = sys.inputs.zipWithIndex.map{ case (input, index) => index -> input }
   private val stateOffset = inputs.size
   private val states = sys.states.zipWithIndex.map{ case (state, index) => index -> state.sym}
@@ -157,17 +157,31 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
 
   private val functionResults = mutable.HashMap[String, BigInt]()
-  private def evalFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
+  private def evalUninterpretedFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
     val id = foo.id + "(" + args.mkString(";") + ")"
-    functionResults.getOrElseUpdate(id, randomBits(getWidth(foo.typ.asInstanceOf[MapType].outType)))
+    val res = functionResults.getOrElseUpdate(id, randomBits(getWidth(foo.typ.asInstanceOf[MapType].outType)))
+    res
+  }
+  private val tmpSymbols = mutable.HashMap[Symbol, BigInt]()
+  private def evalFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
+    functionDefinitions.find(_.id == foo) match {
+      case None => evalUninterpretedFunctionCall(foo, args)
+      case Some(d) =>
+        d.args.zip(args).foreach{ case (sym, value) => tmpSymbols(sym) = value }
+        eval(d.e)
+    }
   }
 
   private def eval(expr: Expr): BigInt = {
     val value = expr match {
       case s: Symbol =>
-        val value = data(bvSymbolToDataIndex(s))
-        assert(value != null, s"Trying to read uninitialized symbol $s!")
-        value
+        bvSymbolToDataIndex.get(s).map { index =>
+          val value = data(index)
+          assert(value != null, s"Trying to read uninitialized symbol $s!")
+          value
+        }.getOrElse {
+          tmpSymbols(s)
+        }
       case OperatorApplication(EqualityOp, List(a, b)) if a.typ.isArray => arrayEq(a, b)
       case OperatorApplication(InequalityOp, List(a, b)) if a.typ.isArray => arrayIneq(a, b)
       case OperatorApplication(BVConcatOp(_), List(a, b)) => BitVectorAndBoolSemantics.concat(eval(a), eval(b), b.typ.asInstanceOf[BitVectorType].width)
@@ -257,7 +271,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   }
 
   private def symbolsToString(symbols: Iterable[Symbol]): Iterable[String] =
-    symbols.filter(!_.typ.isArray).map{sym => s"$sym := ${data(bvSymbolToDataIndex(sym))}"}
+    symbols.filter(!_.typ.isArray).filter(bvSymbolToDataIndex.contains).map{sym => s"$sym := ${data(bvSymbolToDataIndex(sym))}"}
 
   def step(index: Int, inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
     vcdWriter.foreach(_.wireChanged("Step", index))
@@ -364,6 +378,8 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       vv.incrementTime()
       vv.write(ff)
     }
+    functionResults.foreach { case (id, res) => println(s"$id --> $res") }
+    // functionResults.foreach { case (id, res) => println(s"$id --> $res") }
   }
 }
 
