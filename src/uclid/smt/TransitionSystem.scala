@@ -148,12 +148,19 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       data(index.toInt)
     }
   }
+  private def randomBits(bits: Int): BigInt = BigInt(bits, scala.util.Random)
   private def randomSeq(depth: Int): Seq[BigInt] = {
     val r = scala.util.Random
     (0 to depth).map( _ => BigInt(r.nextLong()))
   }
   private def writesToMemory(depth: Int, writes: Iterable[(BigInt, BigInt)]): Memory =
     writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
+
+  private val functionResults = mutable.HashMap[String, BigInt]()
+  private def evalFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
+    val id = foo.id + "(" + args.mkString(";") + ")"
+    functionResults.getOrElseUpdate(id, randomBits(getWidth(foo.typ.asInstanceOf[MapType].outType)))
+  }
 
   private def eval(expr: Expr): BigInt = {
     val value = expr match {
@@ -170,6 +177,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       case BitVectorLit(value, _) => value
       case BooleanLit(value) => if(value) BigInt(1) else BigInt(0)
       case ArraySelectOperation(array, List(index)) => evalArray(array).read(eval(index))
+      case FunctionApplication(e, args) => evalFunctionCall(e.asInstanceOf[Symbol], args.map(eval))
       case other => throw new RuntimeException(s"Unsupported expression $other")
     }
     // println(s"$expr = $value")
