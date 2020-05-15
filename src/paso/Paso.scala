@@ -73,6 +73,7 @@ object Paso {
   val MCBotr = ProofOptions(CVC4, Btormc)
   val MCYices2 = ProofOptions(CVC4, Yices2)
   val MCCVC4 = ProofOptions(CVC4, CVC4)
+  val MCZ3 = ProofOptions(CVC4, Z3)
   val Default = MCBotr
 }
 

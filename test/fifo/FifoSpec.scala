@@ -126,11 +126,11 @@ class ShiftProof(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends Proof
 class FifoSpec extends FlatSpec {
 
   "CircularPointerFifo" should "refine its spec" in {
-    val depth = 8
-    val width = 8
+    val depth = 128
+    val width = 32
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(new CircularProof(_, _))
+    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCZ3 ,new CircularProof(_, _))
   }
 
   "CircularPointerFifo with readDelay=1" should "refine its spec" in {
