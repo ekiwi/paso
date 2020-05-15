@@ -23,10 +23,62 @@ class TinyAESTableLookupProtocol(impl: TableLookup) extends ProtocolSpec[AESTabl
   }
 }
 
+class AES128DebugSpec extends UntimedModule with AESHelperFunctions {
+  val round = UntimedModule(new AESRoundSpec)
+  val expand = UntimedModule(new AESKeyExpansionSpec(rcon(0).U(8.W)))
+
+  val aes128 = fun("aes128").in(new RoundIn).out(UInt(128.W)) { (in, out) =>
+    val r = Wire(new RoundIn)
+    // expand key
+    r.key := expand.expandKey128(in.key)
+    r.state := in.state ^ in.key
+    out := round.round(r)
+  }
+}
+
+class TinyAES128Debug extends Module {
+  val io = IO(new TinyAES128IO)
+  val s0 = RegNext(io.state ^ io.key)
+  val k0 = RegNext(io.key)
+
+  val k1 = Wire(UInt(128.W))
+  val k0b = Wire(UInt(128.W))
+  val s1 = Wire(UInt(128.W))
+
+  val a1 = ExpandKey128(StaticTables.rcon(0), k0, k0b, k1)
+  val r1 = OneRound(s0, k0b, s1)
+
+  io.out := s1
+}
+
+class TinyAESDebugProtocol(impl: TinyAES128Debug) extends ProtocolSpec[AES128DebugSpec] {
+  val spec = new AES128DebugSpec
+
+  protocol(spec.aes128)(impl.io) { (clock, dut, in, out) =>
+    // apply state and key for one cycle
+    dut.state.poke(in.state)
+    dut.key.poke(in.key)
+    clock.stepAndFork()
+    dut.state.poke(DontCare)
+    dut.key.poke(DontCare)
+
+    clock.step()
+    clock.step()
+
+    dut.out.expect(out)
+  }
+}
+
 class TinyAESOtherSpec extends FlatSpec {
   // this was used to hunt down a bug in our spec by breaking it into smaller pieces
   "TinyAES TableLookup" should "refine its spec" in {
     Paso(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()
   }
 
+  "TinyAES128Debug" should "correctly connect all submodules" in {
+    Paso(new TinyAES128Debug)(new TinyAESDebugProtocol(_))(new SubSpecs(_, _) {
+      replace(impl.r1)(new TinyAESRoundProtocol(_)).bind(spec.round)
+      replace(impl.a1)(new TinyAESExpandKeyProtocol(_)).bind(spec.expand)
+    }).proof()
+  }
 }
