@@ -91,7 +91,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     case paso.Btormc => smt.Btor2.createBtorMC()
     case paso.Z3 => new SMTModelChecker(new Z3Interface, SMTModelCheckerOptions.Performance)
     case paso.CVC4 => new SMTModelChecker(new CVC4Interface(quantifierFree), SMTModelCheckerOptions.Performance)
-    case paso.Yices2 => assert(quantifierFree) ; new SMTModelChecker(new YicesInterface, SMTModelCheckerOptions.Performance)
+    case paso.Yices2 => new SMTModelChecker(new YicesInterface, SMTModelCheckerOptions.Performance)
   }
 
   override val solverName: String = checker.name
@@ -124,7 +124,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     //ShowDot(VerificationGraphToDot("proto", proto))
 
     // eliminate quantifiers by expansion (only the invariances and mappings are expected to contain quantifiers)
-    def elim(e: smt.Expr): smt.Expr = SMTExpandQuantifiers(e)
+    val elim: smt.Expr => smt.Expr = if(checker.supportsQuantifiers) e => e else SMTExpandQuantifiers(_)
 
     // assume that reset is inactive
     VerificationTask.findReset(p.impl.inputs).foreach(r => check.assume(not(r)))
