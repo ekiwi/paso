@@ -330,7 +330,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         println(s"ERROR: Constraint #$i ${simpl(expr)} was violated!")
         symbolsToString(Context.findSymbols(expr)).foreach(println)
         //printData()
-        throw new RuntimeException("Violated constraint!")
+        //throw new RuntimeException("Violated constraint!")
       }
     }
 
