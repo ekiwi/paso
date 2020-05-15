@@ -194,20 +194,24 @@ class AES128Spec extends UntimedModule with AESHelperFunctions {
   val expand = rcon.map(r => UntimedModule(new AESKeyExpansionSpec(r.U(8.W))))
 
   val aes128 = fun("aes128").in(new RoundIn).out(UInt(128.W)) { (in, out) =>
-    val r = Seq.tabulate(11)(_ => Wire(new RoundIn))
+    val r = Seq.tabulate(10)(_ => Wire(new RoundIn))
 
-    // first round
-    r(0).state := in.state ^ in.key
+    // expand key
     r(0).key := expand(0).expandKey128(in.key)
+    (0 until 9).foreach { ii =>
+      r(ii + 1).key := expand(ii + 1).expandKey128(r(ii).key)
+    }
+
+    // calculate rounds round
+    r(0).state := in.state ^ in.key
 
     // mid rounds
-    (0 until 10).foreach { ii =>
+    (0 until 9).foreach { ii =>
       r(ii + 1).state := round.round(r(ii))
-      if(ii < 9) r(ii + 1).key := expand(ii + 1).expandKey128(r(ii).key) else r(ii + 1) := DontCare
     }
 
     // final round
-    out := finalRound.round(r(10))
+    out := finalRound.round(r(9))
   }
 }
 
