@@ -13,6 +13,7 @@ class Fifo(val depth: Int) extends Module {
     val valid = Input(Bool())
     val pushDontPop = Input(Bool())
     val dataOut = Output(UInt(32.W))
+    val full = Output(Bool())
   })
 
   val memWrite = io.pushDontPop && io.valid
@@ -31,6 +32,8 @@ class Fifo(val depth: Int) extends Module {
   io.dataOut := DontCare
   when(memWrite) { memPort := io.dataIn }
     .elsewhen(memRead) { io.dataOut := memPort }
+
+  io.full := (rdPtr === wrPtr) && !lastRd
 }
 
 
