@@ -13,7 +13,6 @@ class Fifo(val depth: Int) extends Module {
     val valid = Input(Bool())
     val pushDontPop = Input(Bool())
     val dataOut = Output(UInt(32.W))
-    val full = Output(Bool())
   })
 
   val memWrite = io.pushDontPop && io.valid
@@ -21,10 +20,11 @@ class Fifo(val depth: Int) extends Module {
   val lastRd = RegInit(true.B)
   when(io.valid) { lastRd := memRead }
 
-  val rdPtr = RegInit(0.U(3.W))
-  when(memRead) { rdPtr := rdPtr + 1.U }
   val wrPtr = RegInit(0.U(3.W))
   when(memWrite) { wrPtr := wrPtr + 1.U }
+  val rdPtr = RegInit(0.U(3.W))
+  val empty = (rdPtr === wrPtr) && lastRd
+  when(memRead && !empty) { rdPtr := rdPtr + 1.U }
 
   val mem = SyncReadMem(depth, UInt(32.W))
   val memAddr = Mux(memWrite, wrPtr, rdPtr)
@@ -32,8 +32,6 @@ class Fifo(val depth: Int) extends Module {
   io.dataOut := DontCare
   when(memWrite) { memPort := io.dataIn }
     .elsewhen(memRead) { io.dataOut := memPort }
-
-  io.full := (rdPtr === wrPtr) && !lastRd
 }
 
 
@@ -48,10 +46,14 @@ class FifoT(val depth: Int) extends UntimedModule {
     mem(read + count) := in
     count := count + 1.U
   }
-  val pop = fun("pop").out(UInt(32.W)).when(!empty) { out =>
-    out := mem(read)
-    count := count - 1.U
-    read := read + 1.U
+  val pop = fun("pop").out(UInt(32.W)) { out =>
+    when(empty) {
+      out := DontCare
+    } .otherwise {
+      out := mem(read)
+      count := count - 1.U
+      read := read + 1.U
+    }
   }
   val idle = fun("idle"){}
 }
