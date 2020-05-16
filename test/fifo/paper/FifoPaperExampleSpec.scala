@@ -63,23 +63,23 @@ class FifoP(impl: Fifo) extends ProtocolSpec[FifoT] {
   val spec = new FifoT(impl.depth)
   override val stickyInputs: Boolean = false
 
-  protocol(spec.push)(impl.io) { (clock, dut, in) =>
-    dut.pushDontPop.set(true.B)
-    dut.valid.set(true.B)
-    dut.dataIn.set(in)
+  protocol(spec.push)(impl.io) { (clock, duv, in) =>
+    duv.pushDontPop.set(true.B)
+    duv.valid.set(true.B)
+    duv.dataIn.set(in)
     clock.step()
   }
 
-  protocol(spec.pop)(impl.io) { (clock, dut, out) =>
-    dut.pushDontPop.set(false.B)
-    dut.valid.set(true.B)
+  protocol(spec.pop)(impl.io) { (clock, duv, out) =>
+    duv.pushDontPop.set(false.B)
+    duv.valid.set(true.B)
     clock.stepAndFork()
-    dut.dataOut.expect(out)
+    duv.dataOut.expect(out)
     clock.step()
   }
 
-  protocol(spec.idle)(impl.io) { (clock, dut) =>
-    dut.valid.set(false.B)
+  protocol(spec.idle)(impl.io) { (clock, duv) =>
+    duv.valid.set(false.B)
     clock.step()
   }
 }
