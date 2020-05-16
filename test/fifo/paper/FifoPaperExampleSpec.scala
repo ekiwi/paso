@@ -37,12 +37,13 @@ class Fifo(val depth: Int) extends Module {
 
 class FifoT(val depth: Int) extends UntimedModule {
   val mem = Mem(depth, UInt(32.W))
-  val count = RegInit(UInt((log2Ceil(depth) + 1).W), 0.U)
-  val read = RegInit(UInt(log2Ceil(depth).W), 0.U)
+  val count = RegInit(0.U((log2Ceil(depth) + 1).W))
+  val read = RegInit(0.U(log2Ceil(depth).W))
   val full = count === depth.U
   val empty = count === 0.U
 
-  val push = fun("push").in(UInt(32.W)).when(!full) { in =>
+  val push = fun("push").in(UInt(32.W)).when(!full)
+  { in =>
     mem(read + count) := in
     count := count + 1.U
   }
