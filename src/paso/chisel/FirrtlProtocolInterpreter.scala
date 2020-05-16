@@ -23,7 +23,7 @@ trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
 }
 
 /** protocols built on a custom extension of firrtl */
-class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
+class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter, stickyInputs: Boolean) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
   private val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
   private val forks = annos.collect{ case ForkAnnotation(target) => target.ref }.toSet
   private val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
@@ -62,7 +62,7 @@ class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[An
       if(SMTSimplifier.simplify(expr.valid) == fals) {
         interpreter.onUnSet(s)
       } else {
-        interpreter.onSet(s, expr.get, sticky = true)
+        interpreter.onSet(s, expr.get, sticky = stickyInputs)
       }
     }
     super.onConnect(name, expr)

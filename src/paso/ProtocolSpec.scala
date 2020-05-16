@@ -15,13 +15,13 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
   val stickyInputs: Boolean = true
   val protos = new mutable.ArrayBuffer[Protocol]()
   def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: (Clock, IO) => Unit): Unit =
-    protos.append(NProtocol(chiselTypeOf(io), meth, gen))
+    protos.append(NProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (Clock, IO, O) => Unit): Unit =
-    protos.append(OProtocol(chiselTypeOf(io), meth, gen))
+    protos.append(OProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (Clock, IO, I) => Unit): Unit =
-    protos.append(IProtocol(chiselTypeOf(io), meth, gen))
+    protos.append(IProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (Clock, IO, I,O) => Unit): Unit =
-    protos.append(IOProtocol(chiselTypeOf(io), meth, gen))
+    protos.append(IOProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
 
 
   // TODO: support more than just UInt
@@ -81,23 +81,24 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
 trait Protocol {
   def methodName: String
   def generate(prefix: String, clock: Clock): Unit
+  val stickyInputs: Boolean
 }
 trait ProtocolHelper extends MethodBodyHelper {
   protected def io[IO <: Data](ioType: IO): IO = IO(Flipped(ioType)).suggestName("io")
 }
-case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit) extends Protocol with ProtocolHelper {
+case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper {
   override def methodName = meth.gen.name
   override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType))
 }
-case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit) extends Protocol with ProtocolHelper  {
+case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
   override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType, prefix))
 }
-case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit) extends Protocol with ProtocolHelper  {
+case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
   override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType, prefix))
 }
-case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit) extends Protocol with ProtocolHelper  {
+case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
   override def methodName = meth.gen.name
   override def generate(prefix: String, clock: Clock): Unit = {
     impl(clock, io(ioType), makeInput(meth.inputType, prefix), makeOutput(meth.outputType, prefix))

@@ -126,7 +126,7 @@ case class Elaboration() {
       val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
       val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
       //println(ff.serialize)
-      new FirrtlProtocolInterpreter(p.methodName, ff, annos, int).run()
+      new FirrtlProtocolInterpreter(p.methodName, ff, annos, int, p.stickyInputs).run()
       (p.methodName, int.getGraph(p.methodName))
     }
   }
