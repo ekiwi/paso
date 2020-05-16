@@ -81,6 +81,7 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[I
   // derive specification parameter from implementation
   // this allows us to verify generators in multiple different configurations
   val spec = new Identity(chiselTypeOf(impl.io.dataIn))
+  override val stickyInputs: Boolean = false
 
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.start.set(true.B)
@@ -89,9 +90,9 @@ class RandomLatencyProtocols(impl: VariableLatencyModule) extends ProtocolSpec[I
     clock.step()
 
     dut.start.set(false.B)
-    dut.dataIn.set(DontCare)
     do_while(!dut.done.get(), max = 3) {
       clock.step()
+      dut.start.set(false.B)
     }
 
     dut.dataOut.expect(out)
