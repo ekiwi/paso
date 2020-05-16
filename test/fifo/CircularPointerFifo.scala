@@ -3,7 +3,7 @@ package fifo
 import chisel3._
 import chisel3.util._
 
-class FifoIO(val dataWidth: Int) extends Bundle {
+class MannFifoIO(val dataWidth: Int) extends Bundle {
   val push = Input(Bool())
   val pop = Input(Bool())
   val data_in = Input(UInt(dataWidth.W))
@@ -12,13 +12,13 @@ class FifoIO(val dataWidth: Int) extends Bundle {
   val data_out = Output(UInt(dataWidth.W))
 }
 
-abstract class IsFifo extends Module { val io: FifoIO ; val width: Int ; val depth: Int ; val readDelay: Int }
+abstract class IsFifo extends Module { val io: MannFifoIO ; val width: Int ; val depth: Int ; val readDelay: Int }
 
 // rewrite of Makai Mann's circular fifo in Chisel
 class CircularPointerFifo(val width: Int, val depth: Int, val readDelay: Int = 0, fixed: Boolean = false) extends IsFifo {
   require(isPow2(depth))
   require(readDelay == 0 || readDelay == 1)
-  val io = IO(new FifoIO(width))
+  val io = IO(new MannFifoIO(width))
 
   val counter_init = 0.U((log2Ceil(depth) + 1).W)
 
