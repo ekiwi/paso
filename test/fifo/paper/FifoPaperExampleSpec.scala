@@ -25,22 +25,22 @@ class Fifo(val depth: Int) extends Module {
 
   val memWrite = io.pushDontPop && io.valid
   val memRead = !io.pushDontPop && io.valid
-  val lastOpIsRead = RegInit(true.B)
-  when(io.valid) { lastOpIsRead := memRead }
+  val lastRd = RegInit(true.B)
+  when(io.valid) { lastRd := memRead }
 
   // we simplified things quite a bit by requiring depth to be a power of two
-  val readPointer = RegInit(0.U(pointerWidth.W))
-  when(memRead) { readPointer := readPointer + 1.U }
-  val writePointer = RegInit(0.U(pointerWidth.W))
-  when(memWrite) { writePointer := writePointer + 1.U }
+  val rdPtr = RegInit(0.U(pointerWidth.W))
+  when(memRead) { rdPtr := rdPtr + 1.U }
+  val wrPtr = RegInit(0.U(pointerWidth.W))
+  when(memWrite) { wrPtr := wrPtr + 1.U }
 
-  val fifoEmpty = (readPointer === writePointer) && lastOpIsRead
-  val fifoFull = (readPointer === writePointer) && !lastOpIsRead
+  val fifoEmpty = (rdPtr === wrPtr) && lastRd
+  val fifoFull = (rdPtr === wrPtr) && !lastRd
   io.empty := fifoEmpty
   io.full := fifoFull
 
   val mem = SyncReadMem(depth, UInt(dataWidth.W))
-  val memAddr = Mux(memWrite, writePointer, readPointer)
+  val memAddr = Mux(memWrite, wrPtr, rdPtr)
   val memPort = mem(memAddr)
   io.dataOut := DontCare
   when(memWrite) { memPort := io.dataIn }
@@ -100,14 +100,14 @@ class FifoP(impl: Fifo) extends ProtocolSpec[FifoT] {
 
 class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
-    when(impl.readPointer === impl.writePointer) {
-      assert(spec.count === Mux(impl.lastOpIsRead, 0.U, impl.depth.U))
-    } .elsewhen(impl.writePointer > impl.readPointer) {
-      assert(spec.count === impl.writePointer - impl.readPointer)
+    when(impl.rdPtr === impl.wrPtr) {
+      assert(spec.count === Mux(impl.lastRd, 0.U, impl.depth.U))
+    } .elsewhen(impl.wrPtr > impl.rdPtr) {
+      assert(spec.count === impl.wrPtr - impl.rdPtr)
     } .otherwise {
-      assert(spec.count === impl.depth.U - (impl.readPointer - impl.writePointer))
+      assert(spec.count === impl.depth.U - (impl.rdPtr - impl.wrPtr))
     }
-    assert(spec.read === impl.readPointer)
+    assert(spec.read === impl.rdPtr)
     forall(0 until impl.depth) { ii =>
       when(spec.count > ii) {
         assert(impl.mem(ii + spec.read) === spec.mem(ii + spec.read))
