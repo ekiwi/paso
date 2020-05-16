@@ -1,7 +1,8 @@
-package fifo
+package fifo.paper
 
 import chisel3._
 import chisel3.util._
+import fifo.BasejumpFifoIO
 import org.scalatest._
 import paso._
 
@@ -99,6 +100,13 @@ class FifoP(impl: Fifo) extends ProtocolSpec[FifoT] {
 
 class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
+    when(impl.readPointer === impl.writePointer) {
+      assert(spec.count === Mux(impl.lastOpIsRead, 0.U, impl.depth.U))
+    } .elsewhen(impl.writePointer > impl.readPointer) {
+      assert(spec.count === impl.writePointer - impl.readPointer)
+    } .otherwise {
+      assert(spec.count === impl.depth.U - (impl.readPointer - impl.writePointer))
+    }
     assert(spec.read === impl.readPointer)
     forall(0 until impl.depth) { ii =>
       when(spec.count > ii) {
@@ -106,8 +114,6 @@ class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
       }
     }
   }
-
-  //invariances { dut => assert(dut.count <= dut.depth.U) }
 }
 
 class FifoPaperExampleSpec extends FlatSpec {
