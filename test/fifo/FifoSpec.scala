@@ -121,6 +121,72 @@ class ShiftProof(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends Proof
 }
 
 
+
+class UntimedSequentialFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedModule {
+  require(depth > 0)
+  require(isPow2(depth))
+  val mem = Mem(depth, dataType)
+  val count = RegInit(UInt((log2Ceil(depth) + 1).W), 0.U)
+  val read = RegInit(UInt(log2Ceil(depth).W), 0.U)
+  val full = count === depth.U
+  val empty = count === 0.U
+
+  val push = fun("push").in(dataType).when(!full) { in =>
+    mem(read + count) := in
+    count := count + 1.U
+  }
+
+  val pop = fun("pop").out(dataType).when(!empty) { out =>
+    out := mem(read)
+    count := count - 1.U
+    read := read + 1.U
+  }
+
+  val idle = fun("idle"){}
+}
+
+class BasejumpFifoProtocols(impl: BasejumpFifo) extends ProtocolSpec[UntimedSequentialFifo[UInt]] {
+  val spec = new UntimedSequentialFifo[UInt](impl.depth, UInt(impl.dataWidth.W))
+
+  protocol(spec.push)(impl.io) { (clock, dut, in) =>
+    dut.pushDontPop.set(true.B)
+    dut.valid.set(true.B)
+    dut.dataIn.set(in)
+    dut.full.expect(false.B)
+    clock.step()
+  }
+
+  protocol(spec.pop)(impl.io) { (clock, dut, out) =>
+    dut.pushDontPop.set(false.B)
+    dut.valid.set(true.B)
+    dut.empty.expect(false.B)
+    clock.stepAndFork()
+    dut.pushDontPop.set(DontCare)
+    dut.valid.set(DontCare)
+    dut.dataIn.set(DontCare)
+    dut.dataOut.expect(out)
+    clock.step()
+  }
+
+  protocol(spec.idle)(impl.io) { (clock, dut) =>
+    dut.valid.set(false.B)
+    clock.step()
+  }
+}
+
+class BasejumpFifoInductive(impl: BasejumpFifo, spec: UntimedSequentialFifo[UInt]) extends ProofCollateral(impl, spec) {
+  mapping { (impl, spec) =>
+    assert(spec.read === impl.readPointer)
+    forall(0 until impl.depth) { ii =>
+      when(spec.count > ii) {
+        assert(impl.mem(ii + spec.read) === spec.mem(ii + spec.read))
+      }
+    }
+  }
+
+    //invariances { dut => assert(dut.count <= dut.depth.U) }
+}
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FifoSpec extends FlatSpec {
@@ -152,4 +218,9 @@ class FifoSpec extends FlatSpec {
   "ShiftFifo with bug" should "not fail BMC" in {
     Paso(new ShiftRegisterFifo(8, 8, true))(new FifoProtocols(_)).bmc(10)
   }
+
+  "BasejumpFifo" should "refine its spec" in {
+    Paso(new BasejumpFifo(8, 8))(new BasejumpFifoProtocols(_)).proof()
+  }
+
 }
