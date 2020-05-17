@@ -64,8 +64,7 @@ object Paso {
 
   private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default): Boolean = {
     // warm up
-    val elaborated1 = Elaboration()[I, S](impl, spec, subspecs, inv)
-    val elaborated2 = Elaboration()[I, S](impl, spec, subspecs, inv)
+    val warmup = (0 until 10).map{ _=> Elaboration()[I, S](impl, spec, subspecs, inv) }
     // actual time
     val elaborated = Elaboration()[I, S](impl, spec, subspecs, inv)
     VerificationProblem.verify(elaborated, opt)
