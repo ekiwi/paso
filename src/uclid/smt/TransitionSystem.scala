@@ -106,6 +106,7 @@ trait IsModelChecker {
   val name: String
   val supportsUF: Boolean = false
   val supportsQuantifiers: Boolean = false
+  def getSolverTime: Long
   def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None, defined: Seq[DefineFun] = Seq(), uninterpreted: Seq[Symbol] = Seq()): ModelCheckResult
 }
 

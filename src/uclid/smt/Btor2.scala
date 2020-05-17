@@ -106,6 +106,8 @@ abstract class ModelChecker extends IsModelChecker {
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true
+  override def getSolverTime: Long = solverTime
+  private var solverTime: Long = 0
   override def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None, defined: Seq[DefineFun] = Seq(), uninterpreted: Seq[Symbol] = Seq()): ModelCheckResult = {
     assert(defined.isEmpty, "UF not supported!")
     assert(uninterpreted.isEmpty, "UF not supported!")
@@ -126,11 +128,13 @@ abstract class ModelChecker extends IsModelChecker {
     btorWrite.close()
 
     // execute model checker
+    val start = System.nanoTime()
     val cmd = makeArgs(kMax, Some(fileName)).mkString(" ")
     val stdout = mutable.ArrayBuffer[String]()
     val stderr = mutable.ArrayBuffer[String]()
     val ret = cmd ! ProcessLogger(stdout.append(_), stderr.append(_))
     if(stderr.nonEmpty) { println(s"ERROR: ${stderr.mkString("\n")}") }
+    solverTime += System.nanoTime() - start
 
     // write stdout to file for debugging
     val res: Seq[String] = stdout
@@ -152,6 +156,7 @@ abstract class ModelChecker extends IsModelChecker {
   }
 
   private def checkWithPipe(sys: TransitionSystem, kMax: Int): ModelCheckResult = {
+    throw new RuntimeException()
     val checker = new uclid.InteractiveProcess(makeArgs(kMax).toList)
     val lines = Btor2.serialize(sys, !supportsOutput)
     lines.foreach{l => checker.writeInput(l) ; println(l)}

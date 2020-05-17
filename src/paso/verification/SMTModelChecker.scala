@@ -35,6 +35,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
   override val name: String = "SMTModelChecker with " + solver.name
   override val supportsUF: Boolean = true
   override val supportsQuantifiers: Boolean = solver.supportsQuantifiers
+  override def getSolverTime: Long = solver.solverTime
 
   override def check(sys: smt.TransitionSystem, kMax: Int, fileName: Option[String] = None, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
     require(kMax > 0 && kMax <= 2000, s"unreasonable kMax=$kMax")

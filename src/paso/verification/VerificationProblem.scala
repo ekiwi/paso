@@ -63,6 +63,8 @@ case class VerificationProblem(impl: smt.TransitionSystem, spec: Spec, subspecs:
 
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
+    val start = System.nanoTime()
+
     // reset any simplifications that might be globally cached
     SMTSimplifier.clear()
     // check to see if the mappings contain quantifiers
@@ -75,6 +77,18 @@ object VerificationProblem {
       new VerifyBaseCase(opt.baseCaseSolver),
       new VerifyMethods(opt.oneMethodAtATime, opt.modelChecker, quantifierFree))
     tasks.foreach(_.run(p))
+
+    val end = System.nanoTime()
+    val solverTimes = tasks.map(_.solverTime).toSeq
+    val totalSolverTime = solverTimes.sum
+    val totalTime = end - start
+    val finalSolver = tasks.last.solverName
+
+    def ms(i: Long): Long = i / 1000 / 1000
+    println(s"Total time: ${ms(totalTime)}ms")
+    println(s"Solver time: ${ms(totalSolverTime)}ms ($finalSolver)")
+    println(s"Overhead: ${ms(totalTime - totalSolverTime)}ms")
+    println(solverTimes.map(t => s"${ms(t)}ms").mkString(" "))
 
     // check all our simplifications
     if(opt.checkSimplifications) {
@@ -103,6 +117,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
   }
 
   override val solverName: String = checker.name
+  override def solverTime: Long = checker.getSolverTime
 
   private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
     val reducedSys = if(checker.supportsUF) { sys } else {
@@ -204,6 +219,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
   }
 
   override val solverName: String = checker.name
+  override def solverTime: Long = checker.getSolverTime
 
   private def runCheck(k: Int, sys: smt.TransitionSystem, foos: Seq[smt.DefineFun], uf: Seq[smt.Symbol]): (smt.ModelCheckResult, smt.TransitionSystemSimulator) = {
     val reducedSys = if(checker.supportsUF) { sys } else {
@@ -353,6 +369,7 @@ class RefEqHashMap[A <: AnyRef, B] extends scala.collection.mutable.HashMap[A, B
 class VerifyMapping(sol: paso.SolverName, quantifierFree: Boolean) extends VerificationTask with SMTHelpers with HasSolver {
   val solver = getSolver(sol, quantifierFree)
   override val solverName: String = solver.name
+  override def solverTime: Long = solver.solverTime
 
   override protected def execute(p: VerificationProblem): Unit = {
     if(p.mapping.isEmpty) return // early return for empty mapping
@@ -397,6 +414,7 @@ class VerifyMapping(sol: paso.SolverName, quantifierFree: Boolean) extends Verif
 class VerifyBaseCase(sol: paso.SolverName) extends VerificationTask with SMTHelpers with HasSolver {
   val solver = getSolver(sol, quantifierFree = true)
   override val solverName: String = solver.name
+  override def solverTime: Long = solver.solverTime
 
   override protected def execute(p: VerificationProblem): Unit = {
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
@@ -411,6 +429,7 @@ class VerifyBaseCase(sol: paso.SolverName) extends VerificationTask with SMTHelp
 
 abstract class VerificationTask {
   val solverName: String
+  def solverTime: Long
   protected def execute(p: VerificationProblem): Unit
   def run(p: VerificationProblem): Unit = {
     val start = System.nanoTime()

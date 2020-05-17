@@ -5,6 +5,7 @@ import uclid.smt.SExprParser
 trait Solver {
   val name: String
   val supportsQuantifiers: Boolean
+  var solverTime: Long = 0
   protected val ctx: smt.SMTLIB2Interface
 
   def callCount: Int = pCallCount
@@ -13,7 +14,12 @@ trait Solver {
   def push(): Unit = ctx.push()
   def pop(): Unit = ctx.pop()
   def assert(e: smt.Expr): Unit = ctx.assert(e)
-  def check(produceModel: Boolean = true): smt.SolverResult = ctx.check(produceModel)
+  def check(produceModel: Boolean = true): smt.SolverResult = {
+    val start = System.nanoTime()
+    val r = ctx.check(produceModel)
+    solverTime += System.nanoTime() - start
+    r
+  }
   /** (define-fun ...) */
   def define(f: smt.DefineFun): Unit = {
     require(!ctx.variables.contains(f.id.id))
@@ -62,11 +68,13 @@ trait Solver {
   }
 
   def check(e: smt.Expr): smt.SolverResult = {
+    val start = System.nanoTime()
     ctx.push()
     ctx.assert(e)
     pCallCount += 1
     val res = ctx.check()
     ctx.pop()
+    solverTime += System.nanoTime() - start
     res
   }
 }
