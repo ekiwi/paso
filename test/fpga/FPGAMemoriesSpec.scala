@@ -183,30 +183,36 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
   require(impl.d.writePorts == 2)
   require(impl.d.readPorts == 4)
 
+  invariances { impl =>
+    // all mems in a write bank contain the same value
+    forall(0 until impl.d.size.depth.toInt) { addr =>
+      (0 until 2).foreach { writeBank =>
+        val value = impl.banks(writeBank).banks(0).mem(addr)
+        assert(impl.banks(writeBank).banks(1).mem(addr) === value)
+        assert(impl.banks(writeBank).banks(2).mem(addr) === value)
+        assert(impl.banks(writeBank).banks(3).mem(addr) === value)
+        assert(impl.banks(writeBank).banks(4).mem(addr) === value)
+      }
+    }
+  }
+
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ addr =>
       when(spec.valid(addr)) {
         // if the address was recently written, the data is still in flight
         when(addr === impl.writeDelayed(0)._2) {
           assert(spec.mem(addr) === impl.writeDelayed(0)._1)
-          val otherWriteBank = impl.banks(1).banks(0)
+          //val otherWriteBank = impl.banks(1).banks(0)
           // TODO: support referring to output register of  SyncMems
-          assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
+          //assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
         } .elsewhen(addr === impl.writeDelayed(1)._2) {
           assert(spec.mem(addr) === impl.writeDelayed(1)._1)
-          val otherWriteBank = impl.banks(0).banks(0)
+          //val otherWriteBank = impl.banks(0).banks(0)
           // TODO: support referring to output register of  SyncMems
-          assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
+          //assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
         } .otherwise {
           val data = impl.banks.map(_.banks(0).mem(addr)).reduce((a, b) => a ^ b)
           assert(spec.mem(addr) === data)
-          // all read banks in a write bank have the same value
-          (0 until 2).foreach { writeBank =>
-            val value = impl.banks(writeBank).banks(0).mem(addr)
-            (1 until impl.readPortsPerBank).foreach { readBank =>
-              assert(impl.banks(writeBank).banks(readBank).mem(addr) === value)
-            }
-          }
         }
       }
     }
@@ -241,7 +247,7 @@ class FPGAMemoriesSpec extends FlatSpec {
     def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
     def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCCVC4, new LaForest2W4RXorInductive(_, _))
+    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCBotr, new LaForest2W4RXorInductive(_, _))
   }
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
