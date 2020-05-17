@@ -107,4 +107,8 @@ class FifoPaperExampleSpec extends FlatSpec {
   "Fifo" should "refine its spec" in {
     Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
   }
+
+  "Fifo" should "bmc" in {
+    Paso(new Fifo(8))(new FifoP(_)).bmc(1)
+  }
 }
