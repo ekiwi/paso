@@ -253,8 +253,10 @@ case class Elaboration() {
 
     // Chisel elaboration for implementation and spec
     val implChisel = chiselElaborationImpl(impl)
+    val pauseImpl = System.nanoTime()
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
     val subspecList = findSubspecs(implChisel.instance, specChisel.untimed).subspecs
+    val resumeImpl = System.nanoTime()
 
     // Firrtl Compilation
     val implementation = elaborateImpl(implChisel, subspecList)
@@ -282,17 +284,20 @@ case class Elaboration() {
 
     if(true) {
       val total = endBinding - start
-      val dImpl = endImplementation - start
-      val dSpec = endSpec - endImplementation
-      val dSubspec = endSubSpec - endSpec
-      val dBinding = endBinding - endSubSpec
+      val dImpl = (pauseImpl - start) + (endImplementation - resumeImpl)
+//      val dImpl = endImplementation - start
+//      val dSpec = endSpec - endImplementation
+//      val dSubspec = endSubSpec - endSpec
+//      val dBinding = endBinding - endSubSpec
       def p(i: Long): Long = i * 100 / total
       def ms(i: Long): Long = i / 1000 / 1000
-      println(s"Total Elaboration Time: ${ms(total)}ms")
-      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dSubspec)}% Subspecs, ${p(dBinding)}% Invariances + Mapping")
-      val other = total - firrtlCompilerTime - chiselElaborationTime
-      println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
-      println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
+      println(s"Impl Elaboration Time: ${ms(dImpl)}ms")
+      println(s"Spec Elaboration Time: ${ms(total-dImpl)}ms")
+//      println(s"Total Elaboration Time: ${ms(total)}ms")
+//      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dSubspec)}% Subspecs, ${p(dBinding)}% Invariances + Mapping")
+//      val other = total - firrtlCompilerTime - chiselElaborationTime
+//      println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
+//      println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
     }
 
 
