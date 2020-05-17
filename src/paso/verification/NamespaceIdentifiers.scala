@@ -134,6 +134,7 @@ object substituteSmt {
     case s : smt.ArraySelectOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)))
     case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, map), index = s.index.map(apply(_, map)), value = apply(s.value, map))
     case s : smt.FunctionApplication => s.copy(args = s.args.map(apply(_, map)))
+    case s : smt.ConstArray => s.copy(expr = apply(s.expr, map))
     case other => throw new NotImplementedError(s"TODO: deal with $other")
   }})
   def apply[E <: smt.Expr](a: Assertion, map: Map[smt.Expr, E]): Assertion = a match {
