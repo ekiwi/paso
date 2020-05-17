@@ -20,9 +20,9 @@ class Fifo(val depth: Int) extends Module {
   val lastRd = RegInit(true.B)
   when(io.valid) { lastRd := memRead }
 
-  val wrPtr = RegInit(0.U(3.W))
+  val wrPtr = RegInit(0.U(log2Ceil(depth).W))
   when(memWrite) { wrPtr := wrPtr + 1.U }
-  val rdPtr = RegInit(0.U(3.W))
+  val rdPtr = RegInit(0.U(log2Ceil(depth).W))
   val empty = (rdPtr === wrPtr) && lastRd
   when(memRead && !empty) { rdPtr := rdPtr + 1.U }
 
@@ -105,7 +105,7 @@ class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
 
 class FifoPaperExampleSpec extends FlatSpec {
   "Fifo" should "refine its spec" in {
-    Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
+    Paso(new Fifo(32))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
   }
 
   "Fifo" should "bmc" in {
