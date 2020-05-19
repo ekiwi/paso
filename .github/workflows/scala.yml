@@ -13,9 +13,74 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+
+    - name: cache yosys
+      id: cache-yosys
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-yosys
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yosys.sh') }}
+    - name: yosys
+      if: steps.cache-yosys.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yosys.sh
+
+    - name: cache yices
+      id: cache-yices
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-yices
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}
+    - name: yices
+      if: steps.cache-yices.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yices.sh
+
+    - name: cache cvc4
+      id: cache-cvc4
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-cvc4
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/cvc4.sh') }}
+    - name: cvc4
+      if: steps.cache-cvc4.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./cvc4.sh
+
+    - name: cache btor
+      id: cache-btor
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-btor
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/btor.sh') }}
+    - name: btor
+      if: steps.cache-btor.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./btor.sh
+
+    - name: cache z3
+      id: cache-z3
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-z3
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/z3.sh') }}
+    - name: z3
+      if: steps.cache-z3.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./z3.sh
+
+
     - name: Set up JDK 1.8
       uses: actions/setup-java@v1
       with:
         java-version: 1.8
-    - name: Run tests
-      run: sbt test
+
+    - name: Add Binaries To Path
+      run: echo "::add-path::$GITHUB_WORKSPACE/ext/bin-yosys/"
+      run: echo "::add-path::$GITHUB_WORKSPACE/ext/bin-yices/"
+      run: echo "::add-path::$GITHUB_WORKSPACE/ext/bin-cvc4/"
+      run: echo "::add-path::$GITHUB_WORKSPACE/ext/bin-btor/"
+      run: echo "::add-path::$GITHUB_WORKSPACE/ext/bin-z3/"
+
+    - name: Small Example Tests
+      run: sbt "testOnly examples.**"
