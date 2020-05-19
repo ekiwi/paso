@@ -1,0 +1,134 @@
+name: Paso CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+
+  build-dependencies:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: cache yosys
+      id: cache-yosys
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-yosys
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yosys.sh') }}-3
+    - name: yosys
+      if: steps.cache-yosys.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yosys.sh
+
+    - name: cache yices
+      id: cache-yices
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-yices
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}-3
+    - name: yices
+      if: steps.cache-yices.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yices.sh
+
+    - name: cache cvc4
+      id: cache-cvc4
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-cvc4
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/cvc4.sh') }}-3
+    - name: cvc4
+      if: steps.cache-cvc4.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./cvc4.sh
+
+    - name: cache btor
+      id: cache-btor
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-btor
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/btor.sh') }}-3
+    - name: btor
+      if: steps.cache-btor.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./btor.sh
+
+    - name: cache z3
+      id: cache-z3
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-z3
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/z3.sh') }}-3
+    - name: z3
+      if: steps.cache-z3.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./z3.sh
+
+    - name: Move Binaries to Common Dir
+      run: |
+       mkdir -p ext/bin
+       cp ext/bin-yosys/* ext/bin/
+       cp ext/bin-yices/* ext/bin/
+       cp ext/bin-cvc4/*  ext/bin/
+       cp ext/bin-btor/*  ext/bin/
+       cp ext/bin-z3/*    ext/bin/
+       ls ext/bin/
+
+    - name: Upload Binaries
+      uses: actions/upload-artifact@v2
+      with:
+        name: bin
+        path: ext/bin/
+
+  build:
+    runs-on: ubuntu-latest
+    needs: build-dependencies
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Download Binaries
+      uses: actions/download-artifact@v2
+      with:
+        name: bin
+        path: ext/bin/
+
+    - name: Add Binaries To Path
+      run: |
+       ls $GITHUB_WORKSPACE/ext/bin/
+       echo "::add-path::$GITHUB_WORKSPACE/ext/bin/"
+
+    - name: Print Dependency Versions and Paths
+      run: |
+       echo "Yosys"
+       yosys -V
+       which yosys
+       echo ""
+       echo "Yices"
+       yices-smt2 --version
+       which yices-smt2
+       echo ""
+       echo "CVC4"
+       cvc4 --version
+       which cvc4
+       echo ""
+       echo "Btormc"
+       btormc --version --copyright
+       which btormc
+       echo ""
+       echo "Z3"
+       z3 --version
+       which z3
+
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v1
+      with:
+        java-version: 1.8
+
+    - name: Test Examples
+      run: sbt "testOnly examples.**"

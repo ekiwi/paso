@@ -1,0 +1,7 @@
+*.zip
+/boolector-*/
+/yices2-*/
+/yosys-*/
+/z3-*/
+/cvc4
+/bin-*/
