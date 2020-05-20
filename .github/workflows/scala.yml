@@ -98,6 +98,9 @@ jobs:
         name: bin
         path: ext/bin/
 
+    - name: Make Binaries Executable
+      run: chmod +x $GITHUB_WORKSPACE/ext/bin/*
+
     - name: Add Binaries To Path
       run: |
        ls $GITHUB_WORKSPACE/ext/bin/
