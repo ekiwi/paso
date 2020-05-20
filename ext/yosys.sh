@@ -22,5 +22,5 @@ make -j`nproc`
 
 # copy
 cd ..
-mkdir -p bin-z3
-cp yosys-yosys-0.9/yosys bin-z3/
+mkdir -p bin-yosys
+cp yosys-yosys-0.9/yosys bin-yosys/

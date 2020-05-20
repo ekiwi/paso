@@ -14,6 +14,16 @@ jobs:
     steps:
     - uses: actions/checkout@v2
 
+    - name: cache yosys
+      id: cache-yosys
+      uses: actions/cache@v1
+      with:
+        path: ext/bin-yosys
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yosys.sh') }}
+    - name: yosys
+      if: steps.cache-yosys.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yosys.sh
 
     - name: cache yices
       id: cache-yices
