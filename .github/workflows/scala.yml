@@ -81,3 +81,6 @@ jobs:
        echo "::add-path::$GITHUB_WORKSPACE/ext/bin-cvc4/"
        echo "::add-path::$GITHUB_WORKSPACE/ext/bin-btor/"
        echo "::add-path::$GITHUB_WORKSPACE/ext/bin-z3/"
+
+    - name: Test Examples
+      run: sbt "testOnly examples.**"
