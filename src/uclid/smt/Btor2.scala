@@ -71,7 +71,7 @@ class BtormcModelChecker extends ModelChecker {
     }
   }
   override protected def isFail(ret: Int, res: Seq[String]): Boolean = {
-    assert(ret == 0, "We expect btormc to always return 0. Maybe there was an error:\n" + res.mkString("\n"))
+    assert(ret == 0, s"We expect btormc to always return 0, not $ret. Maybe there was an error:\n" + res.mkString("\n"))
     super.isFail(ret, res)
   }
 }
