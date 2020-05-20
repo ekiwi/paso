@@ -41,6 +41,8 @@ object FirrtlToFormal extends BackendCompilationUtilities {
     circuit.main
   }
 
+  private val SIGSEGV = 139
+
   private def makeBtor(testDir: File, module: String): (Boolean, String) = {
     val scriptFileName = s"${testDir.getAbsolutePath}/yosys_script"
     val btorFileName = s"${testDir.getAbsolutePath}/$module.btor2"
@@ -59,6 +61,10 @@ object FirrtlToFormal extends BackendCompilationUtilities {
     val resultFileName = testDir.getAbsolutePath + "/yosys_results"
     val ret = (s"yosys -s $scriptFileName" #> new File(resultFileName)).!
     val success = (ret == 0)
+
+    // try to diagnose yosys crash
+    if(ret == SIGSEGV) println("ERROR: yosys crashed because of an address boundary error.")
+
     (success, btorFileName)
   }
 
