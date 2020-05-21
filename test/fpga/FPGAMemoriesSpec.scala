@@ -241,7 +241,7 @@ class FPGAMemoriesSpec extends FlatSpec {
     Paso(makeLVTMem(data.size))(new Mem2W4RProtocol(_)).proof(Paso.MCCVC4, new LaForest2W4RInductive(_, _))
   }
 
-  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" in {
+  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
     def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))

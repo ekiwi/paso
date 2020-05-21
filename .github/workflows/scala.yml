@@ -136,6 +136,12 @@ jobs:
     - name: Test Examples
       run: sbt "testOnly examples.**"
 
+    - name: Test Fifos
+      run: sbt "testOnly fifo.**"
+
+    - name: Test Fpga Memories
+      run: sbt "testOnly fpga.**"
+
     - name: Publish to Github Packages
       run: ./publish/publish.sh
       env:

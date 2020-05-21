@@ -192,11 +192,11 @@ class BasejumpFifoInductive(impl: BasejumpFifo, spec: UntimedSequentialFifo[UInt
 class FifoSpec extends FlatSpec {
 
   "CircularPointerFifo" should "refine its spec" in {
-    val depth = 128
-    val width = 32
+    val depth = 8
+    val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCZ3 ,new CircularProof(_, _))
+    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
   }
 
   "CircularPointerFifo with readDelay=1" should "refine its spec" in {
@@ -204,7 +204,7 @@ class FifoSpec extends FlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(new CircularProof(_, _))
+    Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
   }
 
   "ShiftFifo" should "refine its spec" in {
@@ -212,14 +212,14 @@ class FifoSpec extends FlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(new ShiftProof(_, _))
+    Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new ShiftProof(_, _))
   }
 
-  "ShiftFifo with bug" should "not fail BMC" in {
+  "ShiftFifo with bug" should "not fail BMC" ignore {
     Paso(new ShiftRegisterFifo(8, 8, true))(new FifoProtocols(_)).bmc(10)
   }
 
-  "BasejumpFifo" should "refine its spec" in {
+  "BasejumpFifo" should "refine its spec" ignore {
     Paso(new BasejumpFifo(8, 8))(new BasejumpFifoProtocols(_)).proof()
   }
 

@@ -108,7 +108,7 @@ class FifoPaperExampleSpec extends FlatSpec {
     Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
   }
 
-  "Fifo" should "bmc" in {
+  "Fifo" should "bmc" ignore {
     Paso(new Fifo(8))(new FifoP(_)).bmc(1)
   }
 }
