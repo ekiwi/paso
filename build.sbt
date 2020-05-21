@@ -1,8 +1,4 @@
 name := "paso"
-// the version is derrived from the git tag:
-// https://github.com/dwijnand/sbt-dynver
-//version := "0.1-SNAPSHOT"
-dynverSeparator in ThisBuild := "-"
 scalaVersion := "2.12.10"
 
 resolvers ++= Seq(Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("releases"))
@@ -43,6 +39,15 @@ developers := List(
 // https://github.community/t5/GitHub-API-Development-and/Github-Package-snapshot-build-number-not-updating/td-p/49012
 packageDoc / publishArtifact := false
 packageSrc / publishArtifact := false
+
+// the version is derrived from the git tag:
+// https://github.com/dwijnand/sbt-dynver
+//version := "0.1-SNAPSHOT"
+// replaceing '+' with '-' seems to fix some problems with pushing the jar
+// from a github action
+// java.io.IOException: Error writing to server
+// at sun.net.www.protocol.http.HttpURLConnection.writeRequests(HttpURLConnection.java:700)
+dynverSeparator in ThisBuild := "-"
 
 // derrived from looking at:
 // https://github.com/djspiewak/sbt-github-packages/blob/master/src/main/scala/sbtghpackages/GitHubPackagesPlugin.scala
