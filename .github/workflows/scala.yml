@@ -146,6 +146,6 @@ jobs:
       run: sbt -mem 1500 "testOnly aes.TinyAESSpec"
 
     - name: Publish to Github Packages
-      run: ./publish/publish.sh
+      run: sbt publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

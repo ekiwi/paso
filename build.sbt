@@ -22,24 +22,29 @@ resourceDirectory in Test := baseDirectory.value / "test" / "resources"
 // publication settings
 publishMavenStyle := true
 publishArtifact in Test := false
-pomIncludeRepository := { x => false }
-pomExtra := (
-<url>https://github.com/ekiwi/paso</url>
-<licenses>
-  <license>
-    <name>BSD-style</name>
-    <url>http://www.opensource.org/licenses/bsd-license.php</url>
-    <distribution>repo</distribution>
-  </license>
-</licenses>
-<scm>
-  <url>https://github.com/ekiwi/paso.git</url>
-  <connection>scm:git:github.com/ekiwi/paso.git</connection>
-</scm>
-<developers>
-  <developer>
-    <id>ekiwi</id>
-    <name>Kevin Laeufer</name>
-  </developer>
-</developers>
+pomIncludeRepository := { _ => false }
+homepage := Some(url("https://github.com/ekiwi/paso"))
+licenses := Seq("BSD-style" -> url("http://www.opensource.org/licenses/bsd-license.php"))
+scmInfo := Some(
+  ScmInfo(
+    url("https://github.com/ekiwi/paso.git"),
+    "scm:git:git@github.com:ekiwi/paso.git"
+  )
 )
+developers := List(
+  Developer("ekiwi", "Kevin Laeufer", "laeufer@berkeley.edu", url("https://github.com/ekiwi"))
+)
+
+// it seems like currently github packages does not support SNAPSHOT
+// releases for source and docs:
+// https://github.community/t5/GitHub-API-Development-and/Github-Package-snapshot-build-number-not-updating/td-p/49012
+packageDoc / publishArtifact := false
+packageSrc / publishArtifact := false
+
+// derrived from looking at:
+// https://github.com/djspiewak/sbt-github-packages/blob/master/src/main/scala/sbtghpackages/GitHubPackagesPlugin.scala
+val realm = "GitHub Package Registry"
+val ghurl = "https://maven.pkg.github.com/ekiwi/paso"
+publishTo := Some(realm at ghurl)
+credentials ++= sys.env.get("GITHUB_TOKEN").map(t => Credentials(realm, "maven.pkg.github.com", "_", t))
+
