@@ -1,7 +1,7 @@
 # Scala
-/project/
 /target/
-
+/project/project/
+/project/target/
 
 # Intellij Idea
 /.idea/
