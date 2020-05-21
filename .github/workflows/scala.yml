@@ -135,3 +135,8 @@ jobs:
 
     - name: Test Examples
       run: sbt "testOnly examples.**"
+
+    - name: Publish to Github Packages
+      run: ./publish/publish.sh
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
