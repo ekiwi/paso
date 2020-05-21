@@ -1,6 +1,8 @@
 name: Paso Package CI
 
-on: release
+on:
+  push:
+    branches: [ master ]
 
 jobs:
   publish:
