@@ -2,6 +2,7 @@ name := "paso"
 // the version is derrived from the git tag:
 // https://github.com/dwijnand/sbt-dynver
 //version := "0.1-SNAPSHOT"
+dynverSeparator in ThisBuild := "-"
 scalaVersion := "2.12.10"
 
 resolvers ++= Seq(Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("releases"))
