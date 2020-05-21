@@ -142,6 +142,9 @@ jobs:
     - name: Test Fpga Memories
       run: sbt "testOnly fpga.**"
 
+    - name: Test TinyAES
+      run: sbt -mem 1500 "testOnly aes.TinyAESSpec"
+
     - name: Publish to Github Packages
       run: ./publish/publish.sh
       env:

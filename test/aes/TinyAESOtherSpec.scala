@@ -110,10 +110,10 @@ class TinyAESOtherSpec extends FlatSpec {
     Paso(new TinyAES128Debug)(new TinyAESDebugProtocol(_))(new SubSpecs(_, _) {
       replace(impl.r1)(new TinyAESRoundProtocol(_)).bind(spec.round)
       replace(impl.a1)(new TinyAESExpandKeyProtocol(_)).bind(spec.expand)
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
   "TinyAES128DebugJustOneRound" should "correctly connect all submodules" in {
-    Paso(new TinyAES128DebugJustOneRound)(new TinyAESDebugJustOneRoundProtocol(_)).proof()
+    Paso(new TinyAES128DebugJustOneRound)(new TinyAESDebugJustOneRoundProtocol(_)).proof(Paso.MCYices2)
   }
 }

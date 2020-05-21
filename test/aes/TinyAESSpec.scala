@@ -253,7 +253,7 @@ class TinyAESSpec extends FlatSpec {
       replace(impl.finalRound)(new TinyAESRoundProtocol(_)).bind(spec.finalRound)
       impl.rounds.foreach(r => replace(r)(new TinyAESRoundProtocol(_)).bind(spec.round))
       impl.expandKey.zip(spec.expand).foreach{ case (i,s) => replace(i)(new TinyAESExpandKeyProtocol(_)).bind(s) }
-    }).proof()
+    }).proof(Paso.MCYices2)
   }
 
 }
