@@ -13,6 +13,9 @@ libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.2.0-RC2" % "test"
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0"
 libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources()
 
+// execute test in serial for now to avoid race conditions on shared files like test.btor
+parallelExecution := false
+
 scalaSource in Compile := baseDirectory.value / "src"
 scalaSource in Test := baseDirectory.value / "test"
 resourceDirectory in Test := baseDirectory.value / "test" / "resources"
