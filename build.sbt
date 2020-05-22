@@ -1,4 +1,5 @@
 name := "paso"
+organization := "edu.berkeley.cs"
 scalaVersion := "2.12.10"
 
 resolvers ++= Seq(Resolver.sonatypeRepo("snapshots"), Resolver.sonatypeRepo("releases"))
