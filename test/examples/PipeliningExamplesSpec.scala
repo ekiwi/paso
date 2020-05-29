@@ -363,6 +363,13 @@ class PipeliningExamplesWithMulSpec extends FlatSpec {
     assert(fail.getMessage.contains("Failed to verify mul on Mul32Spec"))
   }
 
+  "A pipelined 32-bit multiplier with bug" should "fail bmc" in {
+    val fail = intercept[AssertionError] {
+      Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).bmc(1)
+    }
+    assert(fail.getMessage.contains("Failed to verify PipelinedMul against Mul32Spec"))
+  }
+
   "A pipelined 32-bit mac" should "refine its spec" in {
     Paso(new PipelinedMac)(new PipelinedMacProtocol(_)).proof()
   }
