@@ -119,7 +119,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     }
     val defined = if(checker.supportsUF) { foos } else { Seq() }
 
-    reducedSys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
+    //reducedSys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
 
     val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = defined, uninterpreted = uf)
     val sim = new smt.TransitionSystemSimulator(reducedSys, functionDefinitions = defined)
@@ -191,7 +191,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
 
     // combine systems
     val sys = smt.TransitionSystem.merge(initImpl, Seq(topTransitionSystem.sys) ++ subTransitionsSystems.map(_.sys))
-    sys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
+    //sys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
     val (res, sim) = runCheck(kMax, sys, foos ++ toplevelFoos, ufs)
 
     // find failing property and print
