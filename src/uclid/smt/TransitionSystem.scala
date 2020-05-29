@@ -350,7 +350,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     expectedBad match {
       case None => assert(failed.isEmpty, failedPropertiesMsg)
       case Some(props) =>
-        assert(props.subsetOf(failed.toSet), s"Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")
+        if(!props.subsetOf(failed.toSet)) {
+          println(s"In step #$index: Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed");
+        }
+        //assert(props.subsetOf(failed.toSet), s"In step #$index: Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")
         println(failedPropertiesMsg)
     }
 
