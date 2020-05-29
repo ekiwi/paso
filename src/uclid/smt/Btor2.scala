@@ -304,7 +304,10 @@ object Btor2Serializer {
 
     // define bad states, constraints and fairness properties
     val lbls = Seq("constraint" -> sys.constraints, "bad" -> sys.bad, "fair" -> sys.fair)
-    lbls.foreach { case (lbl, exprs) => exprs.foreach{ e => line(s"$lbl ${s(e)}") } }
+    lbls.foreach { case (lbl, exprs) => exprs.zipWithIndex.foreach { case(e, i) =>
+      comment(s"$lbl$i := $e")
+      line(s"$lbl ${s(e)}") 
+    }}
 
     lines
   }
