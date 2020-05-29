@@ -314,7 +314,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         case None => throw new NotImplementedError(s"State $state without a next function is not supported")
       }
       (ii, value)
-    }
+    }.toVector
 
     val newMemValues = memStates.map { case (state, ii) =>
       val value = state.next match {
@@ -322,7 +322,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         case None => throw new NotImplementedError(s"State $state without a next function is not supported")
       }
       (ii, value)
-    }
+    }.toVector
 
     // make sure constraints are not violated
     def simpl(e: Expr): Expr = SMTSimplifier.simplify(e) // TODO: this uses code outside of uclid...
