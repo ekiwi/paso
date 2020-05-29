@@ -111,7 +111,7 @@ trait IsModelChecker {
 
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
-class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128, functionDefinitions: Seq[DefineFun] = Seq()) {
+class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 128, functionDefinitions: Seq[DefineFun] = Seq(), printUpdates: Boolean = false) {
   private val inputs = sys.inputs.zipWithIndex.map{ case (input, index) => index -> input }
   private val stateOffset = inputs.size
   private val states = sys.states.zipWithIndex.map{ case (state, index) => index -> state.sym}
@@ -277,6 +277,8 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   def step(index: Int, inputs: Map[Int, BigInt], expectedBad: Option[Set[Int]] = None): Unit = {
     vcdWriter.foreach(_.wireChanged("Step", index))
 
+    if(printUpdates) println(s"\nSTEP ${index}")
+
     // dump state
     vcdWriter.foreach{v =>
       regStates.foreach{ case (state, i) => v.wireChanged(state.sym.id, data(i + stateOffset)) }
@@ -290,12 +292,13 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     inputs.foreach{ case(ii, value) =>
       data(ii) = value
       vcdWriter.foreach(_.wireChanged(dataIndexToName(ii), value))
+      if(printUpdates) println(s"I: ${dataIndexToName(ii)} <- $value")
     }
 
     // evaluate outputs
     val newOutputs = sys.outputs.zipWithIndex.map { case ((name, expr), ii) =>
       val value = eval(expr)
-      // println(s"Output: $name := $value")
+      if(printUpdates) println(s"O: $name -> $value")
       (ii, value)
     }
     // update outputs (constraints, bad states and next state functions could depend on the new value)
@@ -361,7 +364,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     vcdWriter.foreach(_.incrementTime())
 
     // update state
-    newRegValues.foreach{ case (ii, value) => data(ii + stateOffset) = value }
+    newRegValues.foreach{ case (ii, value) =>
+      if(printUpdates) println(s"R: ${dataIndexToName(ii + stateOffset)} <- $value")
+      data(ii + stateOffset) = value
+    }
     newMemValues.foreach{ case (ii, value) => memories(memStateIdToArrayIndex(ii)) = value }
   }
 
