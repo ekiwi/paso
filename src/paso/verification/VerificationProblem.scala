@@ -119,6 +119,8 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     }
     val defined = if(checker.supportsUF) { foos } else { Seq() }
 
+    reducedSys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
+
     val res = checker.check(reducedSys, fileName=Some("test.btor"), kMax = k, defined = defined, uninterpreted = uf)
     val sim = new smt.TransitionSystemSimulator(reducedSys, functionDefinitions = defined)
     (res, sim)
@@ -179,8 +181,17 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     val toplevelFoos = UntimedModel.functionDefs(p.spec.untimed)
     val topTransitionSystem = NewVerificationAutomatonEncoder.run(p.spec, "", resetAssumption, switchAssumesAndGuarantees = false, initArchState = true)
 
+    // add reset values to impl
+    val resetState = VerificationTask.getResetState(p.impl)
+    val simplResetState = resetState.mapValues(SMTSimplifier.simplify)
+    // TODO: for now we ignore non constant resets
+    val constantResetState = simplResetState.filter{ case (_, expr) => expr.isConstant }
+    val initStates = p.impl.states.map{ s => assert(s.init.isEmpty); s.copy(init = constantResetState.get(s.sym)) }
+    val initImpl = p.impl.copy(states= initStates)
+
     // combine systems
-    val sys = smt.TransitionSystem.merge(p.impl, Seq(topTransitionSystem.sys) ++ subTransitionsSystems.map(_.sys))
+    val sys = smt.TransitionSystem.merge(initImpl, Seq(topTransitionSystem.sys) ++ subTransitionsSystems.map(_.sys))
+    sys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
     val (res, sim) = runCheck(kMax, sys, foos ++ toplevelFoos, ufs)
 
     // find failing property and print
