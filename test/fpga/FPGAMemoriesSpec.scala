@@ -250,6 +250,19 @@ class FPGAMemoriesSpec extends FlatSpec {
     Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCBotr, new LaForest2W4RXorInductive(_, _))
   }
 
+  "Charles Eric LaForest XOR 2W4R memory" should "fail BMC" in {
+    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
+    type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
+    def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
+    def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
+    def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
+
+    val fail = intercept[AssertionError] {
+      Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).bmc(4)
+    }
+    assert(fail.getMessage.contains("Failed to verify XorMemory against Untimed2W4RMemory"))
+  }
+
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     Paso(new SimulationMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCCVC4, new ProofCollateral(_, _){
