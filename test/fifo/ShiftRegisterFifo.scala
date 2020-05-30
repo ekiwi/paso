@@ -26,6 +26,7 @@ class ShiftRegisterFifo(val width: Int, val depth: Int, fixed: Boolean = false) 
     reg
   }
 
+  if(!fixed) next_value.last := DontCare
   val nv =if(fixed) next_value else next_value.dropRight(1) // BUG: short by one
   nv.zipWithIndex.foreach { case (next, j) =>
     val not_pushed = entries.lift(j+1).map(Mux(io.pop, _, 0.U)).getOrElse(0.U)

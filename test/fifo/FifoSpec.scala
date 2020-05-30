@@ -215,8 +215,11 @@ class FifoSpec extends FlatSpec {
     Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new ShiftProof(_, _))
   }
 
-  "ShiftFifo with bug" should "not fail BMC" ignore {
-    Paso(new ShiftRegisterFifo(8, 8, true))(new FifoProtocols(_)).bmc(10)
+  "ShiftFifo with bug" should "fail BMC" in {
+    val fail = intercept[AssertionError] {
+      Paso(new ShiftRegisterFifo(8, 4, false))(new FifoProtocols(_)).bmc(8)
+    }
+    assert(fail.getMessage.contains("Failed to verify ShiftRegisterFifo against UntimedFifo"))
   }
 
   "BasejumpFifo" should "refine its spec" ignore {
