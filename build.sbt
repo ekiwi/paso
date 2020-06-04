@@ -4,7 +4,6 @@ val basicSettings = Seq(
   name := "paso",
   organization := "edu.berkeley.cs",
   scalaVersion := "2.12.10",
-  scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
   scalaSource in Compile := baseDirectory.value / "src",
   scalaSource in Test := baseDirectory.value / "test",
   resourceDirectory in Test := baseDirectory.value / "test" / "resources",
@@ -21,12 +20,18 @@ val versionSettings = Seq(
   dynverSeparator in ThisBuild := "-"
 )
 
-val dependencySettings = Seq(
+val chiselSettings = Seq(
+  // for structural bundles
+  scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
+
   resolvers += Resolver.sonatypeRepo("snapshots"),
   resolvers += Resolver.sonatypeRepo("releases"),
 
   libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.3.0-RC2",
   libraryDependencies += "edu.berkeley.cs" %% "firrtl" % "1.3.0-RC2",
+)
+
+val otherDependencySettings = Seq(
   libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.2.0-RC2" % "test",
   // required for uclid files
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
@@ -67,9 +72,19 @@ lazy val pubSettings = Seq(
 lazy val paso = (project in file("."))
   .settings(basicSettings)
   .settings(versionSettings)
-  .settings(dependencySettings)
+  .settings(chiselSettings)
+  .settings(otherDependencySettings)
   .settings(pubSettings)
   .settings(
     // execute test in serial for now to avoid race conditions on shared files like test.btor
     parallelExecution := false,
+  )
+
+lazy val benchmarks = (project in file("benchmarks"))
+  .dependsOn(paso)
+  .settings(chiselSettings)
+  .settings(
+    scalaSource in Compile := baseDirectory.value / "src",
+    assemblyJarName in assembly := "paso-benchmarks.jar",
+    test in assembly := {},
   )
