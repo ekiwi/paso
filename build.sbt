@@ -39,7 +39,7 @@ val otherDependencySettings = Seq(
 )
 
 val ghrealm = "GitHub Package Registry"
-val ghurl = "https://maven.pkg.github.com/ekiwi/paso"
+val ghurl = "https://maven.pkg.github.com/ekiwi-sifive/paso"
 
 lazy val pubSettings = Seq(
   // publication settings
