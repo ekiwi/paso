@@ -158,6 +158,12 @@ case class Elaboration() {
       instanceName -> subUntimed
     }
 
+    // compile to untimed module to low firrtl
+    val circuit = ir.Circuit(NoInfo, main=spec_name, modules = Seq(main))
+    val (ff, lo_annos) = toLowFirrtl(circuit, annos)
+    println(ff.serialize)
+
+
     val methods = untimed.getMethods.map { meth =>
       val raw = elaborateInContext(untimed, meth.generate)
 
@@ -216,7 +222,12 @@ case class Elaboration() {
   case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol], circuit: ir.Circuit, annos: Seq[Annotation])
   private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
     var ip: Option[ProtocolSpec[S]] = None
-    val (state, _) = elaborate({() => ip = Some(gen()); ip.get.spec})
+    val (state, _) = elaborate({ () =>
+      ip = Some(gen())
+      // generate the circuit for each method
+      ip.get.spec.getMethods.foreach { _.generate() }
+      ip.get.spec
+    })
     ChiselSpec(ip.get.spec, ip.get.protos, state.circuit, state.annotations)
   }
 
