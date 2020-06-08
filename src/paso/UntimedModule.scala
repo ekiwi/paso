@@ -167,9 +167,14 @@ class UntimedModule extends MultiIOModule with MethodParent {
   override def addMethod(m: MethodGenerator): Unit = methods.append(m)
   override def getName: String = this.pathName
   private val methods = mutable.ArrayBuffer[MethodGenerator]()
+  private val methodNames = mutable.HashSet[String]()
   def getMethods: Seq[MethodGenerator] = methods
   // TODO: automagically infer names like Chisel does for its native constructs
-  def fun(name: String) = NMethodBuilder(this, name)
+  def fun(name: String) = {
+    require(!methodNames.contains(name), s"Method $name already exists")
+    methodNames += name
+    NMethodBuilder(this, name)
+  }
 }
 
 object UntimedModule {
