@@ -153,10 +153,10 @@ case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inp
 class UntimedModule extends MultiIOModule with MethodParent {
   override def addMethod(m: MethodGenerator): Unit = methods.append(m)
   override def getName: String = this.pathName
-  val methods = mutable.ArrayBuffer[MethodGenerator]()
+  private val methods = mutable.ArrayBuffer[MethodGenerator]()
+  def getMethods: Seq[MethodGenerator] = methods
   // TODO: automagically infer names like Chisel does for its native constructs
   def fun(name: String) = NMethodBuilder(this, name)
-  //def fun[I <: Data](name: String)(inputs: I) = IMethodBuilder(this, name, inputs)
 }
 
 object UntimedModule {
