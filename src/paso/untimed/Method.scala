@@ -19,7 +19,7 @@ private[paso] trait MethodParent {
 
 trait Method {
   def name: String
-  def guard: () => Bool
+  private[paso ]def guard: () => Bool
   //def getParentName: String
   private[paso] def generate(): Unit = {
     assert(name.nonEmpty)
@@ -28,10 +28,10 @@ trait Method {
     val enabled_in = IO(Input(Bool())).suggestName(name + "_" + "enabled")
     generateBody(enabled_in)
   }
-  def makeInput[T <: Data](t: T): T = {
+  private[paso] def makeInput[T <: Data](t: T): T = {
     IO(Input(t)).suggestName(name + "_inputs")
   }
-  def makeOutput[T <: Data](t: T): T = {
+  private[paso] def makeOutput[T <: Data](t: T): T = {
     IO(Output(t)).suggestName(name + "_outputs")
   }
   protected def generateBody(enabled: Bool): Unit

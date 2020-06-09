@@ -8,15 +8,16 @@ package paso
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, annotate}
 import firrtl.annotations.{ModuleTarget, SingleTargetAnnotation}
-import paso.untimed.{ElaborateUntimed, Method, MethodParent, NMethodBuilder}
+import paso.chisel.ChiselCompiler
+import paso.untimed._
 
 import scala.collection.mutable
 
 class UntimedModule extends MultiIOModule with MethodParent {
-  override def addMethod(m: Method): Unit = _methods.append(m)
+  override private[paso] def addMethod(m: Method): Unit = _methods.append(m)
   override def getName: String = this.pathName
   override def isElaborated: Boolean =_isElaborated
-  private[paso] var _isElaborated = false
+  private var _isElaborated = false
   private val _methods = mutable.ArrayBuffer[Method]()
   private val methodNames = mutable.HashSet[String]()
   def methods: Seq[Method] = _methods
@@ -29,13 +30,31 @@ class UntimedModule extends MultiIOModule with MethodParent {
 }
 
 object UntimedModule {
+  private val elaborating = new ThreadLocal[Boolean] { override def initialValue(): Boolean = false }
   def apply[M <: UntimedModule](m: => M): M = {
-    val sub = Module(m)
-    annotate(new ChiselAnnotation { override def toFirrtl = SubmoduleAnnotation(sub.toTarget, sub) })
-    sub
+    // when elaborating, this acts like chisel3.Module(...)
+    if(elaborating.get()) {
+      val sub = Module(m)
+      annotate(new ChiselAnnotation { override def toFirrtl = SubmoduleAnnotation(sub.toTarget, sub) })
+      sub
+    } else { // but it can also be used to elaborate the toplevel
+      elaborate(m)
+    }
   }
   def elaborate[M <: UntimedModule](m: => M): M = {
-    ElaborateUntimed(m)
+    elaborating.set(true)
+    var opt: Option[M] = None
+    val gen = () => {
+      opt = Some(m)
+      // generate the circuit for each method
+      opt.get.methods.foreach(_.generate())
+      opt.get
+    }
+    val fir = ChiselCompiler.elaborate(gen)
+    val mod = opt.get
+    mod._isElaborated = true
+    elaborating.set(false)
+    mod
   }
 }
 
