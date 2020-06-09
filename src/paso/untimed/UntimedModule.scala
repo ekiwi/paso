@@ -2,7 +2,8 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso
+package paso.untimed
+
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import firrtl.annotations.{Annotation, ModuleTarget, ReferenceTarget, SingleTargetAnnotation}
@@ -152,11 +153,11 @@ case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inp
 }
 
 class UntimedModule extends MultiIOModule with MethodParent {
-  override def addMethod(m: MethodGenerator): Unit = methods.append(m)
+  override def addMethod(m: MethodGenerator): Unit = _methods.append(m)
   override def getName: String = this.pathName
-  private val methods = mutable.ArrayBuffer[MethodGenerator]()
+  private val _methods = mutable.ArrayBuffer[MethodGenerator]()
   private val methodNames = mutable.HashSet[String]()
-  def getMethods: Seq[MethodGenerator] = methods
+  def methods: Seq[MethodGenerator] = _methods
   // TODO: automagically infer names like Chisel does for its native constructs
   def fun(name: String) = {
     require(!methodNames.contains(name), s"Method $name already exists")
@@ -176,19 +177,3 @@ object UntimedModule {
 case class SubmoduleAnnotation(target: ModuleTarget, untimed: UntimedModule) extends SingleTargetAnnotation[ModuleTarget] {
   def duplicate(n: ModuleTarget) = this.copy(n)
 }
-
-
-// TODO: inject spec finding through annotation
-//case class PasoSpecAnnotation[M <: RawModule](target: ModuleTarget, spec: M => BindingBase)
-//    extends SingleTargetAnnotation[ModuleTarget] {
-//  override def duplicate(n: ModuleTarget): Annotation = this.copy(target = n)
-//}
-//
-//// unfortunately only dotty (Scaly 3) supports trait parameters
-//trait HasSpec extends RawModule {
-//  val spec: BindingBase
-//  annotate(new ChiselAnnotation with RunFirrtlTransform {
-//    override def toFirrtl: Annotation = PasoSpecAnnotation(this.toNamed, spec)
-//    override def transformClass = classOf[]
-//  })
-//}

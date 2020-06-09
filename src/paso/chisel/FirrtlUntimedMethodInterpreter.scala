@@ -6,8 +6,8 @@ package paso.chisel
 
 import firrtl.annotations.Annotation
 import firrtl.ir
+import paso.untimed.MethodCallAnnotation
 import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr, substituteSmt, substituteSmtSymbols}
-import paso.MethodCallAnnotation
 import uclid.smt
 
 import scala.collection.mutable

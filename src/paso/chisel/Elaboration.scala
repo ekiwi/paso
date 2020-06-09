@@ -6,16 +6,17 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
-import firrtl.annotations.{Annotation}
+import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
-import firrtl.stage.{Forms, RunFirrtlTransformAnnotation}
+import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
+import paso.untimed.SubmoduleAnnotation
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
+import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
 
 case class Elaboration() {
@@ -167,7 +168,7 @@ case class Elaboration() {
     val interpreter =  new FirrtlUntimedMethodInterpreter(ff, annos)
     interpreter.run()
 
-    val methods = untimed.getMethods.map { meth =>
+    val methods = untimed.methods.map { meth =>
       val sem = interpreter.getSemantics(meth.name)
       println(sem)
       meth.name -> sem
@@ -207,7 +208,7 @@ case class Elaboration() {
     val (state, _) = elaborate({ () =>
       ip = Some(gen())
       // generate the circuit for each method
-      ip.get.spec.getMethods.foreach { _.generate() }
+      ip.get.spec.methods.foreach { _.generate() }
       ip.get.spec
     })
     ChiselSpec(ip.get.spec, ip.get.protos, state.circuit, state.annotations)

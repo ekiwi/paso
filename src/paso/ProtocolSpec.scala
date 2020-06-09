@@ -6,6 +6,7 @@ package paso
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
+import paso.untimed.{IMethod, IOMethod, MethodBodyHelper, NMethod, OMethod}
 
 import scala.collection.mutable
 
