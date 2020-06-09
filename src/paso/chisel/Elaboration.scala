@@ -163,32 +163,14 @@ case class Elaboration() {
     val (ff, lo_annos) = toLowFirrtl(circuit, annos)
     println(ff.serialize)
 
+    // get formal representation for each method
+    val interpreter =  new FirrtlUntimedMethodInterpreter(ff, annos)
+    interpreter.run()
 
     val methods = untimed.getMethods.map { meth =>
-      val raw = elaborateInContext(untimed, meth.generate)
-
-      // build module for this method:
-      val method_body = getMain(raw.circuit).body
-      val comb_body = ir.Block(Seq(spec_module.body, method_body))
-      val comb_ports = spec_module.ports ++ getMain(raw.circuit).ports
-      val comb_mod = spec_module.copy(ports=comb_ports, body=comb_body)
-      val comb_c = ir.Circuit(NoInfo, Seq(FixReset(comb_mod)), spec_name)
-
-      // HACK: patch the incorrect references to clock that come from gen() using `this` to refer to the module
-      val comb_c_fixed = FixClockRef(ir.Reference("clock", ir.ClockType))(comb_c)
-
-      // fix annotations by changing the circuit name
-      val fixAnno = ChangeAnnotationCircuit(comb_c.main)
-      val fixed_annos = raw.annotations.map(fixAnno(_))
-
-      // compile combined module down to low firrtl
-      val (ff, annos) = toLowFirrtl(comb_c_fixed, fixed_annos)
-
-      // println(ff.serialize)
-
-      val semantics = new FirrtlUntimedMethodInterpreter(ff, annos).run().getSemantics
-      //val semantics = MethodSemantics(smt.BooleanLit(true), Seq(), Seq(), Seq())
-      meth.name -> semantics
+      val sem = interpreter.getSemantics(meth.name)
+      println(sem)
+      meth.name -> sem
     }.toMap
 
     def toSymbol(name: String, tpe: ir.Type): smt.Symbol = smt.Symbol(name, firrtlToSmtType(tpe))

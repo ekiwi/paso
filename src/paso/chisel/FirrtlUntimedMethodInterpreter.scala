@@ -7,15 +7,12 @@ package paso.chisel
 import firrtl.annotations.Annotation
 import firrtl.ir
 import paso.verification.{MethodSemantics, NamedExpr, NamedGuardedExpr, substituteSmt, substituteSmtSymbols}
-import paso.{GuardAnnotation, MethodCallAnnotation, MethodIOAnnotation}
+import paso.MethodCallAnnotation
 import uclid.smt
 
 import scala.collection.mutable
 
-class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
-  private val guards = annos.collect { case GuardAnnotation(target) => target.ref }.toSet
-  assert(guards.size == 1, "Exactly one guard expected")
-
+class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]) extends PasoFirrtlInterpreter(circuit, annos) {
   private val methodCalls = annos.collect { case m : MethodCallAnnotation => m }
 
   // creates function applications for all method calls together with the substitution map
@@ -61,18 +58,26 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     refs("reset") = Value(fals)
   }
 
-  def getSemantics: MethodSemantics = {
+  def getSemantics(name: String): MethodSemantics = {
+    // known prefixes
+    val guardName = name + "_guard"
+    val inputPrefix = name + "_inputs"
+    val outputPrefix = name + "_outputs"
+    val enabledName = name + "_enabled"
+
     // find guard
-    val guard = getSimplifiedFinalValue(guards.head).map(_.get).getOrElse(tru)
+    val guard = getSimplifiedFinalValue(guardName).map(_.get).getOrElse(tru)
 
     //
     val memReads = getMemReadExpressions()
     val methCalls = getMethodCallExpressions()
-    val subs = memReads ++ methCalls
+    val enabledSub = Map(smt.Symbol(enabledName, smt.BoolType) -> smt.BooleanLit(true))
+    val subs = memReads ++ methCalls ++ enabledSub
     def substituteReadsAndCalls(e: smt.Expr): smt.Expr = substituteSmt(e, subs)
 
     // collect outputs
-    val outputs = methodOutputs.values.map { o =>
+    val methodOutputs = this.outputs.keys.filter(_.startsWith(outputPrefix))
+    val outputs = methodOutputs.map { o =>
       assert(connections.contains(o), s"Output $o was never assigned!")
       val value = getSimplifiedFinalValue(o).get.map(substituteReadsAndCalls)
       NamedGuardedExpr(smt.Symbol(o, value.typ), value.e, guard=substituteReadsAndCalls(value.valid))
@@ -88,7 +93,8 @@ class FirrtlUntimedMethodInterpreter(circuit: ir.Circuit, annos: Seq[Annotation]
     }
 
     // find input types (sorted in order to ensure deterministic argument order for undefined functions)
-    val ins = methodInputs.map { case (from, to) => smt.Symbol(to, inputs(from)) }.toSeq.sortBy(_.id)
+    val methodInputs = this.inputs.filterKeys(_.startsWith(inputPrefix))
+    val ins = methodInputs.map { case (name, tpe) => smt.Symbol(name, tpe) }.toSeq.sortBy(_.id)
     MethodSemantics(guard=guard, updates = (regUpdates ++ memUpdates).toSeq, outputs = outputs.toSeq, inputs = ins)
   }
 }

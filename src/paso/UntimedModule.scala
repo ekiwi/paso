@@ -14,17 +14,9 @@ case class MethodGenerator(getParentName: () => String, name: String, guard: Opt
     assert(name.nonEmpty)
     val guard_out = IO(Output(Bool())).suggestName(name + "_" + "guard")
     guard_out := guard.map(_()).getOrElse(true.B)
-    annotate(new ChiselAnnotation { override def toFirrtl = GuardAnnotation(guard_out.toTarget) })
     val enabled_in = IO(Input(Bool())).suggestName(name + "_" + "enabled")
     body.generate(name + "_", enabled_in)
   }
-}
-
-case class GuardAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
-case class MethodIOAnnotation(target: ReferenceTarget, isInput: Boolean) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
 // TODO: rename to something more sensible
@@ -95,14 +87,10 @@ case class MethodCallAnnotation(target: ReferenceTarget, name: String, ii: Int, 
 trait MethodBody { def generate(prefix: String, enabled: Bool): Unit }
 trait MethodBodyHelper {
   protected def makeInput[T <: Data](t: T, prefix: String): T = {
-    val i = IO(Input(t)).suggestName(prefix + "inputs")
-    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(i.toTarget, true) })
-    i
+    IO(Input(t)).suggestName(prefix + "inputs")
   }
   protected def makeOutput[T <: Data](t: T, prefix: String): T = {
-    val o = IO(Output(t)).suggestName(prefix + "outputs")
-    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(o.toTarget, false) })
-    o
+    IO(Output(t)).suggestName(prefix + "outputs")
   }
 }
 

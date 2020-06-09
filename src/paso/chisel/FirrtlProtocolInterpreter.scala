@@ -7,27 +7,16 @@ package paso.chisel
 import firrtl.annotations.Annotation
 import firrtl.ir
 import paso.verification.ProtocolInterpreter
-import paso.{ExpectAnnotation, ForkAnnotation, MethodIOAnnotation, StepAnnotation}
+import paso.{ExpectAnnotation, ForkAnnotation, StepAnnotation}
 import uclid.smt
 import uclid.smt.Expr
 
-trait RenameMethodIO extends FirrtlInterpreter with HasAnnos {
-  val prefix: String = ""
-  protected lazy val methodInputs = annos.collect { case MethodIOAnnotation(target, true) => target.ref -> (prefix + target.ref) }.toMap
-  protected lazy val methodOutputs = annos.collect { case MethodIOAnnotation(target, false) => target.ref -> (prefix + target.ref) }.toMap
-  protected lazy val renameIOs = methodInputs ++ methodOutputs
-  override def onReference(r: ir.Reference): Value = {
-    val ref = super.onReference(r)
-    renameIOs.get(r.name).map(name => Value(smt.Symbol(name, ref.typ))).getOrElse(ref)
-  }
-}
 
 /** protocols built on a custom extension of firrtl */
-class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter, stickyInputs: Boolean) extends PasoFirrtlInterpreter(circuit, annos) with RenameMethodIO {
+class FirrtlProtocolInterpreter(name: String, circuit: ir.Circuit, annos: Seq[Annotation], interpreter: ProtocolInterpreter, stickyInputs: Boolean) extends PasoFirrtlInterpreter(circuit, annos) {
   private val steps = annos.collect{ case StepAnnotation(target) => target.ref }.toSet
   private val forks = annos.collect{ case ForkAnnotation(target) => target.ref }.toSet
   private val expects = annos.collect{ case ExpectAnnotation(target) => target.ref }.toSet
-  override val prefix = name + "."
 
   override def defWire(name: String, tpe: ir.Type): Unit = {
     if(steps.contains(name)) { interpreter.onStep() }
