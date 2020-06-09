@@ -3,6 +3,7 @@ package aes
 import chisel3._
 import org.scalatest._
 import paso._
+import paso.untimed.IOMethod
 
 
 trait AESHelperFunctions {

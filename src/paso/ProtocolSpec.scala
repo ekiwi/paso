@@ -6,7 +6,7 @@ package paso
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
-import paso.untimed.{IMethod, IOMethod, MethodBodyHelper, NMethod, OMethod}
+import paso.untimed.{IMethod, IOMethod, NMethod, OMethod}
 
 import scala.collection.mutable
 
@@ -77,28 +77,28 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
 
 trait Protocol {
   def methodName: String
-  def generate(prefix: String, clock: Clock): Unit
+  def generate(clock: Clock): Unit
   val stickyInputs: Boolean
 }
-trait ProtocolHelper extends MethodBodyHelper {
+trait ProtocolHelper {
   protected def io[IO <: Data](ioType: IO): IO = IO(Flipped(ioType)).suggestName("io")
 }
 case class NProtocol[IO <: Data](ioType: IO, meth: NMethod, impl: (Clock, IO) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper {
-  override def methodName = meth.gen.name
-  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType))
+  override def methodName = meth.name
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType))
 }
 case class IProtocol[IO <: Data, I <: Data](ioType: IO, meth: IMethod[I], impl: (Clock, IO, I) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
-  override def methodName = meth.gen.name
-  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeInput(meth.inputType, prefix))
+  override def methodName = meth.name
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType), meth.makeInput(meth.inputType))
 }
 case class OProtocol[IO <: Data, O <: Data](ioType: IO, meth: OMethod[O], impl: (Clock, IO, O) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
-  override def methodName = meth.gen.name
-  override def generate(prefix: String, clock: Clock): Unit = impl(clock, io(ioType), makeOutput(meth.outputType, prefix))
+  override def methodName = meth.name
+  override def generate(clock: Clock): Unit = impl(clock, io(ioType), meth.makeOutput(meth.outputType))
 }
 case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMethod[I,O], impl: (Clock, IO, I, O) => Unit, stickyInputs: Boolean) extends Protocol with ProtocolHelper  {
-  override def methodName = meth.gen.name
-  override def generate(prefix: String, clock: Clock): Unit = {
-    impl(clock, io(ioType), makeInput(meth.inputType, prefix), makeOutput(meth.outputType, prefix))
+  override def methodName = meth.name
+  override def generate(clock: Clock): Unit = {
+    impl(clock, io(ioType), meth.makeInput(meth.inputType), meth.makeOutput(meth.outputType))
   }
 }
 

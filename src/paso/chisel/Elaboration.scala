@@ -14,9 +14,8 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
-import paso.untimed.SubmoduleAnnotation
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
+import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
 
 case class Elaboration() {
@@ -99,7 +98,7 @@ case class Elaboration() {
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
-      val (state, _) = elaborate(() => new MultiIOModule() { p.generate(p.methodName + "_", clock) })
+      val (state, _) = elaborate(() => new MultiIOModule() { p.generate(clock) })
       val (ff, annos) = lowerTypes(toHighFirrtl(state.circuit, state.annotations))
       val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
       //println(ff.serialize)
