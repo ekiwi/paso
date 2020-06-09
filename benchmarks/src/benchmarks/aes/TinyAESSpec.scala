@@ -2,6 +2,7 @@ package benchmarks.aes
 
 import chisel3._
 import paso._
+import paso.untimed.{IOMethod, UntimedModule}
 
 
 trait AESHelperFunctions {
