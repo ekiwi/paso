@@ -15,12 +15,30 @@ class UntimedInc extends UntimedModule {
   }
 }
 
+class Counter4Bit extends UntimedModule {
+  val value = RegInit(0.U(4.W))
+  val inc = fun("inc").out(UInt(4.W)) { out =>
+    value := value + 1.U
+    out := value + 1.U
+  }
+}
+
 class UntimedModuleSpec extends FlatSpec {
   "a simple UntimedModule" should "be elaborated with UntimedModule(new ...)" in {
     val m = UntimedModule(new UntimedInc)
     assert(m.isElaborated)
     assert(m.getName == "UntimedInc")
     assert(m.methods.size == 1)
+    val inc = m.methods.head
+    assert(inc.name == "inc")
+  }
+
+  "an UntimedModule with state" should "be elaborated with UntimedModule(new ...)" in {
+    val m = UntimedModule(new Counter4Bit)
+    assert(m.isElaborated)
+    assert(m.getName == "Counter4Bit")
+    assert(m.methods.size == 1)
+    assert(m.value.getWidth == 4)
     val inc = m.methods.head
     assert(inc.name == "inc")
   }
