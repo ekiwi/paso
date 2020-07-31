@@ -12,10 +12,7 @@ import scala.collection.mutable
 case class RemoveInstances() {
   private val instances = mutable.HashMap[String, String]()
   private def onStmt(s: ir.Statement): ir.Statement = s match {
-    case ir.DefInstance(_, name, module) =>
-      instances += (name -> module)
-      ir.EmptyStmt
-    case firrtl.WDefInstance(_, name, module, _) =>
+    case ir.DefInstance(_, name, module, _) =>
       instances += (name -> module)
       ir.EmptyStmt
     case c : ir.Connect =>
