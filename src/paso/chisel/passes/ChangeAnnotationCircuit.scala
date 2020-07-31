@@ -14,7 +14,7 @@ case class ChangeAnnotationCircuit(newCircuit: String) {
   }
 
   def apply(anno: Annotation): Annotation = anno match {
-    case t: SingleTargetAnnotation[Named] => t.duplicate(change(t.target))
+    case t: SingleTargetAnnotation[_] => t.asInstanceOf[SingleTargetAnnotation[Named]].duplicate(change(t.target))
     case other => throw new NotImplementedError(s"TODO: support $other : ${other.getClass.getName}")
   }
 }

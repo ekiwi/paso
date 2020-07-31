@@ -86,7 +86,7 @@ abstract class FixNaming {
     case Connect(info, loc, exp) => Connect(info, onNode(loc), onArg(exp))
     case WhenBegin(info, pred) => WhenBegin(info, onArg(pred))
     case ConnectInit(info, loc, exp) => ConnectInit(info, onNode(loc), onArg(exp))
-    case p : DefMemPort[Data] =>
+    case p : DefMemPort[_] =>
       p.copy(source = onNode(p.source), index = onArg(p.index), clock = onArg(p.clock))
     case other => other
   }

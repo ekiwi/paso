@@ -4,11 +4,11 @@
 
 package paso.chisel
 
-import chisel3.{Driver, MultiIOModule, RawModule}
+import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
-import firrtl.{ChirrtlForm, CircuitState, Compiler, CompilerUtils, HighFirrtlEmitter, HighForm, IRToWorkingIR, LowFirrtlCompiler, ResolveAndCheck, Transform, ir}
+import firrtl.{CircuitState,ir}
 import paso.chisel.passes.{ChangeAnnotationCircuit, ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
@@ -17,19 +17,14 @@ import uclid.smt
 case class Elaboration() {
   private var chiselElaborationTime = 0L
   private var firrtlCompilerTime = 0L
-  private def toFirrtl(gen: () => RawModule): (ir.Circuit, Seq[Annotation]) = {
+  private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
     val start = System.nanoTime()
-    val chiselCircuit = Driver.elaborate(gen)
-    val annos = chiselCircuit.annotations.map(_.toFirrtl)
-    val endElaboration = System.nanoTime()
-    val r = (Driver.toFirrtl(chiselCircuit), annos)
-    val end = System.nanoTime()
-    chiselElaborationTime += endElaboration - start
-    firrtlCompilerTime += end - endElaboration
-    r
+    val res = ChiselCompiler.elaborate(gen)
+    chiselElaborationTime += System.nanoTime() - start
+    res
   }
   private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
-    val st = CircuitState(tup._1, ChirrtlForm, tup._2, None)
+    val st = CircuitState(tup._1, tup._2)
     // TODO: we would like to lower bundles but not vecs ....
     val start = System.nanoTime()
     val st_no_bundles = firrtl.passes.LowerTypes.runTransform(st)
@@ -111,8 +106,8 @@ case class Elaboration() {
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
-      val (raw_firrtl, raw_annos) = toFirrtl(() => new MultiIOModule() { p.generate(p.methodName + "_", clock) })
-      val (ff, annos) = lowerTypes(toHighFirrtl(raw_firrtl, raw_annos))
+      val (state, _) = elaborate(() => new MultiIOModule() { p.generate(p.methodName + "_", clock) })
+      val (ff, annos) = lowerTypes(toHighFirrtl(state.circuit, state.annotations))
       val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
       //println(ff.serialize)
       new FirrtlProtocolInterpreter(p.methodName, ff, annos, int, p.stickyInputs).run()
@@ -224,13 +219,13 @@ case class Elaboration() {
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
   private def chiselElaborationImpl[M <: RawModule](gen: () => M): ChiselImpl[M] = {
-    val (state, ip) = ChiselCompiler.elaborate(gen)
+    val (state, ip) = elaborate(gen)
     ChiselImpl(ip, state.circuit, state.annotations)
   }
   case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol], circuit: ir.Circuit, annos: Seq[Annotation])
   private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
     var ip: Option[ProtocolSpec[S]] = None
-    val (state, _) = ChiselCompiler.elaborate({() => ip = Some(gen()); ip.get.spec})
+    val (state, _) = elaborate({() => ip = Some(gen()); ip.get.spec})
     ChiselSpec(ip.get.spec, ip.get.protos, state.circuit, state.annotations)
   }
 
