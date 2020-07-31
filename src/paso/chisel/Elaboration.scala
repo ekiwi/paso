@@ -14,15 +14,6 @@ import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec,
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
 
-/** essentially a HighFirrtlCompiler + ToWorkingIR */
-class CustomFirrtlCompiler extends Compiler {
-  val emitter = new HighFirrtlEmitter
-  def transforms: Seq[Transform] =
-    CompilerUtils.getLoweringTransforms(ChirrtlForm, HighForm) ++
-        Seq(new IRToWorkingIR, new ResolveAndCheck, new firrtl.transforms.DedupModules)
-}
-
-
 case class Elaboration() {
   private var chiselElaborationTime = 0L
   private var firrtlCompilerTime = 0L
@@ -37,13 +28,6 @@ case class Elaboration() {
     firrtlCompilerTime += end - endElaboration
     r
   }
-  private val highFirrtlCompiler = new CustomFirrtlCompiler
-  private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
-    val start = System.nanoTime()
-    val st = highFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
-    firrtlCompilerTime += System.nanoTime() - start
-    (st.circuit, st.annotations)
-  }
   private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
     val st = CircuitState(tup._1, ChirrtlForm, tup._2, None)
     // TODO: we would like to lower bundles but not vecs ....
@@ -52,10 +36,15 @@ case class Elaboration() {
     firrtlCompilerTime += System.nanoTime() - start
     (st_no_bundles.circuit, st_no_bundles.annotations)
   }
-  private val lowFirrtlCompiler = new LowFirrtlCompiler
   private def toLowFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
     val start = System.nanoTime()
-    val st = lowFirrtlCompiler.compile(CircuitState(c, ChirrtlForm, annos, None), Seq())
+    val st = FirrtlCompiler.toLowFirrtl(CircuitState(c, annos))
+    firrtlCompilerTime += System.nanoTime() - start
+    (st.circuit, st.annotations)
+  }
+  private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
+    val start = System.nanoTime()
+    val st = FirrtlCompiler.toHighFirrtl(CircuitState(c, annos))
     firrtlCompilerTime += System.nanoTime() - start
     (st.circuit, st.annotations)
   }
@@ -235,15 +224,14 @@ case class Elaboration() {
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
   private def chiselElaborationImpl[M <: RawModule](gen: () => M): ChiselImpl[M] = {
-    var ip: Option[M] = None
-    val (c, anno) = toFirrtl({() => ip = Some(gen()); ip.get})
-    ChiselImpl(ip.get, c, anno)
+    val (state, ip) = ChiselCompiler.elaborate(gen)
+    ChiselImpl(ip, state.circuit, state.annotations)
   }
   case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol], circuit: ir.Circuit, annos: Seq[Annotation])
   private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
     var ip: Option[ProtocolSpec[S]] = None
-    val (c, anno) = toFirrtl({() => ip = Some(gen()); ip.get.spec})
-    ChiselSpec(ip.get.spec, ip.get.protos, c, anno)
+    val (state, _) = ChiselCompiler.elaborate({() => ip = Some(gen()); ip.get.spec})
+    ChiselSpec(ip.get.spec, ip.get.protos, state.circuit, state.annotations)
   }
 
   def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
