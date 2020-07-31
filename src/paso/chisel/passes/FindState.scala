@@ -14,9 +14,7 @@ case class FindState(c: ir.Circuit) {
   private val mods = c.modules.collect{ case m: ir.Module => m.name -> m}.toMap
   private val state = mutable.ArrayBuffer[State]()
   private def onStmt(prefix: String, s: ir.Statement): Unit = s match {
-    case ir.DefRegister(_, name, tpe, _, _, firrtl.WRef(_, _, _, _)) =>
-      state.append(State(prefix + name, tpe))
-    case ir.DefRegister(_, name, tpe, _, _, ir.Reference(_, _)) =>
+    case ir.DefRegister(_, name, tpe, _, _, ir.Reference(_, _, _, _)) =>
       state.append(State(prefix + name, tpe))
     case ir.DefRegister(_, name, tpe, _, _, ir.UIntLiteral(value, ir.IntWidth(w))) =>
       state.append(State(prefix + name, tpe, Some(mkBitVec(value, tpe))))
@@ -27,9 +25,7 @@ case class FindState(c: ir.Circuit) {
       state.append(State(prefix + name, ir.VectorType(tpe, depth.toInt)))
     case firrtl.CDefMemory(_, name, tpe, depth, _,  _) =>
       state.append(State(prefix + name, ir.VectorType(tpe, depth.toInt)))
-    case ir.DefInstance(_, name, module) if mods.contains(module) =>
-      mods(module).body.foreachStmt(onStmt(prefix + name + ".", _))
-    case firrtl.WDefInstance(_, name, module, _) if mods.contains(module) =>
+    case ir.DefInstance(_, name, module, _) if mods.contains(module) =>
       mods(module).body.foreachStmt(onStmt(prefix + name + ".", _))
     case other => other.foreachStmt(onStmt(prefix, _))
   }
@@ -46,9 +42,7 @@ case class FindState(c: ir.Circuit) {
 case class FindModuleState() {
   private val state = mutable.ArrayBuffer[State]()
   private def onStmt(prefix: String, s: ir.Statement): Unit = s match {
-    case ir.DefRegister(_, name, tpe, _, _, firrtl.WRef(_, _, _, _)) =>
-      state.append(State(prefix + name, tpe))
-    case ir.DefRegister(_, name, tpe, _, _, ir.Reference(_, _)) =>
+    case ir.DefRegister(_, name, tpe, _, _, ir.Reference(_, _, _, _)) =>
       state.append(State(prefix + name, tpe))
     case ir.DefRegister(_, name, tpe, _, _, ir.UIntLiteral(value, ir.IntWidth(w))) =>
       state.append(State(prefix + name, tpe, Some(mkBitVec(value, tpe))))

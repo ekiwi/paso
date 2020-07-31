@@ -216,14 +216,10 @@ class FirrtlInterpreter extends SMTHelpers {
 
   def onExpr(e: ir.Expression): Value = e match {
     case r: ir.Reference => onReference(r)
-    case firrtl.WRef(name, tpe, _, _) => onReference(ir.Reference(name, tpe))
     case r: ir.SubField => onSubfield(r)
-    case firrtl.WSubField(expr, name, tpe, _) => onSubfield(ir.SubField(expr, name, tpe))
-    case ir.SubIndex(expr, value, _) => onExpr(expr).map(select(_, value))
-    case firrtl.WSubIndex(expr, value, tpe, _) => onExpr(expr).map(select(_, value))
+    case ir.SubIndex(expr, value, _, _) => onExpr(expr).map(select(_, value))
     // TODO: handle out of bounds accesses gracefully
-    case ir.SubAccess(expr, index, tpe) => onSubAccess(onExpr(expr), index)
-    case firrtl.WSubAccess(expr, index, tpe, _) => onSubAccess(onExpr(expr), index)
+    case ir.SubAccess(expr, index, tpe, _) => onSubAccess(onExpr(expr), index)
     case ir.Mux(c, tval, fval, _) =>
       val args = onExpr(tval, fval)
       val cond = onExpr(c, 1).get
@@ -274,14 +270,10 @@ class FirrtlInterpreter extends SMTHelpers {
   }
 
   private def onConnect(lhs: ir.Expression, rhs: ir.Expression): Unit = lhs match {
-    case ir.Reference(name, tpe) => onConnect(name, onExpr(rhs, getWidth(tpe)))
-    case firrtl.WRef(name, tpe, _, _) => onConnect(name, onExpr(rhs, getWidth(tpe)))
+    case ir.Reference(name, tpe, _, _) => onConnect(name, onExpr(rhs, getWidth(tpe)))
     case sub : ir.SubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubField => onConnect(sub.serialize, onExpr(rhs, getWidth(sub.tpe)))
     case sub : ir.SubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubIndex => onConnect(sub.expr.serialize, sub.value, onExpr(rhs, getWidth(sub.tpe)))
     case sub : ir.SubAccess => onConnect(sub.expr.serialize, onExpr(sub.index), onExpr(rhs, getWidth(sub.tpe)))
-    case sub : firrtl.WSubAccess => onConnect(sub.expr.serialize, onExpr(sub.index), onExpr(rhs, getWidth(sub.tpe)))
     case other => throw new NotImplementedError(s"TODO: connect to $other")
   }
 
