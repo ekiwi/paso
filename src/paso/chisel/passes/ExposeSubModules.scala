@@ -19,7 +19,7 @@ class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
     ir.EmptyStmt
   }
 
-  private def onInstance(prefix: String, d: firrtl.WDefInstance): ir.Statement = {
+  private def onInstance(prefix: String, d: ir.DefInstance): ir.Statement = {
     val doReplace = toBeReplaced.contains(prefix + d.name)
     if(doReplace) {
       exposeInstance(prefix, d.info, d.name, d.tpe)
@@ -30,9 +30,7 @@ class ExposeSubModules(c: ir.Circuit, toBeReplaced: Set[String]) {
   }
 
   private def onStmt(prefix: String, s: ir.Statement): ir.Statement = s match {
-    case _ : ir.DefInstance =>
-      throw new RuntimeException("Expected a working instance since we need to know the reference type!")
-    case d : firrtl.WDefInstance => onInstance(prefix, d)
+    case d : ir.DefInstance => onInstance(prefix, d)
     case other => other.mapStmt(onStmt(prefix, _))
   }
 
