@@ -9,34 +9,26 @@ package paso.chisel
 // Chirrtl --- firrtl compiler ---> Verilog --- yosys ---> btor2 --- uclid btor2 parser ---> SymbolicTransitionSystem
 // TODO: cut out the yosys part...
 
-
 import java.io.{File, PrintWriter}
 
 import uclid.smt
 import firrtl.annotations.Annotation
-import firrtl.{ChirrtlForm, CircuitState, Compiler, HighForm, LowForm, MidForm, MinimumLowFirrtlOptimization, Transform, VerilogEmitter, ir}
-import firrtl.CompilerUtils.getLoweringTransforms
-import firrtl.transforms.TopWiring.TopWiringTransform
-import firrtl.transforms.{BlackBoxSourceHelper, NoDCEAnnotation}
+import firrtl.{CircuitState, ir}
+import firrtl.options.Dependency
+import firrtl.transforms.NoDCEAnnotation
 import firrtl.util.BackendCompilationUtilities
 
 import scala.sys.process._
 
-
-class MinimumFirrtlToVerilogCompiler extends Compiler {
-  def emitter = new VerilogEmitter
-  def transforms: Seq[Transform] = getLoweringTransforms(HighForm, MidForm) ++ Seq(/*new TopWiringTransform*/) ++
-      getLoweringTransforms(MidForm, LowForm) ++ Seq(new MinimumLowFirrtlOptimization, new BlackBoxSourceHelper)
-}
-
-object FirrtlToFormal extends BackendCompilationUtilities {
-  private val compiler = new MinimumFirrtlToVerilogCompiler
+object FirrtlToFormal  {
+  private val compiler = new firrtl.stage.transforms.Compiler(Seq(Dependency[firrtl.MinimumVerilogEmitter]))
+  private val emitAnno = firrtl.EmitCircuitAnnotation(classOf[firrtl.MinimumVerilogEmitter])
 
   private def makeVerilog(testDir: File, circuit: ir.Circuit, annos: Seq[Annotation]): String = {
-    val state = CircuitState(circuit, ChirrtlForm, annos ++ Seq(NoDCEAnnotation))
-    val verilog = compiler.compileAndEmit(state)
+    val state = CircuitState(circuit, annos ++ Seq(NoDCEAnnotation, emitAnno))
+    val verilog = compiler.runTransform(state).getEmittedCircuit
     val file = new PrintWriter(s"${testDir.getAbsolutePath}/${circuit.main}.v")
-    file.write(verilog.getEmittedCircuit.value)
+    file.write(verilog.value)
     file.close()
     circuit.main
   }
@@ -71,7 +63,7 @@ object FirrtlToFormal extends BackendCompilationUtilities {
 
 
   def apply(c: ir.Circuit, annos: Seq[Annotation]): smt.TransitionSystem = {
-    val testDir = createTestDirectory(c.main + "_to_btor2")
+    val testDir = BackendCompilationUtilities.createTestDirectory(c.main + "_to_btor2")
     val module = makeVerilog(testDir, c, annos)
     val (success, btorFile) = makeBtor(testDir, module)
     assert(success, "Failed to convert to btor2!")
