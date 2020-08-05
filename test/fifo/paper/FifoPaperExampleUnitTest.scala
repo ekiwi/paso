@@ -165,12 +165,9 @@ class FifoPaperExampleUnitTest extends FlatSpec with ChiselScalatestTester {
             queue.enqueue(value)
             push(fifo, value)
           case 1 =>
-            if(queue.isEmpty) {
-              pop2(fifo, 0, false)
-            } else {
-              val value = queue.dequeue()
-              pop(fifo, value)
-            }
+            val valid = queue.nonEmpty
+            val value = if(valid) queue.dequeue() else BigInt(0)
+            pop2(fifo, value, valid)
         }
       }
     }
