@@ -624,7 +624,8 @@ object Btor2Parser {
           inputs.append(input)
           Some(input)
         case lbl @ ("output" | "bad" | "constraint" | "fair") =>
-          val name = if(parts.length > 3) parts(3) else unique_name(lbl)
+          val nameIsInComment = parts.length > 4 && parts(3) == ";"
+          val name = if(parts.length > 3) { if(nameIsInComment) parts(4) else parts(3) } else unique_name(lbl)
           require(is_unique(name))
           unique_names += name
           labels(lbl) += (name -> expr(-1))
