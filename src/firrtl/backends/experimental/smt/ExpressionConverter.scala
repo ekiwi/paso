@@ -9,7 +9,7 @@ import firrtl.AnnotationSeq
 import maltese.{smt => m}
 
 /** converts between firrtl's internal SMT expr library and the maltese expression library */
-object Converter {
+object ExpressionConverter {
   def toMaltese(annos: AnnotationSeq): Option[m.TransitionSystem] =
     annos.collectFirst { case TransitionSystemAnnotation(sys) => sys }.map(toMaltese)
 
