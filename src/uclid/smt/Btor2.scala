@@ -704,11 +704,11 @@ object Btor2Parser {
     //println(yosys_lables)
     // TODO: use yosys_lables to fill in missing symbol names
 
-    TransitionSystem(name, inputs=inputs.toSeq, states=states.values.toSeq,
-      outputs = labels("output").toSeq,
-      constraints = labels("constraint").map(_._2).toSeq,
-      bad = labels("bad").map(_._2).toSeq,
-      fair = labels("fair").map(_._2).toSeq)
+    TransitionSystem(name, inputs=inputs.toList, states=states.values.toList,
+      outputs = labels("output").toList,
+      constraints = labels("constraint").map(_._2).toList,
+      bad = labels("bad").map(_._2).toList,
+      fair = labels("fair").map(_._2).toList)
   }
 
 }
