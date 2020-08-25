@@ -29,7 +29,7 @@ val chiselSettings = Seq(
 )
 
 val otherDependencySettings = Seq(
-  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3-SNAPSHOT" % "test",
+  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0-RC1" % "test",
   // required for uclid files
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
   libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources(),
