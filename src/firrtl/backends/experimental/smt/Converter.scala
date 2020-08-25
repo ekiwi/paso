@@ -5,10 +5,14 @@
 
 package firrtl.backends.experimental.smt
 
+import firrtl.AnnotationSeq
 import maltese.{smt => m}
 
 /** converts between firrtl's internal SMT expr library and the maltese expression library */
 object Converter {
+  def toMaltese(annos: AnnotationSeq): Option[m.TransitionSystem] =
+    annos.collectFirst { case TransitionSystemAnnotation(sys) => sys }.map(toMaltese)
+
   def toMaltese(sys: TransitionSystem): m.TransitionSystem = {
     val inputs = sys.inputs.map(toMaltese)
     val states = sys.states.map(toMaltese)
@@ -45,17 +49,21 @@ object Converter {
     case BVSlice(e, hi, lo) => m.BVSlice(toMaltese(e), hi, lo)
     case BVNot(e) => m.BVNot(toMaltese(e))
     case BVNegate(e) => m.BVNegate(toMaltese(e))
+    case r: BVReduceOr => toMaltese(Expander.expand(r))
+    case r: BVReduceAnd => toMaltese(Expander.expand(r))
+    case r: BVReduceXor => toMaltese(Expander.expand(r))
+    case BVImplies(a, b) => toMaltese(implies(a, b))
     case BVEqual(a, b) => m.BVEqual(toMaltese(a), toMaltese(b))
     case BVComparison(op, a, b, signed) => m.BVComparison(toMalteseCmp(op), toMaltese(a), toMaltese(b), signed)
     case BVOp(op, a, b) => m.BVOp(toMalteseOp(op), toMaltese(a), toMaltese(b))
     case BVConcat(a, b) => m.BVConcat(toMaltese(a), toMaltese(b))
     case ArrayRead(array, index) => m.ArrayRead(toMaltese(array), toMaltese(index))
-    case ArrayEqual(a, b) => m.ArrayEqual(toMaltese(a), toMaltese(b))
-    case ArrayRead(array, index) => m.ArrayRead(toMaltese(array), toMaltese(index))
     case BVIte(cond, tru, fals) => m.BVIte(toMaltese(cond), toMaltese(tru), toMaltese(fals))
     case ArrayEqual(a, b) => m.ArrayEqual(toMaltese(a), toMaltese(b))
     case BVRawExpr(serialized, _) => throw new NotImplementedError(s"Unsupported RawExpr: $serialized")
   }
+
+  private def implies(a: BVExpr, b: BVExpr): BVExpr = BVOp(Op.Or, BVNot(a), b)
 
   def toMaltese(sym: BVSymbol): m.BVSymbol = m.BVSymbol(sym.name, sym.width)
 
