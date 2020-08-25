@@ -5,6 +5,7 @@
 package maltese.smt
 
 sealed trait SMTExpr {
+  def tpe: SMTType
   def children: List[SMTExpr]
   def foreachExpr(f: SMTExpr => Unit): Unit = children.foreach(f)
   def mapExpr(f: SMTExpr => SMTExpr): SMTExpr = SMTExprMap.mapExpr(this, f)
@@ -25,6 +26,7 @@ sealed trait SMTNullaryExpr extends SMTExpr {
 
 sealed trait BVExpr extends SMTExpr {
   def width: Int
+  def tpe: BVType = BVType(width)
   override def toString: String = SMTExprSerializer.serialize(this)
 }
 case class BVLiteral(value: BigInt, width: Int) extends BVExpr with SMTNullaryExpr {
@@ -140,6 +142,7 @@ case class BVSelect(choices: List[(BVExpr, BVExpr)]) extends BVExpr {
 sealed trait ArrayExpr extends SMTExpr {
   val indexWidth: Int
   val dataWidth: Int
+  def tpe: ArrayType = ArrayType(indexWidth = indexWidth, dataWidth = dataWidth)
   override def toString: String = SMTExprSerializer.serialize(this)
 }
 case class ArraySymbol(name: String, indexWidth: Int, dataWidth: Int) extends ArrayExpr with SMTSymbol {
@@ -211,3 +214,7 @@ object False {
   def apply(): BVLiteral = _False
   def unapply(l: BVLiteral): Boolean = l.value == 0 && l.width == 1
 }
+
+sealed trait SMTType
+case class BVType(width: Int) extends SMTType
+case class ArrayType(indexWidth: Int, dataWidth: Int) extends SMTType
