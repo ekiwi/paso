@@ -21,11 +21,7 @@ val versionSettings = Seq(
 val chiselSettings = Seq(
   // for structural bundles
   scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
-
-  resolvers += Resolver.sonatypeRepo("snapshots"),
-  resolvers += Resolver.sonatypeRepo("releases"),
-
-  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4-SNAPSHOT",
+  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4.0-RC1",
 )
 
 val otherDependencySettings = Seq(
