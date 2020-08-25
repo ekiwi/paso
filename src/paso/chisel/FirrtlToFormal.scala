@@ -5,10 +5,11 @@
 package paso.chisel
 
 import uclid.smt
-import firrtl.annotations.Annotation
+import firrtl.annotations.{Annotation, CircuitName, ModuleName}
+import firrtl.options.Dependency
 import firrtl.{TargetDirAnnotation, ir}
-import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation}
-import firrtl.transforms.NoDCEAnnotation
+import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation, RunFirrtlTransformAnnotation}
+import firrtl.transforms.{Flatten, FlattenAnnotation, NoDCEAnnotation}
 import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
 
@@ -16,6 +17,10 @@ object FirrtlToFormal  {
   def apply(c: ir.Circuit, annos: Seq[Annotation]): smt.TransitionSystem = {
     val testDir = BackendCompilationUtilities.createTestDirectory(c.main + "_to_btor2")
 
+
+    val main = ModuleName(c.main, CircuitName(c.main))
+    val flatten = Seq(FlattenAnnotation(main), RunFirrtlTransformAnnotation(Dependency[Flatten]))
+   
     val res = (new FirrtlStage).execute(
       Array("-E", "experimental-btor2"),
       Seq(
@@ -23,7 +28,7 @@ object FirrtlToFormal  {
         FirrtlCircuitAnnotation(c),
         TargetDirAnnotation(testDir.getAbsolutePath),
         NoDCEAnnotation,
-      ) ++ annos
+      ) ++ flatten ++ annos
     )
     val name = res.collectFirst { case OutputFileAnnotation(file) => file }
     assert(name.isDefined)
