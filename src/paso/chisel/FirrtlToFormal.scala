@@ -6,8 +6,8 @@ package paso.chisel
 
 import uclid.smt
 import firrtl.annotations.{Annotation, CircuitName, ModuleName}
-import firrtl.options.Dependency
-import firrtl.{TargetDirAnnotation, ir}
+import firrtl.options.{Dependency,TargetDirAnnotation}
+import firrtl.ir
 import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation, RunFirrtlTransformAnnotation}
 import firrtl.transforms.{Flatten, FlattenAnnotation, NoDCEAnnotation}
 import firrtl.util.BackendCompilationUtilities
@@ -19,8 +19,12 @@ object FirrtlToFormal  {
 
 
     val main = ModuleName(c.main, CircuitName(c.main))
-    val flatten = Seq(FlattenAnnotation(main), RunFirrtlTransformAnnotation(Dependency[Flatten]))
-   
+    // TODO: remove once https://github.com/freechipsproject/firrtl/pull/1868 is fixed
+    // try to work around a bug in the Flatten/Inline pass that makes firrtl crash when there is nothing to inline
+    val flatten = if(c.modules.size > 1) {
+      Seq(FlattenAnnotation(main), RunFirrtlTransformAnnotation(Dependency[Flatten]))
+    } else Seq()
+
     val res = (new FirrtlStage).execute(
       Array("-E", "experimental-btor2"),
       Seq(
