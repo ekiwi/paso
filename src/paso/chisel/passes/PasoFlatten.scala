@@ -41,8 +41,8 @@ object PasoFlatten extends Transform with DependencyAPIMigration {
       val parentModule = instances.head.dropRight(1).last.module
 
       // we annotate the IO of the instance
-      val iRef = cRef.module(parentModule).ref(instanceName)
-      iGraph.moduleMap(name).ports.map(p => iRef.field(p.name)).map(SubmoduleIOAnnotation)
+      val iRef = cRef.module(parentModule).instOf(instanceName, name)
+      iGraph.moduleMap(name).ports.map(p => iRef.ref(p.name)).map(SubmoduleIOAnnotation)
     }
 
     val annos = state.annotations.filterNot(_.isInstanceOf[DoNotInlineAnnotation]) ++ inlineAnnos ++ submoduleAnnos

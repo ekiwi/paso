@@ -127,9 +127,12 @@ case class Elaboration() {
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.instance))
     val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, impl.annos ++ doFlatten ++ doNotInlineAnnos)
-    val rawSubmoduleIO = resAnnos.collect{ case a : SubmoduleIOAnnotation => a.target }
-    val submoduleIO = rawSubmoduleIO.map(_.ref)
-    Impl(List(), transitionSystem, submoduleIO)
+    val submoduleIO = resAnnos.collect{ case a : SubmoduleIOAnnotation => a.target }
+    val submoduleIONames = submoduleIO.map { t =>
+      assert(t.path.length == 1, "All remaining submodules should be exactly one instance deep")
+      t.path.head._1.value + "." + t.ref
+    }
+    Impl(List(), transitionSystem, submoduleIONames)
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])

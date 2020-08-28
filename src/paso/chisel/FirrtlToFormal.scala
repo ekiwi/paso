@@ -18,7 +18,7 @@ object FirrtlToFormal  {
     val res = (new FirrtlStage).execute(
       Array("-E", "experimental-btor2"),
       Seq(
-        LogLevelAnnotation(LogLevel.Trace), // silence warnings for tests
+        LogLevelAnnotation(LogLevel.Error), // silence warnings for tests
         FirrtlCircuitAnnotation(c),
         TargetDirAnnotation(testDir.getAbsolutePath),
       ) ++ annos
