@@ -6,7 +6,7 @@ package paso.chisel
 
 import uclid.smt
 import firrtl.annotations.DeletedAnnotation
-import firrtl.options.{TargetDirAnnotation}
+import firrtl.options.TargetDirAnnotation
 import firrtl.{AnnotationSeq, ir}
 import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation}
 import firrtl.util.BackendCompilationUtilities
@@ -18,7 +18,7 @@ object FirrtlToFormal  {
     val res = (new FirrtlStage).execute(
       Array("-E", "experimental-btor2"),
       Seq(
-        LogLevelAnnotation(LogLevel.Error), // silence warnings for tests
+        LogLevelAnnotation(LogLevel.Trace), // silence warnings for tests
         FirrtlCircuitAnnotation(c),
         TargetDirAnnotation(testDir.getAbsolutePath),
       ) ++ annos
