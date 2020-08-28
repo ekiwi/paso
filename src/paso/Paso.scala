@@ -11,24 +11,27 @@ import paso.verification.VerificationProblem
 
 import scala.collection.mutable
 
-trait IsSubmodule { val makeSpec: () => ProtocolSpec[UntimedModule] ; val instancePath: String ; def getBinding: Option[String] }
+trait IsSubmodule {
+  val makeSpec: () => ProtocolSpec[UntimedModule]
+  val instance: ModuleTarget
+  def getBinding: Option[ModuleTarget]
+}
 
 abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val spec: SM) {
-  case class Submodule[I <: RawModule, S <: UntimedModule](instancePath: String, impl: I, spec: I => ProtocolSpec[S], var binding: Option[String] = None) extends IsSubmodule {
+  case class Submodule[I <: RawModule, S <: UntimedModule](instance: ModuleTarget, impl: I, spec: I => ProtocolSpec[S], var binding: Option[ModuleTarget] = None) extends IsSubmodule {
     override val makeSpec = () => spec(impl)
-    override def getBinding: Option[String] = binding
+    override def getBinding: Option[ModuleTarget] = binding
     /** marks a RTL submodule as implementing an untimed submodule */
     def bind(untimed: S): Unit = {
       assert(binding.isEmpty)
-      binding = Some(untimed.instanceName)
+      binding = Some(untimed.toTarget)
     }
   }
   val subspecs = mutable.ArrayBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
 
   /** marks a submodule to be replaced with its specification */
   def replace[I <: RawModule, S <: UntimedModule](module: I)(spec: I => ProtocolSpec[S]): Submodule[I,S] = {
-    val name = module.pathName.split('.').drop(1).mkString(".")
-    val sub = Submodule(name, module, spec)
+    val sub = Submodule(module.toTarget, module, spec)
     subspecs.append(sub)
     sub
   }

@@ -8,8 +8,10 @@ import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
 import firrtl.ir.{BundleType, NoInfo}
-import firrtl.{CircuitState,ir}
-import paso.chisel.passes.{ChangeAnnotationCircuit, ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State}
+import firrtl.options.Dependency
+import firrtl.stage.RunFirrtlTransformAnnotation
+import firrtl.{CircuitState, ir}
+import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, ExposeSubModules, FindModuleState, FindState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State, SubmoduleIOAnnotation}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
@@ -115,34 +117,16 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](state: Seq[State], model: smt.TransitionSystem)
+  private case class Impl[IM <: RawModule](state: Seq[State], model: smt.TransitionSystem, submoduleIO: Seq[String])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule]): Impl[IM] = {
-    val impl_fir = toHighFirrtl(impl.circuit, impl.annos)._1
-
-    // we need to run the subspecs finder right after elaboration in order to find out
-    // which submodules we want to get rid of and expose their I/O at the toplevel
-    val exposed_fir = new ExposeSubModules(impl_fir, subspecs.map(_.instancePath).toSet)()
-
-    val impl_state = FindState(exposed_fir).run()
-    val impl_model = FirrtlToFormal(exposed_fir, impl.annos)
-
-    //println("State extracted from Chisel")
-    //impl_state.foreach(st => println(s"${st.name}: ${st.tpe}"))
-    //println("State extracted from BTOR")
-    //impl_model.states.foreach(st => println(s"${st.sym.id} : ${st.sym.typ}"))
-
-    // cross check states:
-    impl_state.foreach { state =>
-      if(!impl_model.states.exists(_.sym.id == state.name)) {
-        if(state.tpe.isInstanceOf[BundleType]) {
-          println(s"WARN: todo, deal with bundle states ($state)")
-        } else {
-          println(s"WARN: State $state is missing from the formal model!")
-        }
-      }
-      //assert(impl_model.states.exists(_.sym.id == state.name), s"State $state is missing from the formal model!")
-    }
-    Impl(impl_state, impl_model)
+    // The firrtl SMT backend expects all submodules that are part of the implementation to be inlined.
+    // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the
+    // rest.
+    val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoFlatten)))
+    val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.instance))
+    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, impl.annos ++ doFlatten ++ doNotInlineAnnos)
+    val submoduleIO = resAnnos.collect{ case a : SubmoduleIOAnnotation => a.target.ref }
+    Impl(List(), transitionSystem, submoduleIO)
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
@@ -246,14 +230,16 @@ case class Elaboration() {
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
-    val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
+    val implIo = (
+      implementation.model.inputs.map(i => i.id -> i.typ) ++
+        implementation.model.outputs.map(o => o._1 -> o._2.typ)).toMap
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val (spec, _) = elaborateSpec[UntimedModule](elaborated)
-      val instance = s.instancePath
+      val instance = s.instance.module
       val prefixLength = instance.length + 1
-      val io = implIo.filter(_.id.startsWith(instance + "_")).map(s => s.copy(id = s.id.substring(prefixLength)))
-      Subspec(instance, io, spec, s.getBinding)
+      val io = implementation.submoduleIO.filter(_.startsWith(instance + "_")).map(_.substring(prefixLength))
+      Subspec(instance, io.map(i => smt.Symbol(i, implIo(i))), spec, s.getBinding.map(_.module))
     }
     val endSubSpec= System.nanoTime()
 
