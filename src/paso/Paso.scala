@@ -13,12 +13,12 @@ import scala.collection.mutable
 
 trait IsSubmodule {
   val makeSpec: () => ProtocolSpec[UntimedModule]
-  val instance: ModuleTarget
+  val module: ModuleTarget
   def getBinding: Option[ModuleTarget]
 }
 
 abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val spec: SM) {
-  case class Submodule[I <: RawModule, S <: UntimedModule](instance: ModuleTarget, impl: I, spec: I => ProtocolSpec[S], var binding: Option[ModuleTarget] = None) extends IsSubmodule {
+  case class Submodule[I <: RawModule, S <: UntimedModule](module: ModuleTarget, impl: I, spec: I => ProtocolSpec[S], var binding: Option[ModuleTarget] = None) extends IsSubmodule {
     override val makeSpec = () => spec(impl)
     override def getBinding: Option[ModuleTarget] = binding
     /** marks a RTL submodule as implementing an untimed submodule */

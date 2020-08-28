@@ -2,21 +2,28 @@ package paso.chisel.passes
 
 import firrtl.analyses.InstanceKeyGraph
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
-import firrtl.annotations.{CircuitTarget, ModuleTarget, ReferenceTarget, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitTarget, InstanceTarget, ModuleTarget, ReferenceTarget, SingleTargetAnnotation}
 import firrtl.options.Dependency
 import firrtl.passes.InlineAnnotation
 import firrtl.stage.Forms
+import firrtl.transforms.DontTouchAnnotation
 import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform}
 
 case class DoNotInlineAnnotation(target: ModuleTarget) extends SingleTargetAnnotation[ModuleTarget] {
   override def duplicate(n: ModuleTarget) = copy(target = n)
 }
 
-case class SubmoduleIOAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  override def duplicate(n: ReferenceTarget) = copy(target = n)
+case class SubmoduleInstanceAnnotation(target: InstanceTarget, originalModule: String)
+  extends SingleTargetAnnotation[InstanceTarget] {
+  override def duplicate(n: InstanceTarget) = copy(target = n)
 }
 
-object PasoFlatten extends Transform with DependencyAPIMigration {
+/** This pass deal with submodules in the implementation RTL:
+ * - if no submodules are abstracted out, the complete hierarchy is inlined
+ * - any submodule that needs to be abstracted is maintained and will eventually be exposed by the SMT backend
+ * - we track the submodule instance name
+ */
+object PasoSubmoduleFlatten extends Transform with DependencyAPIMigration {
   override def prerequisites = Forms.WorkingIR
   // this pass relies on modules not being dedupped
   override def optionalPrerequisiteOf = Seq(Dependency[firrtl.transforms.DedupModules])
@@ -32,7 +39,7 @@ object PasoFlatten extends Transform with DependencyAPIMigration {
     val main = cRef.module(state.circuit.main)
     val inlineAnnos = inlines(main)(children, doNotInline.toSet)
 
-    // we need to keep track of the IO of all non-inlined modules
+    // we need to keep track of the instance names of all non inlined submodules
     val submoduleAnnos = doNotInline.flatMap { name =>
       // find out where this module is instantiated
       val instances = iGraph.findInstancesInHierarchy(name)
@@ -40,9 +47,13 @@ object PasoFlatten extends Transform with DependencyAPIMigration {
       val instanceName = instances.head.last.name
       val parentModule = instances.head.dropRight(1).last.module
 
-      // we annotate the IO of the instance
       val iRef = cRef.module(parentModule).instOf(instanceName, name)
-      iGraph.moduleMap(name).ports.map(p => iRef.ref(p.name)).map(SubmoduleIOAnnotation)
+      val instAnno = SubmoduleInstanceAnnotation(iRef, name)
+
+      // we also want to insure that all I/O of the submodule is kept around
+      val mRef = cRef.module(name)
+      val dontTouchIO = iGraph.moduleMap(name).ports.map(p => DontTouchAnnotation(mRef.ref(p.name)))
+      instAnno +: dontTouchIO
     }
 
     val annos = state.annotations.filterNot(_.isInstanceOf[DoNotInlineAnnotation]) ++ inlineAnnos ++ submoduleAnnos

@@ -7,12 +7,12 @@ package paso.chisel
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.elaborateInContextOfModule
 import firrtl.annotations.Annotation
-import firrtl.ir.{BundleType, NoInfo}
+import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
-import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State, SubmoduleIOAnnotation}
+import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State, SubmoduleInstanceAnnotation}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
@@ -118,21 +118,19 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](state: Seq[State], model: smt.TransitionSystem, submoduleIO: Seq[String])
+  private case class Impl[IM <: RawModule](state: Seq[State], model: smt.TransitionSystem, submodules: Map[String, String])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule]): Impl[IM] = {
     // The firrtl SMT backend expects all submodules that are part of the implementation to be inlined.
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the
     // rest.
-    val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoFlatten)),
+    val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoSubmoduleFlatten)),
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
-    val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.instance))
+    val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, impl.annos ++ doFlatten ++ doNotInlineAnnos)
-    val submoduleIO = resAnnos.collect{ case a : SubmoduleIOAnnotation => a.target }
-    val submoduleIONames = submoduleIO.map { t =>
-      assert(t.path.length == 1, "All remaining submodules should be exactly one instance deep")
-      t.path.head._1.value + "." + t.ref
-    }
-    Impl(List(), transitionSystem, submoduleIONames)
+    val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
+      a.originalModule -> a.target.instance
+    }.toMap
+    Impl(List(), transitionSystem, submoduleNames)
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
@@ -236,16 +234,14 @@ case class Elaboration() {
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
-    val implIo = (
-      implementation.model.inputs.map(i => i.id -> i.typ) ++
-        implementation.model.outputs.map(o => o._1 -> o._2.typ)).toMap
+    val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val (spec, _) = elaborateSpec[UntimedModule](elaborated)
-      val instance = s.instance.module
+      val instance = implementation.submodules(s.module.name)
       val prefixLength = instance.length + 1
-      val io = implementation.submoduleIO.filter(_.startsWith(instance + "_")).map(_.substring(prefixLength))
-      Subspec(instance, io.map(i => smt.Symbol(i, implIo(i))), spec, s.getBinding.map(_.module))
+      val io = implIo.filter(_.id.startsWith(instance + ".")).map(s => s.copy(id = s.id.substring(prefixLength)))
+      Subspec(instance, io, spec, s.getBinding.map(_.module))
     }
     val endSubSpec= System.nanoTime()
 
