@@ -56,7 +56,7 @@ object NamespaceIdentifiers {
   }
 
   def renameSubspec(s: Subspec, ioSubs: SymSub): Subspec = {
-    val p = s.instance + "_"
+    val p = s.instance + "."
     val localIoSubs : SymSub = s.ioSymbols.map(s => s -> ioSubs(s.copy(id = p + s.id))).toMap
     val spec = renameSpec(s.instance + ".", s.spec, localIoSubs)._1
     s.copy(spec = spec)
