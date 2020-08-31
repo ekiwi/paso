@@ -2,7 +2,7 @@ package paso.chisel.passes
 
 import firrtl.analyses.InstanceKeyGraph
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
-import firrtl.annotations.{CircuitTarget, InstanceTarget, ModuleTarget, ReferenceTarget, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitName, CircuitTarget, InstanceTarget, ModuleName, ModuleTarget, ReferenceTarget, SingleTargetAnnotation}
 import firrtl.options.Dependency
 import firrtl.passes.InlineAnnotation
 import firrtl.stage.Forms
@@ -27,6 +27,7 @@ object PasoSubmoduleFlatten extends Transform with DependencyAPIMigration {
   override def prerequisites = Forms.WorkingIR
   // this pass relies on modules not being dedupped
   override def optionalPrerequisiteOf = Seq(Dependency[firrtl.transforms.DedupModules])
+  override def invalidates(a: Transform): Boolean = false
 
   override protected def execute(state: CircuitState): CircuitState = {
     val doNotInline = state.annotations
@@ -62,7 +63,15 @@ object PasoSubmoduleFlatten extends Transform with DependencyAPIMigration {
 
   private def inlines(m: ModuleTarget)(implicit children: Map[String, Seq[InstanceKey]], doNotInline: Set[String]): AnnotationSeq = {
     if(doNotInline.contains(m.module)) { Seq() } else {
-      InlineAnnotation(m) +: children(m.module).flatMap(c => inlines(m.targetParent.module(c.module)))
+      val childAnnos = children(m.module).flatMap(c => inlines(m.targetParent.module(c.module)))
+      if(m.circuit == m.module) { // never inline the main module
+        childAnnos
+      } else {
+        InlineAnnotation(toName(m)) +: childAnnos
+      }
     }
   }
+
+  /** the InlineInstances pass uses Name instead of Target  */
+  private def toName(m: ModuleTarget): ModuleName = ModuleName(m.module, CircuitName(m.circuit))
 }
