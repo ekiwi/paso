@@ -8,7 +8,7 @@ import firrtl.annotations.Annotation
 
 /** exposes some of the InjectingAspect magic for people who do not want the resulting firrtl to be appended to the parent module  **/
 object elaborateInContextOfModule {
-  def apply(ctx: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.ir.Circuit, Seq[Annotation]) = {
+  def apply(ctx: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): firrtl.CircuitState = {
     val (chiselIR, _) = Builder.build(Module(new ModuleAspect(ctx) {
       ctx match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }
@@ -16,9 +16,9 @@ object elaborateInContextOfModule {
       }
     }))
     val pp = if(submoduleRefs) prefixNamesOfSubmodules(Set(ctx.name)).run(chiselIR) else chiselIR
-    (Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
+    firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
   }
-  def apply(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.ir.Circuit, Seq[Annotation])  = {
+  def apply(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): firrtl.CircuitState  = {
     val (chiselIR, _) = Builder.build(Module(new ModuleDoubleAspect(ctx0, ctx1, name) {
       ctx0 match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }
@@ -26,7 +26,7 @@ object elaborateInContextOfModule {
       }
     }))
     val pp = prefixNames(Set(ctx0.name, ctx1.name)).run(chiselIR)
-    (Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
+    firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
   }
 }
 
