@@ -6,27 +6,36 @@ import chisel3.internal.Builder
 import chisel3.internal.firrtl._
 import firrtl.annotations.Annotation
 
+import scala.collection.mutable
+
 /** exposes some of the InjectingAspect magic for people who do not want the resulting firrtl to be appended to the parent module  **/
-object elaborateInContextOfModule {
-  def apply(ctx: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): firrtl.CircuitState = {
+object ElaborateInContextOfModule {
+  def apply(ctx: RawModule, name: Option[String], gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.CircuitState, Seq[ExternalReference]) = {
+    val moduleName = name.getOrElse(ctx.name)
     val (chiselIR, _) = Builder.build(Module(new ModuleAspect(ctx) {
+      override def desiredName: String = moduleName
       ctx match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }
-        case x: RawModule => gen()
+        case _: RawModule => gen()
       }
     }))
-    val pp = if(submoduleRefs) prefixNamesOfSubmodules(Set(ctx.name)).run(chiselIR) else chiselIR
-    firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
+    val (pp, refs) = if(submoduleRefs){
+      val prefix = prefixNamesOfSubmodules(Set(ctx.name))
+      (prefix.run(chiselIR), prefix.getExternalRefs)
+    } else { (chiselIR, List()) }
+    (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), refs)
   }
-  def apply(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): firrtl.CircuitState  = {
+  def apply(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference])  = {
+    assert(name != ctx0.name && name != ctx1.name)
     val (chiselIR, _) = Builder.build(Module(new ModuleDoubleAspect(ctx0, ctx1, name) {
       ctx0 match {
         case x: MultiIOModule => withClockAndReset(x.clock, x.reset) { gen() }
-        case x: RawModule => gen()
+        case _: RawModule => gen()
       }
     }))
-    val pp = prefixNames(Set(ctx0.name, ctx1.name)).run(chiselIR)
-    firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl))
+    val prefix = prefixNames(Set(ctx0.name, ctx1.name))
+    val pp = prefix.run(chiselIR)
+    (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), prefix.getExternalRefs)
   }
 }
 
@@ -45,6 +54,8 @@ case class prefixNamesOfSubmodules(prefixes: Set[String]) extends FixNaming {
   }
 }
 
+case class ExternalReference(name: String, path: Seq[String])
+
 abstract class FixNaming {
   def fixName(parentPathNamePrefix: String, pathName: String): Option[String]
 
@@ -56,6 +67,9 @@ abstract class FixNaming {
     override def getOptionRef: Option[Arg] = Some(ref)
   }
 
+  def getExternalRefs: Seq[ExternalReference] = externalReferences.toSeq
+  private val externalReferences = mutable.LinkedHashSet[ExternalReference]()
+
   private def onNode(node: Node): Node = {
     val new_ref: Arg = node.id.getRef match {
       case a: Slot => onArg(a)
@@ -66,7 +80,9 @@ abstract class FixNaming {
         val parentPathName = node.id.parentPathName
         val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
         fixName(parentPathNamePrefix, pathName) match {
-          case Some(name) => Ref(name)
+          case Some(name) =>
+            externalReferences.add(ExternalReference(name, pathName.split('.')))
+            Ref(name)
           case None => r
         }
     }

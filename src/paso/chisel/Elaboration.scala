@@ -5,7 +5,7 @@
 package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
-import chisel3.hacks.elaborateInContextOfModule
+import chisel3.hacks.{ElaborateInContextOfModule, ExternalReference}
 import firrtl.annotations.Annotation
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
@@ -49,54 +49,23 @@ case class Elaboration() {
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
   private def getNonMain(c: ir.Circuit): Seq[ir.Module] = c.modules.filter(_.name != c.main)map(_.asInstanceOf[ir.Module])
 
-  private def elaborate(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): firrtl.CircuitState = {
+  private def elaborate(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
     val start = System.nanoTime()
-    val r = elaborateInContextOfModule(ctx0, ctx1, name, gen)
+    val r = ElaborateInContextOfModule(ctx0, ctx1, name, gen)
     chiselElaborationTime += System.nanoTime() - start
     r
   }
-  private def elaborate(ctx0: RawModule, gen: () => Unit, submoduleRefs: Boolean = false): firrtl.CircuitState = {
+  private def elaborate(ctx0: RawModule, name: Option[String], gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.CircuitState, Seq[ExternalReference]) = {
     val start = System.nanoTime()
-    val r = elaborateInContextOfModule(ctx0, gen, submoduleRefs)
+    val r = ElaborateInContextOfModule(ctx0, name, gen, submoduleRefs)
     chiselElaborationTime += System.nanoTime() - start
     r
-  }
-
-  // TODO: add support for implementations and untimed models that contain actual Vecs
-  //       currently we use the VectorType as a placeholder for memories....
-  private def stateToPort(state: Iterable[State], prefix: String): Iterable[ir.Port] =
-    state.collect { case State(name, tpe, _) => ir.Port(NoInfo, prefix + name, ir.Input, tpe) }
-  private def collectMemTypes(state: Iterable[State], prefix: String): Iterable[(String, ir.VectorType)] =
-    state.collect{ case State(name, tpe: ir.VectorType, _) => prefix + name -> tpe }
-
-  private def elaborateMappings[IM <: RawModule, SM <: UntimedModule](
-      impl: IM, spec: SM, maps: Seq[(IM, SM) => Unit]): Seq[Assertion] = {
-    //val map_ports = stateToPort(impl_state, impl.name + ".") ++ stateToPort(spec_state, spec.name + ".") ++
-      Seq(ir.Port(NoInfo, "clock", ir.Input, ir.ClockType))
-    //val map_mod = ir.Module(NoInfo, name = "m", ports=map_ports.toSeq, body=ir.EmptyStmt)
-    //val memTypes = (collectMemTypes(impl_state, impl.name + ".") ++ collectMemTypes(spec_state, spec.name + ".")).toMap
-
-    maps.flatMap { m =>
-      val mod = elaborate(impl, spec, "map", {() => m(impl, spec)})
-      //val body = mod._1.modules.head.asInstanceOf[ir.Module].body
-      //val c = ir.Circuit(NoInfo, Seq(map_mod.copy(body=body)), map_mod.name)
-
-      // HACK: replace all read ports (and inferred ports b/c yolo) with vector accesses
-     // val c_fixed = ReplaceMemReadWithVectorAccess(memTypes)(c)
-
-      //val elaborated = toHighFirrtl(c_fixed, mod._2)
-      //new FirrtlInvarianceInterpreter(elaborated._1, elaborated._2).run().asserts
-      throw new NotImplementedError()
-    }
   }
 
   private def invariantsCompiler = new TransformManager(Seq(Dependency(passes.CrossModuleReferencesToInputsPass)) ++ Forms.LowForm)
-  private def elaborateInvariances[IM <: RawModule](impl: IM, invs: Seq[IM => Unit]): Seq[Assertion] = {
-    invs.flatMap { ii =>
-      val elaborated = elaborate(impl, {() => ii(impl)}, submoduleRefs = true)
-      val lo = invariantsCompiler.runTransform(elaborated)
-      new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
-    }
+  private def compileInvariant(state: CircuitState): Seq[Assertion] = {
+    val lo = invariantsCompiler.runTransform(state)
+    new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
   }
 
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {
@@ -112,7 +81,9 @@ case class Elaboration() {
   }
 
   private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String])
-  private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule]): Impl[IM] = {
+  private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
+    // TODO: annotate external references to be exposed and return their type!!
+
     // The firrtl SMT backend expects all submodules that are part of the implementation to be inlined.
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the
     // rest.
@@ -149,7 +120,7 @@ case class Elaboration() {
     }
 
     val methods = untimed.methods.map { meth =>
-      val raw = elaborate(untimed, meth.generate)
+      val (raw, _) = elaborate(untimed, None, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw.circuit).body
@@ -219,9 +190,20 @@ case class Elaboration() {
     val implChisel = chiselElaborationImpl(impl)
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
     val subspecList = findSubspecs(implChisel.instance, specChisel.untimed).subspecs
+    assert(implChisel.instance.name != specChisel.untimed.name, "spec and impl must have different names")
+
+    // elaborate invariants in order to collect all signals that need to be exposed from the implementation and spec
+    val collateral = inv(implChisel.instance, specChisel.untimed)
+    val elaboratedMaps = collateral.maps.map{ m =>
+      elaborate(implChisel.instance, specChisel.untimed, "map", {() => m(implChisel.instance, specChisel.untimed)})
+    }
+    val elaboratedInvs = collateral.invs.map{ i =>
+      elaborate(implChisel.instance, Some("inv"), () => i(implChisel.instance), submoduleRefs = true)
+    }
+    val externalReferences = elaboratedMaps.flatMap(_._2) ++ elaboratedInvs.flatMap(_._2)
 
     // Firrtl Compilation
-    val implementation = elaborateImpl(implChisel, subspecList)
+    val implementation = elaborateImpl(implChisel, subspecList, externalReferences)
     val endImplementation = System.nanoTime()
     val (spec, untimed_state) = elaborateSpec(specChisel)
     val endSpec= System.nanoTime()
@@ -240,9 +222,8 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val collateral = inv(implChisel.instance, specChisel.untimed)
-    val mappings = elaborateMappings(implChisel.instance, specChisel.untimed, collateral.maps)
-    val invariances = elaborateInvariances(implChisel.instance, collateral.invs)
+    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1))
+    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1))
     val endBinding = System.nanoTime()
 
     if(true) {
@@ -266,7 +247,7 @@ case class Elaboration() {
       impl = implementation.model,
       spec = spec,
       subspecs = subspecs,
-      invariances = invariances,
+      invariances = invariants,
       mapping = mappings
     )
 
