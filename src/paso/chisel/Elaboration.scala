@@ -6,13 +6,15 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateInContextOfModule, ExternalReference}
-import firrtl.annotations.Annotation
+import firrtl.annotations.{Annotation, CircuitName, CircuitTarget, ComponentName, ModuleName}
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
+import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation, WiringInfo}
 import firrtl.stage.{Forms, RunFirrtlTransformAnnotation, TransformManager}
 import firrtl.{CircuitState, ir}
-import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, State, SubmoduleInstanceAnnotation}
+import logger.LogLevel
+import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
@@ -80,9 +82,14 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String])
+  private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, String])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
-    // TODO: annotate external references to be exposed and return their type!!
+    // We want to wire all external signals to the toplevel
+    val cRef = CircuitTarget(impl.circuit.main)
+    val exposeSignalsAnnos = externalRefs.map(r => SignalToExposeAnnotation(r.toTarget(cRef), r.name)) ++ Seq(
+      RunFirrtlTransformAnnotation(Dependency(passes.ExposeSignalsPass)),
+      RunFirrtlTransformAnnotation(Dependency[firrtl.passes.wiring.WiringTransform])
+    )
 
     // The firrtl SMT backend expects all submodules that are part of the implementation to be inlined.
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the
@@ -90,11 +97,15 @@ case class Elaboration() {
     val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoSubmoduleFlatten)),
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
-    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, impl.annos ++ doFlatten ++ doNotInlineAnnos)
+    val annos = impl.annos ++ doFlatten ++ doNotInlineAnnos ++ exposeSignalsAnnos
+    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Info)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
-    Impl(transitionSystem, submoduleNames)
+    val exposed = resAnnos.collect { case a : ExposedSignalAnnotation =>
+      a.name -> a.target.toNamed.serialize
+    }.toMap
+    Impl(transitionSystem, submoduleNames, exposed)
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])

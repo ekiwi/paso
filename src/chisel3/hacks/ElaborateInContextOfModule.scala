@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.aop.Aspect
 import chisel3.internal.Builder
 import chisel3.internal.firrtl._
-import firrtl.annotations.Annotation
+import firrtl.annotations.{Annotation, CircuitTarget, ReferenceTarget}
 
 import scala.collection.mutable
 
@@ -54,7 +54,12 @@ case class prefixNamesOfSubmodules(prefixes: Set[String]) extends FixNaming {
   }
 }
 
-case class ExternalReference(name: String, path: Seq[String])
+case class ExternalReference(name: String, path: Seq[String]) {
+  def toTarget(circuit: CircuitTarget): ReferenceTarget = {
+    assert(path.length == 2)
+    circuit.module(path.head).ref(path(1))
+  }
+}
 
 abstract class FixNaming {
   def fixName(parentPathNamePrefix: String, pathName: String): Option[String]

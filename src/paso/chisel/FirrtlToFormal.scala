@@ -13,12 +13,12 @@ import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
 
 object FirrtlToFormal  {
-  def apply(c: ir.Circuit, annos: AnnotationSeq): (smt.TransitionSystem, AnnotationSeq) = {
+  def apply(c: ir.Circuit, annos: AnnotationSeq, ll: LogLevel.Value = LogLevel.Error): (smt.TransitionSystem, AnnotationSeq) = {
     val testDir = BackendCompilationUtilities.createTestDirectory(c.main + "_to_btor2")
     val res = (new FirrtlStage).execute(
       Array("-E", "experimental-btor2"),
       Seq(
-        LogLevelAnnotation(LogLevel.Error), // silence warnings for tests
+        LogLevelAnnotation(ll),
         FirrtlCircuitAnnotation(c),
         TargetDirAnnotation(testDir.getAbsolutePath),
         RunFirrtlTransformAnnotation(Dependency[firrtl.passes.InlineInstances]),
