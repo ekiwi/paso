@@ -22,9 +22,7 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
 
   // replace default chisel assert
   def assert(cond: => Bool): Unit = {
-    val w = Wire(Bool()).suggestName("assert")
-    w := cond
-    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
+    chisel3.experimental.verification.assert(cond)
   }
 
   implicit class comparableMem[T <: UInt](x: Mem[T]) {
@@ -62,10 +60,6 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
 }
 
 case class NoProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec: S) extends ProofCollateral(impl, spec)
-
-case class AssertAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
 
 case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)

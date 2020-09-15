@@ -71,11 +71,7 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
   }
 
   // replace default chisel assert
-  private def assert(cond: => Bool): Unit = {
-    val w = Wire(Bool()).suggestName("assert")
-    w := cond
-    annotate(new ChiselAnnotation { override def toFirrtl = AssertAnnotation(w.toTarget) })
-  }
+  private def assert(cond: => Bool): Unit = chisel3.experimental.verification.assert(cond)
 }
 
 trait Protocol {

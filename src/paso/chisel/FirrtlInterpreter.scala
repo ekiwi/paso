@@ -7,7 +7,6 @@ package paso.chisel
 import chisel3.util.log2Ceil
 import firrtl.annotations.Annotation
 import firrtl.ir
-import paso.AssertAnnotation
 import uclid.smt
 
 
@@ -277,6 +276,8 @@ class FirrtlInterpreter extends SMTHelpers {
     case other => throw new NotImplementedError(s"TODO: connect to $other")
   }
 
+  def onAssert(expr: Value): Unit = {}
+
   def onStmt(s: ir.Statement): Unit = s match {
     case ir.DefWire(_, name, tpe) => defWire(name, tpe)
     case ir.DefRegister(_, name, tpe, _, _, _) => defReg(name, tpe)
@@ -297,6 +298,8 @@ class FirrtlInterpreter extends SMTHelpers {
       onConnect(expr, ir.ValidIf(ir.UIntLiteral(0), ir.UIntLiteral(0), expr.tpe))
       //refs(expr.serialize) = getInvalid(getWidth(expr.tpe))
     case ir.EmptyStmt =>
+    case ir.Verification(ir.Formal.Assert, _, _, pred, en, _) =>
+      onAssert(Value(implies(onExpr(en, 1).e, onExpr(pred, 1).e)))
     case other =>
       throw new RuntimeException(s"Unsupported statement: $other")
   }
@@ -339,14 +342,6 @@ class PasoFirrtlInterpreter(circuit: ir.Circuit, val annos: Seq[Annotation]) ext
   require(circuit.modules.length == 1)
   require(circuit.modules.head.isInstanceOf[ir.Module])
   val mod = circuit.modules.head.asInstanceOf[ir.Module]
-  private val asserts = annos.collect{ case AssertAnnotation(target) => target.ref }.toSet
 
   def run(): this.type = { onModule(mod) ; this }
-
-  def onAssert(expr: Value): Unit = {}
-
-  override def onConnect(lhs: String, rhs: Value): Unit = {
-    if(asserts.contains(lhs)) onAssert(rhs)
-    super.onConnect(lhs, rhs)
-  }
 }
