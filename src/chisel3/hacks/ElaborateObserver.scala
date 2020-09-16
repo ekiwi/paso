@@ -25,11 +25,13 @@ case class prefixNames(prefixes: Set[String]) extends FixNaming {
   }
 }
 
-case class ExternalReference(name: String, path: Seq[String]) {
+case class ExternalReference(path: Seq[String]) {
+  assert(path.length == 2, f"Expected path in format MODULE.NAME, not ${path.mkString(".")}")
   def toTarget(circuit: CircuitTarget): ReferenceTarget = {
     assert(path.length == 2)
     circuit.module(path.head).ref(path(1))
   }
+  def name: String = path.last
 }
 
 abstract class FixNaming {
@@ -57,8 +59,7 @@ abstract class FixNaming {
         val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
         fixName(parentPathNamePrefix, pathName) match {
           case Some(name) =>
-            val pathParts = pathName.split('.')
-            externalReferences.add(ExternalReference(pathParts.last, pathParts))
+            externalReferences.add(ExternalReference(pathName.split('.')))
             Ref(name)
           case None => r
         }
