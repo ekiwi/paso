@@ -24,6 +24,8 @@ object CrossModuleReferencesToInputsPass extends Transform with DependencyAPIMig
     val main = state.circuit.modules.find(_.name == state.circuit.main).get.asInstanceOf[ir.Module]
     assert(main.ports.isEmpty, f"Invariance modules should not have any ports!")
 
+    println(main.serialize)
+
     // find all cross module signals
     val signals = state.annotations.collect{ case a: CrossModuleInput => a }
     val ports = signals.map( s => ir.Port(ir.NoInfo, s.portName, ir.Input, s.tpe) )

@@ -5,7 +5,7 @@
 package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
-import chisel3.hacks.{ElaborateInContextOfModule, ExternalReference}
+import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
 import firrtl.annotations.{Annotation, CircuitName, CircuitTarget, ComponentName, ModuleName}
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
@@ -51,18 +51,20 @@ case class Elaboration() {
   private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
   private def getNonMain(c: ir.Circuit): Seq[ir.Module] = c.modules.filter(_.name != c.main)map(_.asInstanceOf[ir.Module])
 
-  private def elaborate(ctx0: RawModule, ctx1: RawModule, name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
+  private def elaborateInContext(ctx: RawModule, gen: () => Unit): firrtl.CircuitState = {
     val start = System.nanoTime()
-    val r = ElaborateInContextOfModule(ctx0, ctx1, name, gen)
+    val r = ElaborateInContextOfModule(ctx, gen)
     chiselElaborationTime += System.nanoTime() - start
     r
   }
-  private def elaborate(ctx0: RawModule, name: Option[String], gen: () => Unit, submoduleRefs: Boolean = false): (firrtl.CircuitState, Seq[ExternalReference]) = {
+
+  private def elaborateObserver(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
     val start = System.nanoTime()
-    val r = ElaborateInContextOfModule(ctx0, name, gen, submoduleRefs)
+    val r = ElaborateObserver(observing, name, gen)
     chiselElaborationTime += System.nanoTime() - start
     r
   }
+
 
   private def invariantsCompiler = new TransformManager(Seq(Dependency(passes.CrossModuleReferencesToInputsPass)) ++ Forms.LowForm)
   private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
@@ -133,7 +135,7 @@ case class Elaboration() {
     }
 
     val methods = untimed.methods.map { meth =>
-      val (raw, _) = elaborate(untimed, None, meth.generate)
+      val raw = elaborateInContext(untimed, meth.generate)
 
       // build module for this method:
       val method_body = getMain(raw.circuit).body
@@ -208,10 +210,10 @@ case class Elaboration() {
     // elaborate invariants in order to collect all signals that need to be exposed from the implementation and spec
     val collateral = inv(implChisel.instance, specChisel.untimed)
     val elaboratedMaps = collateral.maps.map{ m =>
-      elaborate(implChisel.instance, specChisel.untimed, "map", {() => m(implChisel.instance, specChisel.untimed)})
+      elaborateObserver(List(implChisel.instance, specChisel.untimed), "map", {() => m(implChisel.instance, specChisel.untimed)})
     }
     val elaboratedInvs = collateral.invs.map{ i =>
-      elaborate(implChisel.instance, Some("inv"), () => i(implChisel.instance), submoduleRefs = true)
+      elaborateObserver(List(implChisel.instance), "inv", () => i(implChisel.instance))
     }
     val externalReferences = elaboratedMaps.flatMap(_._2) ++ elaboratedInvs.flatMap(_._2)
 
