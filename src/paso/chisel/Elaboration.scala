@@ -14,7 +14,7 @@ import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation, WiringInfo}
 import firrtl.stage.{Forms, RunFirrtlTransformAnnotation, TransformManager}
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
-import paso.chisel.passes.{ChangeAnnotationCircuit, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
+import paso.chisel.passes.{ChangeAnnotationCircuit, CrossModuleInput, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
@@ -65,8 +65,10 @@ case class Elaboration() {
   }
 
   private def invariantsCompiler = new TransformManager(Seq(Dependency(passes.CrossModuleReferencesToInputsPass)) ++ Forms.LowForm)
-  private def compileInvariant(state: CircuitState): Seq[Assertion] = {
-    val lo = invariantsCompiler.runTransform(state)
+  private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
+    // convert refs to exposed signals
+    val annos = refs.map(r => CrossModuleInput(r.name, exposedSignals(r.name)._1, exposedSignals(r.name)._2))
+    val lo = invariantsCompiler.runTransform(state.copy(annotations = state.annotations ++ annos))
     new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
   }
 
@@ -82,7 +84,7 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, String])
+  private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
     // We want to wire all external signals to the toplevel
     val cRef = CircuitTarget(impl.circuit.main)
@@ -98,12 +100,12 @@ case class Elaboration() {
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val annos = impl.annos ++ doFlatten ++ doNotInlineAnnos ++ exposeSignalsAnnos
-    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Info)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Warn)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
     val exposed = resAnnos.collect { case a : ExposedSignalAnnotation =>
-      a.name -> a.target.toNamed.serialize
+      a.name -> (a.target.ref, a.tpe)
     }.toMap
     Impl(transitionSystem, submoduleNames, exposed)
   }
@@ -233,8 +235,8 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1))
-    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1))
+    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1, m._2, implementation.exposedSignals))
+    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1, m._2, implementation.exposedSignals))
     val endBinding = System.nanoTime()
 
     if(true) {

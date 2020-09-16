@@ -12,7 +12,7 @@ case class SignalToExposeAnnotation(target: ReferenceTarget, name: String) exten
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 /** marks a port in the toplevel module that exposes an internal signal */
-case class ExposedSignalAnnotation(target: ReferenceTarget, name: String) extends SingleTargetAnnotation[ReferenceTarget] {
+case class ExposedSignalAnnotation(target: ReferenceTarget, name: String, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 
@@ -40,10 +40,11 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
       val signalPortRef = CircuitTarget(main.name).module(main.name).ref(signalPortName)
       val signalFieldsAndAnnos = annos.collect { case SignalToExposeAnnotation(signal, name) =>
         val tpe = findTpe(modules, signal)
+        assert(tpe.isInstanceOf[ir.GroundType], f"Currently, only ground type references are supported. Not: ${tpe.serialize}")
         val field = ir.Field(name = name, flip = ir.Default, tpe = tpe)
         val src = SourceAnnotation(signal.toNamed, name)
         val sink = SinkAnnotation(signalPortRef.field(name).toNamed, name)
-        val exposed = ExposedSignalAnnotation(signalPortRef.field(name), name)
+        val exposed = ExposedSignalAnnotation(signalPortRef.field(name), name, tpe)
         (field, List(src, sink, exposed))
       }
 
