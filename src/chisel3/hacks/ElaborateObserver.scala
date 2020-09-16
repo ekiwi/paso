@@ -57,7 +57,8 @@ abstract class FixNaming {
         val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
         fixName(parentPathNamePrefix, pathName) match {
           case Some(name) =>
-            externalReferences.add(ExternalReference(name, pathName.split('.')))
+            val pathParts = pathName.split('.')
+            externalReferences.add(ExternalReference(pathParts.last, pathParts))
             Ref(name)
           case None => r
         }
