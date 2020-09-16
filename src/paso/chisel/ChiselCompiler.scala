@@ -7,6 +7,7 @@ package paso.chisel
 import chisel3.RawModule
 import chisel3.stage._
 import chisel3.stage.phases.Convert
+import firrtl.annotations.Annotation
 import firrtl.stage.{FirrtlCircuitAnnotation, Forms, TransformManager}
 
 /** Allows programmatic access to the Builder elaboration and the Converter to Firrtl */
@@ -23,10 +24,14 @@ object ChiselCompiler {
     // run Converter.convert(a.circuit) and toFirrtl on all annotations
     val converterAnnos = converter.transform(elaborationAnnos)
     val chirrtl = converterAnnos.collectFirst { case FirrtlCircuitAnnotation(c) => c }.get
-    val annos = converterAnnos.filterNot(_.isInstanceOf[FirrtlCircuitAnnotation])
+    val annos = converterAnnos.filterNot(isInternalAnno)
     val state = firrtl.CircuitState(chirrtl, annos)
 
     (state, dut.asInstanceOf[M])
+  }
+  private def isInternalAnno(a: Annotation): Boolean = a match {
+    case _: FirrtlCircuitAnnotation | _: DesignAnnotation[_] | _:ChiselCircuitAnnotation => true
+    case _=> false
   }
 }
 
