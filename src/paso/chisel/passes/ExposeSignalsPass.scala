@@ -11,10 +11,8 @@ import firrtl.{CircuitState, DependencyAPIMigration, Transform, ir}
 case class SignalToExposeAnnotation(target: ReferenceTarget, name: String) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
-/** marks a port in the toplevel module that exposes an internal signal */
-case class ExposedSignalAnnotation(target: ReferenceTarget, name: String, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
-  override def duplicate(n: ReferenceTarget) = copy(target = n)
-}
+/** used to return the port name and the signal type */
+case class ExposedSignalAnnotation(name: String, portName: String, tpe: ir.Type) extends NoTargetAnnotation
 
 /** Exposes internal signals of the circuit as toplevel outputs. */
 object ExposeSignalsPass extends Transform with DependencyAPIMigration {
@@ -44,7 +42,7 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
         val field = ir.Field(name = name, flip = ir.Default, tpe = tpe)
         val src = SourceAnnotation(signal.toNamed, name)
         val sink = SinkAnnotation(signalPortRef.field(name).toNamed, name)
-        val exposed = ExposedSignalAnnotation(signalPortRef.field(name), name, tpe)
+        val exposed = ExposedSignalAnnotation(name, signalPortName, tpe)
         (field, List(src, sink, exposed))
       }
 

@@ -25,14 +25,12 @@ case class prefixNames(prefixes: Set[String]) extends FixNaming {
   }
 }
 
-case class ExternalReference(path: Seq[String]) {
-  assert(path.length == 2, f"Expected path in format MODULE.NAME, not ${path.mkString(".")}")
-  def toTarget(circuit: CircuitTarget): ReferenceTarget = {
-    assert(path.length == 2)
-    circuit.module(path.head).ref(path(1))
-  }
-  def name: String = path.last
-}
+/**
+ * Represents a signal that is observed by an externally elaborated module (aka the observer).
+ * @param signal observed signal
+ * @param nameInObserver name of signal inside the observer (will be inside a bundle named for signal.circuit)
+ */
+case class ExternalReference(signal: ReferenceTarget, nameInObserver: String)
 
 abstract class FixNaming {
   def fixName(parentPathNamePrefix: String, pathName: String): Option[String]
@@ -59,7 +57,11 @@ abstract class FixNaming {
         val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
         fixName(parentPathNamePrefix, pathName) match {
           case Some(name) =>
-            externalReferences.add(ExternalReference(pathName.split('.')))
+            val p = pathName.split('.')
+            assert(p.length == 2, "TODO: deal with submodules")
+            val ref = CircuitTarget(p.head).module(p.head).ref(p.last)
+            externalReferences.add(ExternalReference(ref, p.last))
+            // TODO: we might have to chose the name more carefully when dealing with submodules
             Ref(name)
           case None => r
         }

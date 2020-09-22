@@ -69,7 +69,10 @@ case class Elaboration() {
   private def invariantsCompiler = new TransformManager(Seq(Dependency(passes.CrossModuleReferencesToInputsPass)) ++ Forms.LowForm)
   private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
     // convert refs to exposed signals
-    val annos = refs.map(r => CrossModuleInput(r.name, exposedSignals(r.name)._1, exposedSignals(r.name)._2))
+    val annos = refs.map{ r =>
+      val (portName, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
+      CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
+    }
     val lo = invariantsCompiler.runTransform(state.copy(annotations = state.annotations ++ annos))
     new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
   }
@@ -89,8 +92,7 @@ case class Elaboration() {
   private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
     // We want to wire all external signals to the toplevel
-    val cRef = CircuitTarget(impl.circuit.main)
-    val exposeSignalsAnnos = externalRefs.map(r => SignalToExposeAnnotation(r.toTarget(cRef), r.name)) ++ Seq(
+    val exposeSignalsAnnos = externalRefs.map(r => SignalToExposeAnnotation(r.signal, r.nameInObserver)) ++ Seq(
       RunFirrtlTransformAnnotation(Dependency(passes.ExposeSignalsPass)),
       RunFirrtlTransformAnnotation(Dependency[firrtl.passes.wiring.WiringTransform])
     )
@@ -106,8 +108,10 @@ case class Elaboration() {
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
-    val exposed = resAnnos.collect { case a : ExposedSignalAnnotation =>
-      a.name -> (a.target.ref, a.tpe)
+
+    // update external references with the type derived from the exposed signal
+    val exposed = resAnnos.collect { case ExposedSignalAnnotation(name, portName, tpe) =>
+      s"${impl.circuit.main}.$name" -> (portName, tpe)
     }.toMap
     Impl(transitionSystem, submoduleNames, exposed)
   }
@@ -237,8 +241,9 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1, m._2, implementation.exposedSignals))
-    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1, m._2, implementation.exposedSignals))
+    val exposedSignals = implementation.exposedSignals
+    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1, m._2, exposedSignals))
+    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1, m._2, exposedSignals))
     val endBinding = System.nanoTime()
 
     if(true) {
