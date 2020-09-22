@@ -147,13 +147,15 @@ class VariableLatencyToConst extends MultiIOModule with IsConstLatency {
   val lsb = Module(new RandomLatency)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
-  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
+  val lsbRandomDelay = IO(Input(chiselTypeOf(lsb.randomDelay)))
+  lsb.randomDelay := lsbRandomDelay
   val lsbBuffer = RegEnable(lsb.io.dataOut, lsb.io.done)
 
   val msb = Module(new RandomLatency)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
-  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
+  val msbRandomDelay = IO(Input(chiselTypeOf(msb.randomDelay)))
+  msb.randomDelay := msbRandomDelay
   val msbBuffer = RegEnable(msb.io.dataOut, msb.io.done)
 
   // bypass
@@ -171,12 +173,14 @@ class VariableLatencyKeepToConst extends MultiIOModule with IsConstLatency {
   val lsb = Module(new RandomLatencyKeepOutput)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
-  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
+  val lsbRandomDelay = IO(Input(chiselTypeOf(lsb.randomDelay)))
+  lsb.randomDelay := lsbRandomDelay
 
   val msb = Module(new RandomLatencyKeepOutput)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
-  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
+  val msbRandomDelay = IO(Input(chiselTypeOf(msb.randomDelay)))
+  msb.randomDelay := msbRandomDelay
 
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
 }
@@ -268,7 +272,7 @@ class VariableLatencyExamplesSpec extends FlatSpec {
 
   // the following tests are disabled because they seem to trigger a new bug in Chisel 3.4.0-RC1
   // see: https://github.com/freechipsproject/chisel3/issues/1569
-  "VariableLatencyToConst with full RTL" should "refine its spec" ignore {
+  "VariableLatencyToConst with full RTL" should "refine its spec" in {
     Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut =>
         assert(!dut.lsb.running)
@@ -277,21 +281,21 @@ class VariableLatencyExamplesSpec extends FlatSpec {
     })
   }
 
-  "VariableLatencyToConst with abstracted RTL" should "refine its spec" ignore {
+  "VariableLatencyToConst with abstracted RTL" should "refine its spec" in {
     Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_))
       replace(impl.msb)(new RandomLatencyProtocols(_))
     }).proof()
   }
 
-  "VariableLatencyToConst with abstracted RTL and id bindings" should "refine its spec" ignore {
+  "VariableLatencyToConst with abstracted RTL and id bindings" should "refine its spec" in {
     Paso(new VariableLatencyToConst)(new ConstantLatencyWithSubIdProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_)).bind(spec.id32)
       replace(impl.msb)(new RandomLatencyProtocols(_)).bind(spec.id32)
     }).proof(Paso.MCYices2)
   }
 
-  "VariableLatencyKeepToConst with full RTL" should "refine its spec" ignore {
+  "VariableLatencyKeepToConst with full RTL" should "refine its spec" in {
     Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut =>
         assert(!dut.lsb.running)
@@ -300,7 +304,7 @@ class VariableLatencyExamplesSpec extends FlatSpec {
     })
   }
 
-  "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" ignore {
+  "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" in {
     Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new VariableLatencyKeepProtocols(_))
       replace(impl.msb)(new VariableLatencyKeepProtocols(_))
