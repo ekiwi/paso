@@ -69,7 +69,7 @@ case class Elaboration() {
   private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
     // convert refs to exposed signals
     val annos = refs.map{ r =>
-      val (portName, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
+      val (_, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
     } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)),
     RunFirrtlTransformAnnotation(Dependency[passes.AssertsToOutputs]))
@@ -83,15 +83,17 @@ case class Elaboration() {
       val pred = transitionSystem.outputs.find(_._1 == a.name + "_pred").map(_._2).get
       BasicAssertion(en, pred)
     }
+    //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
 
     // rename cross module references
     // e.g. RandomLatency_running -> RandomLatency.signals_running
+    val prefixRenames = refs.map{ r =>
+      val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
+      r.signal.circuit -> s"${r.signal.circuit}.$portName"
+    }.toSet.toList
+    // TODO: propagate prefix renames to namespacing....
 
-
-    //println(lo.circuit.serialize)
-
-    //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
-    Seq()
+    asserts
   }
 
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {

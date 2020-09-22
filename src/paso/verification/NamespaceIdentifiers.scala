@@ -25,11 +25,23 @@ object NamespaceIdentifiers {
     val (impl, ioSubs, implStateSubs) = renameImpl(p.impl)
     val (spec, specStateSubs) = renameSpec("", p.spec, ioSubs)
     val subspecs = p.subspecs.map(renameSubspec(_, ioSubs))
-    val invariances = p.invariances.map(substituteSmt(_, implStateSubs))
-    val stateSubs = implStateSubs ++ specStateSubs
-    val mapping = p.mapping.map(substituteSmt(_, stateSubs))
+
+    val invariantPrefixSubs = List(
+      impl.name.get -> s"${impl.name.get}.signals", spec.untimed.name -> s"${spec.untimed.name}.signals"
+    )
+    val invariances = p.invariances.map(renameAssert(_, invariantPrefixSubs))
+    val mapping = p.mapping.map(renameAssert(_, invariantPrefixSubs))
 
     VerificationProblem(impl, spec, subspecs, invariances, mapping)
+  }
+
+  // substitutes things like:
+  // RandomLatency_running -> RandomLatency.signals_running
+  def renameAssert(a: Assertion, prefixSubs: List[(String, String)]): Assertion = a match {
+    case BasicAssertion(guard, pred) =>
+      BasicAssertion(substitutePrefix(guard, prefixSubs), substitutePrefix(pred, prefixSubs))
+    case ForAllAssertion(variable, start, end, guard, pred) =>
+      ForAllAssertion(variable, start, end, substitutePrefix(guard, prefixSubs), substitutePrefix(pred, prefixSubs))
   }
 
   def renameImpl(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub, SymSub) = {
@@ -142,5 +154,22 @@ object substituteSmt {
       BasicAssertion(substituteSmt(guard, map), substituteSmt(pred, map))
     case ForAllAssertion(variable, start, end, guard, pred) =>
       ForAllAssertion(variable, start, end, substituteSmt(guard, map), substituteSmt(pred, map))
+  }
+}
+
+object substitutePrefix {
+  def apply[E <: smt.Expr](expr: smt.Expr, subs: List[(String, String)]): smt.Expr = expr match {
+    case e : smt.Symbol =>
+      subs.find(s => e.id.startsWith(s._1))
+        .map { case (o, n) => n + e.id.substring(o.length) }
+        .map(i => e.copy(id = i))
+        .getOrElse(e)
+    case e : smt.OperatorApplication => e.copy(operands = e.operands.map(apply(_, subs)))
+    case e : smt.Literal => e
+    case s : smt.ArraySelectOperation => s.copy(e = apply(s.e, subs), index = s.index.map(apply(_, subs)))
+    case s : smt.ArrayStoreOperation => s.copy(e = apply(s.e, subs), index = s.index.map(apply(_, subs)), value = apply(s.value, subs))
+    case s : smt.FunctionApplication => s.copy(args = s.args.map(apply(_, subs)))
+    case s : smt.ConstArray => s.copy(expr = apply(s.expr, subs))
+    case other => throw new NotImplementedError(s"TODO: deal with $other")
   }
 }

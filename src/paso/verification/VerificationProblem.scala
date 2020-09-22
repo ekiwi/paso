@@ -413,8 +413,12 @@ class VerifyBaseCase(sol: paso.SolverName) extends VerificationTask with SMTHelp
     val impl_init_const = conjunction(VerificationTask.getResetState(p.impl).map{ case (sym, value) => eq(sym, value)}.toSeq)
     val inv_const = conjunction(p.invariances.map(_.toExpr))
 
+    // substitute implementation outputs in the invariants
+    val outputSubs: Map[smt.Expr, smt.Expr] =  p.impl.outputs.map(o => smt.Symbol(o._1, o._2.typ)-> o._2).toMap
+    val inv_const_sub = substituteSmt(inv_const, outputSubs)
+
     // make sure invariances hold after reset
-    val hold = SMTSimplifier.simplify(implies(impl_init_const, inv_const))
+    val hold = SMTSimplifier.simplify(implies(impl_init_const, inv_const_sub))
     val res = check(not(hold))
     assert(res.isFalse, s"FAIL: Invariances are not necessarily true after reset: ${res.model}")
   }
