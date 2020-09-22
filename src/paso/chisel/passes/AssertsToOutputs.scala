@@ -47,7 +47,8 @@ class AssertsToOutputs extends Transform with DependencyAPIMigration {
     case ir.Verification(ir.Formal.Assert, info, clk, pred, en, msg) =>
       val connects = List(
         connectOut(info, "assert_en", en, name => AssertEnable(mRef.ref(name), msg.string)),
-        connectOut(info, "assert_clk", clk, name => AssertClock(mRef.ref(name), msg.string)),
+        // TODO: figure out whether we ever want the clock
+        // connectOut(info, "assert_clk", clk, name => AssertClock(mRef.ref(name), msg.string)),
         connectOut(info, "assert_pred", pred, name => AssertPredicate(mRef.ref(name), msg.string))
       )
       ir.Block(connects)

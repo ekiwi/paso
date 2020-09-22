@@ -12,7 +12,7 @@ import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation, WiringInfo}
 import firrtl.stage.{Forms, RunFirrtlTransformAnnotation, TransformManager}
-import firrtl.{CircuitState, ir}
+import firrtl.{CircuitState, ir, stage}
 import logger.LogLevel
 import paso.chisel.passes.{ChangeAnnotationCircuit, CrossModuleInput, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
 import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
@@ -66,15 +66,26 @@ case class Elaboration() {
   }
 
 
-  private def invariantsCompiler = new TransformManager(Seq(Dependency(passes.CrossModuleReferencesToInputsPass)) ++ Forms.LowForm)
+  private def invariantsCompiler = new TransformManager(
+    Seq(Dependency(passes.CrossModuleReferencesToInputsPass), Dependency[passes.AssertsToOutputs])
+      ++ Forms.LowForm)
   private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
     // convert refs to exposed signals
     val annos = refs.map{ r =>
       val (portName, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
-    }
-    val lo = invariantsCompiler.runTransform(state.copy(annotations = state.annotations ++ annos))
-    new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
+    } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)),
+    RunFirrtlTransformAnnotation(Dependency[passes.AssertsToOutputs]))
+
+    // rename cross module inputs to link correctly in SMT
+    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, state.annotations ++ annos, LogLevel.Error)
+
+    // TODO: extract assertions from transition system and rename cross module references
+
+    //println(lo.circuit.serialize)
+
+    //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
+    Seq()
   }
 
   private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Map[String, MethodSemantics]): Seq[(String, StepNode)] = {
