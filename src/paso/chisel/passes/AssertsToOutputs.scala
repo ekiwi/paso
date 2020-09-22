@@ -7,13 +7,10 @@ import firrtl.stage.Forms
 
 import scala.collection.mutable
 
-case class AssertPredicate(target: ReferenceTarget, msg: String) extends SingleTargetAnnotation[ReferenceTarget] {
+case class AssertPredicate(target: ReferenceTarget, name: String, msg: String) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
-case class AssertClock(target: ReferenceTarget, msg: String) extends SingleTargetAnnotation[ReferenceTarget] {
-  override def duplicate(n: ReferenceTarget) = copy(target = n)
-}
-case class AssertEnable(target: ReferenceTarget, msg: String) extends SingleTargetAnnotation[ReferenceTarget] {
+case class AssertEnable(target: ReferenceTarget, name: String, msg: String) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 
@@ -45,20 +42,26 @@ class AssertsToOutputs extends Transform with DependencyAPIMigration {
   }
   private def onStmt(s: ir.Statement): ir.Statement = s match {
     case ir.Verification(ir.Formal.Assert, info, clk, pred, en, msg) =>
-      val connects = List(
-        connectOut(info, "assert_en", en, name => AssertEnable(mRef.ref(name), msg.string)),
-        // TODO: figure out whether we ever want the clock
-        // connectOut(info, "assert_clk", clk, name => AssertClock(mRef.ref(name), msg.string)),
-        connectOut(info, "assert_pred", pred, name => AssertPredicate(mRef.ref(name), msg.string))
-      )
+      val name = freshAssertPrefix
+      val annos = List(AssertEnable(mRef.ref(name + "_en"), name, msg.string),
+        AssertPredicate(mRef.ref(name + "_pred"), name, msg.string))
+      newAnnos.append(annos:_*)
+      val connects = List(connectOut(info, name, "_en", en), connectOut(info, name, "_pred", pred))
       ir.Block(connects)
     case other => other.mapStmt(onStmt)
   }
 
-  private def connectOut(info: ir.Info, name: String, signal: ir.Expression, anno: String => Annotation): ir.Statement = {
-    val port = ir.Port(info, namespace.newName(name), ir.Output, signal.tpe)
+  private val suffixes = List("_en", "_pred", "_clk")
+  // get a new assert output prefix
+  private def freshAssertPrefix: String = {
+    val name = Iterator.from(0).map(i => s"assert$i").find(name => suffixes.forall(s => !namespace.contains(s"$name$s"))).get
+    suffixes.foreach(s => namespace.newName(s"$name$s"))
+    name
+  }
+
+  private def connectOut(info: ir.Info, name: String, suffix: String, signal: ir.Expression): ir.Statement = {
+    val port = ir.Port(info, name + suffix, ir.Output, signal.tpe)
     newOutputs.append(port)
-    newAnnos.append(anno(port.name))
     ir.Connect(info, ir.Reference(port.name, port.tpe, firrtl.PortKind, firrtl.SinkFlow), signal)
   }
 

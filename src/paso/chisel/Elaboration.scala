@@ -14,8 +14,8 @@ import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation, WiringInfo}
 import firrtl.stage.{Forms, RunFirrtlTransformAnnotation, TransformManager}
 import firrtl.{CircuitState, ir, stage}
 import logger.LogLevel
-import paso.chisel.passes.{ChangeAnnotationCircuit, CrossModuleInput, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
-import paso.verification.{Assertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
+import paso.chisel.passes.{AssertEnable, ChangeAnnotationCircuit, CrossModuleInput, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
+import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
 
@@ -66,9 +66,6 @@ case class Elaboration() {
   }
 
 
-  private def invariantsCompiler = new TransformManager(
-    Seq(Dependency(passes.CrossModuleReferencesToInputsPass), Dependency[passes.AssertsToOutputs])
-      ++ Forms.LowForm)
   private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
     // convert refs to exposed signals
     val annos = refs.map{ r =>
@@ -77,10 +74,19 @@ case class Elaboration() {
     } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)),
     RunFirrtlTransformAnnotation(Dependency[passes.AssertsToOutputs]))
 
-    // rename cross module inputs to link correctly in SMT
+    // convert invariant module to SMT
     val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, state.annotations ++ annos, LogLevel.Error)
 
-    // TODO: extract assertions from transition system and rename cross module references
+    // extract the assertions from the transition system outputs
+    val asserts = resAnnos.collect{ case a : AssertEnable =>
+      val en = transitionSystem.outputs.find(_._1 == a.name + "_en").map(_._2).get
+      val pred = transitionSystem.outputs.find(_._1 == a.name + "_pred").map(_._2).get
+      BasicAssertion(en, pred)
+    }
+
+    // rename cross module references
+    // e.g. RandomLatency_running -> RandomLatency.signals_running
+
 
     //println(lo.circuit.serialize)
 
