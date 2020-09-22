@@ -147,13 +147,15 @@ class VariableLatencyToConst extends MultiIOModule with IsConstLatency {
   val lsb = Module(new RandomLatency)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
-  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
+  val lsbRandomDelay = IO(Input(chiselTypeOf(lsb.randomDelay)))
+  lsb.randomDelay := lsbRandomDelay
   val lsbBuffer = RegEnable(lsb.io.dataOut, lsb.io.done)
 
   val msb = Module(new RandomLatency)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
-  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
+  val msbRandomDelay = IO(Input(chiselTypeOf(msb.randomDelay)))
+  msb.randomDelay := msbRandomDelay
   val msbBuffer = RegEnable(msb.io.dataOut, msb.io.done)
 
   // bypass
@@ -171,12 +173,14 @@ class VariableLatencyKeepToConst extends MultiIOModule with IsConstLatency {
   val lsb = Module(new RandomLatencyKeepOutput)
   lsb.io.start := io.start
   lsb.io.dataIn := io.dataIn(31, 0)
-  lsb.randomDelay := IO(Input(chiselTypeOf(lsb.randomDelay))).suggestName("lsbRandomDelay")
+  val lsbRandomDelay = IO(Input(chiselTypeOf(lsb.randomDelay)))
+  lsb.randomDelay := lsbRandomDelay
 
   val msb = Module(new RandomLatencyKeepOutput)
   msb.io.start := io.start
   msb.io.dataIn := io.dataIn(63, 32)
-  msb.randomDelay := IO(Input(chiselTypeOf(msb.randomDelay))).suggestName("msbRandomDelay")
+  val msbRandomDelay = IO(Input(chiselTypeOf(msb.randomDelay)))
+  msb.randomDelay := msbRandomDelay
 
   io.dataOut := msb.io.dataOut ## lsb.io.dataOut
 }
