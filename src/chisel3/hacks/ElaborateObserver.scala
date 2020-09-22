@@ -50,7 +50,9 @@ abstract class FixNaming {
     val new_ref: Arg = node.id.getRef match {
       case a: Slot => onArg(a)
       case a: Index => onArg(a)
-      case m: ModuleIO => Ref(s"${m.mod.getRef.name}.${m.name}")
+      case m: ModuleIO =>
+        println("WARN: treatment of module IO might be broken...")
+        Ref(s"${m.mod.getRef.name}.${m.name}")
       case r: Ref =>
         val pathName = node.id.pathName
         val parentPathName = node.id.parentPathName
@@ -62,11 +64,20 @@ abstract class FixNaming {
             val ref = CircuitTarget(p.head).module(p.head).ref(p.last)
             externalReferences.add(ExternalReference(ref, p.last))
             // TODO: we might have to chose the name more carefully when dealing with submodules
-            Ref(name)
+            nameToRef(name)
           case None => r
         }
     }
     Node(FakeId(new_ref))
+  }
+
+  // deals with names that have `.` separators by generating the appropriate nesting of Slots and a Ref
+  private def nameToRef(name: String): Arg = {
+    val parts = name.split('.')
+    val r = if (parts.length == 1) { Ref(name) } else {
+      parts.tail.foldLeft[Arg](Ref(parts.head))((a,b) => Slot(Node(FakeId(a)), b))
+    }
+    r
   }
 
   private def onArg(arg: Arg): Arg = arg match {

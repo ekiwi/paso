@@ -42,8 +42,6 @@ object CrossModuleReferencesToInputsPass extends Transform with DependencyAPIMig
     // add new portsto main
     val newMain = main.copy(ports=main.ports ++ newPorts)
 
-    println(newMain.serialize)
-
     state.copy(circuit = state.circuit.copy(modules = Seq(newMain)))
   }
 }
