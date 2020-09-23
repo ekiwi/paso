@@ -2,6 +2,7 @@ package chisel3.hacks
 
 import chisel3._
 import chisel3.aop.Aspect
+import chisel3.experimental.BaseModule
 import chisel3.internal.{Builder, Namespace}
 import chisel3.internal.firrtl._
 import firrtl.annotations.{CircuitTarget, ReferenceTarget}
@@ -110,7 +111,13 @@ abstract class FixNaming {
 
 abstract class ObservingModule private[chisel3](observing: Iterable[RawModule], name: String)
                                                (implicit moduleCompileOptions: CompileOptions) extends MultiIOModule {
-  observing.foreach { o => Builder.addAspect(o, this) }
+  // we want to be able to not only observe the top-level module, but also all of their child modules
+  private def addAspect(m : BaseModule): Unit = {
+    Builder.addAspect(m, this)
+    chisel3.aop.Select.instances(m).foreach(addAspect)
+  }
+  observing.foreach(addAspect)
+
   override def circuitName: String = name
   override def desiredName: String = name
   // make sure that no signal can collide with the name of the modules that we are observing
