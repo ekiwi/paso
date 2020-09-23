@@ -5,7 +5,7 @@ import chisel3.aop.Aspect
 import chisel3.experimental.BaseModule
 import chisel3.internal.{Builder, Namespace}
 import chisel3.internal.firrtl._
-import firrtl.annotations.{CircuitTarget, ReferenceTarget}
+import firrtl.annotations.{CircuitTarget, IsModule, ReferenceTarget}
 
 import scala.collection.mutable
 
@@ -13,16 +13,9 @@ import scala.collection.mutable
 object ElaborateObserver {
   def apply(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference])  = {
     val (chiselIR, _) = Builder.build(Module(new ObservingModule(observing, name) { gen() }))
-    val prefix = prefixNames(observing.map(_.name).toSet)
+    val prefix = new FixNamings(observing.map(_.name).toSet)
     val pp = prefix.run(chiselIR)
     (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), prefix.getExternalRefs)
-  }
-}
-
-/** Replace nodes with absolute references if the element parent is part of {prefixes} */
-case class prefixNames(prefixes: Set[String]) extends FixNaming {
-  override def fixName(parentPathNamePrefix: String, pathName: String): Option[String] = {
-    if (prefixes.contains(parentPathNamePrefix)) Some(pathName) else None
   }
 }
 
@@ -33,8 +26,7 @@ case class prefixNames(prefixes: Set[String]) extends FixNaming {
  */
 case class ExternalReference(signal: ReferenceTarget, nameInObserver: String)
 
-abstract class FixNaming {
-  def fixName(parentPathNamePrefix: String, pathName: String): Option[String]
+class FixNamings(val topLevelModules: Set[String]) {
 
   case class FakeId(ref: Arg) extends chisel3.internal.HasId {
     override def toNamed = ???
@@ -55,31 +47,24 @@ abstract class FixNaming {
         println("WARN: treatment of module IO might be broken...")
         Ref(s"${m.mod.getRef.name}.${m.name}")
       case r: Ref =>
-        val pathName = node.id.pathName
-        val parentPathName = node.id.parentPathName
-        val parentPathNamePrefix = parentPathName.split('.').headOption.getOrElse(parentPathName)
-        fixName(parentPathNamePrefix, pathName) match {
-          case Some(name) =>
-            val p = pathName.split('.')
-            assert(p.length == 2, "TODO: deal with submodules")
-            val ref = CircuitTarget(p.head).module(p.head).ref(p.last)
-            externalReferences.add(ExternalReference(ref, p.last))
-            // TODO: we might have to chose the name more carefully when dealing with submodules
-            nameToRef(name)
-          case None => r
-        }
+        val path = node.id.pathName.split('.')
+        val isCrossModuleRef = topLevelModules.contains(path.head)
+        if(isCrossModuleRef) {
+          val circuit = path.head
+
+          val topLevelMod = CircuitTarget(circuit).module(circuit)
+          val submoduleInstance = path.drop(1).dropRight(1).foldLeft[IsModule](topLevelMod)((a,b) => a.instOf(b, ""))
+          val ref = submoduleInstance.ref(path.last)
+
+          val nameInObserver = path.drop(1).mkString("_")
+          externalReferences.add(ExternalReference(ref, nameInObserver))
+          // observed signals will be in ${circuit} input bundle
+          Slot(Node(FakeId(Ref(circuit))), nameInObserver)
+        } else { r }
     }
     Node(FakeId(new_ref))
   }
 
-  // deals with names that have `.` separators by generating the appropriate nesting of Slots and a Ref
-  private def nameToRef(name: String): Arg = {
-    val parts = name.split('.')
-    val r = if (parts.length == 1) { Ref(name) } else {
-      parts.tail.foldLeft[Arg](Ref(parts.head))((a,b) => Slot(Node(FakeId(a)), b))
-    }
-    r
-  }
 
   private def onArg(arg: Arg): Arg = arg match {
     case a : Node => onNode(a)
