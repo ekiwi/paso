@@ -1,5 +1,6 @@
 package paso.chisel.passes
 
+import firrtl.analyses.InstanceKeyGraph
 import firrtl.annotations.{CircuitTarget, NoTargetAnnotation, ReferenceTarget, SingleTargetAnnotation}
 import firrtl.options.Dependency
 import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation}

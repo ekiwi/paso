@@ -3,7 +3,7 @@ package chisel3.hacks
 import chisel3._
 import chisel3.aop.Aspect
 import chisel3.experimental.BaseModule
-import chisel3.internal.{Builder, Namespace}
+import chisel3.internal.{Builder, HasId, Namespace}
 import chisel3.internal.firrtl._
 import firrtl.annotations.{CircuitTarget, IsModule, ReferenceTarget}
 
@@ -52,6 +52,12 @@ class FixNamings(val topLevelModules: Set[String]) {
         if(isCrossModuleRef) {
           val circuit = path.head
 
+          val target = node.id.toTarget
+          val absoluteTarget = node.id.toAbsoluteTarget
+          val named = node.id.toNamed
+
+          // TODO: use toTarget or toNamed in order to generate the ref instead of custom code...
+
           val topLevelMod = CircuitTarget(circuit).module(circuit)
           val submoduleInstance = path.drop(1).dropRight(1).foldLeft[IsModule](topLevelMod)((a,b) => a.instOf(b, ""))
           val ref = submoduleInstance.ref(path.last)
@@ -64,7 +70,6 @@ class FixNamings(val topLevelModules: Set[String]) {
     }
     Node(FakeId(new_ref))
   }
-
 
   private def onArg(arg: Arg): Arg = arg match {
     case a : Node => onNode(a)
