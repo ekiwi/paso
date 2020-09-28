@@ -21,11 +21,11 @@ val versionSettings = Seq(
 val chiselSettings = Seq(
   // for structural bundles
   scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
-  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4.0-RC1",
+  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4.0-RC3",
 )
 
 val otherDependencySettings = Seq(
-  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0-RC1" % "test",
+  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0-RC3" % "test",
   // required for uclid files
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
   libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources(),
