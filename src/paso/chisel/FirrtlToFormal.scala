@@ -20,7 +20,6 @@ object FirrtlToFormal  {
       LogLevelAnnotation(ll),
       FirrtlCircuitAnnotation(c),
       TargetDirAnnotation(testDir.getAbsolutePath),
-      RunFirrtlTransformAnnotation(Dependency[firrtl.passes.InlineInstances]),
       NoCircuitDedupAnnotation, // since we flatten everything anyways, there is no need to dedup.
     ) ++ annos
     val res = (new FirrtlStage).execute(Array("-E", "experimental-btor2"), combinedAnnos)

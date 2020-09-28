@@ -123,7 +123,7 @@ case class Elaboration() {
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val annos = impl.annos ++ exposeSignalsAnnos ++ doFlatten ++ doNotInlineAnnos
-    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Trace)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Error)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
