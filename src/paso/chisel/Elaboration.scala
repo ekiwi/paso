@@ -110,7 +110,9 @@ case class Elaboration() {
   private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
   private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
     // We want to wire all external signals to the toplevel
-    val exposeSignalsAnnos = externalRefs.map(r => SignalToExposeAnnotation(r.signal, r.nameInObserver)) ++ Seq(
+    val implCircuitName = impl.circuit.main
+    val exposeSignalsAnnos = externalRefs.filter(_.signal.circuit == implCircuitName)
+      .map(r => SignalToExposeAnnotation(r.signal, r.nameInObserver)) ++ Seq(
       RunFirrtlTransformAnnotation(Dependency(passes.ExposeSignalsPass)),
       RunFirrtlTransformAnnotation(Dependency[firrtl.passes.wiring.WiringTransform])
     )

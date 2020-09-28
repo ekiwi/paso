@@ -12,10 +12,18 @@ import scala.collection.mutable
 /** elaborate into a module that can observe internal signals of the modules it is _observing_ */
 object ElaborateObserver {
   def apply(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference])  = {
+    ensureUniqueCircuitNames(observing)
     val (chiselIR, _) = Builder.build(Module(new ObservingModule(observing, name) { gen() }))
     val prefix = new FixNamings(observing.map(_.name).toSet)
     val pp = prefix.run(chiselIR)
     (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), prefix.getExternalRefs)
+  }
+  private def ensureUniqueCircuitNames(observing: Iterable[RawModule]): Unit = {
+    val others = mutable.HashMap[String, RawModule]()
+    observing.foreach { o =>
+      assert(!others.contains(o.name), f"Cannot have more than one observed circuit named ${o.name}!")
+      others(o.name) = o
+    }
   }
 }
 
