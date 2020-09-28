@@ -22,7 +22,10 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
   // since we emit wiring annotations, we need to run before the wiring transform
   // we also want ot run before Dedup since dedup could screw up some of our paths which we copied from Chisel
   override def optionalPrerequisiteOf = Seq(Dependency[firrtl.transforms.DedupModules], Dependency[firrtl.passes.wiring.WiringTransform])
-  override def invalidates(a: Transform): Boolean = false
+  override def invalidates(a: Transform): Boolean = a match {
+    case firrtl.passes.ResolveKinds | firrtl.passes.ResolveFlows => true
+    case _ => false
+  }
 
   val DefaultPortName = "signals"
 
@@ -55,7 +58,7 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
       // we need to add the new signalPort and invalidate it for now
       val newPorts = main.ports :+ signalPort
       val newBody = ir.Block(List(
-        ir.IsInvalid(ir.NoInfo, ir.Reference(signalPortName)), main.body
+        ir.IsInvalid(ir.NoInfo, ir.Reference(signalPortName, signalPortTpe)), main.body
       ))
 
       val newMain = main.copy(ports = newPorts, body = newBody)

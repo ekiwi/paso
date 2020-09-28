@@ -51,18 +51,8 @@ class FixNamings(val topLevelModules: Set[String]) {
         val isCrossModuleRef = topLevelModules.contains(path.head)
         if(isCrossModuleRef) {
           val circuit = path.head
-
-          val target = node.id.toTarget
-          val absoluteTarget = node.id.toAbsoluteTarget
-          val named = node.id.toNamed
-
-          // TODO: use toTarget or toNamed in order to generate the ref instead of custom code...
-
-          val topLevelMod = CircuitTarget(circuit).module(circuit)
-          val submoduleInstance = path.drop(1).dropRight(1).foldLeft[IsModule](topLevelMod)((a,b) => a.instOf(b, ""))
-          val ref = submoduleInstance.ref(path.last)
-
           val nameInObserver = path.drop(1).mkString("_")
+          val ref = node.id.toTarget.asInstanceOf[ReferenceTarget]
           externalReferences.add(ExternalReference(ref, nameInObserver))
           // observed signals will be in ${circuit} input bundle
           Slot(Node(FakeId(Ref(circuit))), nameInObserver)

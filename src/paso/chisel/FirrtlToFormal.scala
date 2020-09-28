@@ -9,21 +9,21 @@ import firrtl.annotations.DeletedAnnotation
 import firrtl.options.{Dependency, TargetDirAnnotation}
 import firrtl.{AnnotationSeq, ir}
 import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation, RunFirrtlTransformAnnotation}
+import firrtl.transforms.NoCircuitDedupAnnotation
 import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
 
 object FirrtlToFormal  {
   def apply(c: ir.Circuit, annos: AnnotationSeq, ll: LogLevel.Value = LogLevel.Error): (smt.TransitionSystem, AnnotationSeq) = {
     val testDir = BackendCompilationUtilities.createTestDirectory(c.main + "_to_btor2")
-    val res = (new FirrtlStage).execute(
-      Array("-E", "experimental-btor2"),
-      Seq(
-        LogLevelAnnotation(ll),
-        FirrtlCircuitAnnotation(c),
-        TargetDirAnnotation(testDir.getAbsolutePath),
-        RunFirrtlTransformAnnotation(Dependency[firrtl.passes.InlineInstances]),
-      ) ++ annos
-    )
+    val combinedAnnos = Seq(
+      LogLevelAnnotation(ll),
+      FirrtlCircuitAnnotation(c),
+      TargetDirAnnotation(testDir.getAbsolutePath),
+      RunFirrtlTransformAnnotation(Dependency[firrtl.passes.InlineInstances]),
+      NoCircuitDedupAnnotation, // since we flatten everything anyways, there is no need to dedup.
+    ) ++ annos
+    val res = (new FirrtlStage).execute(Array("-E", "experimental-btor2"), combinedAnnos)
     val name = res.collectFirst { case OutputFileAnnotation(file) => file }
     assert(name.isDefined)
 
