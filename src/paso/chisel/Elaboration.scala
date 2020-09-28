@@ -6,15 +6,14 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
-import firrtl.annotations.{Annotation, CircuitName, CircuitTarget, ComponentName, ModuleName}
+import firrtl.annotations.{Annotation}
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
-import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation, WiringInfo}
-import firrtl.stage.{Forms, RunFirrtlTransformAnnotation, TransformManager}
-import firrtl.{CircuitState, ir, stage}
+import firrtl.stage.{Forms, RunFirrtlTransformAnnotation}
+import firrtl.{CircuitState, ir}
 import logger.LogLevel
-import paso.chisel.passes.{AssertEnable, ChangeAnnotationCircuit, CrossModuleInput, DoNotInlineAnnotation, ExposedSignalAnnotation, FindModuleState, FixClockRef, FixReset, RemoveInstances, ReplaceMemReadWithVectorAccess, SignalToExposeAnnotation, State, SubmoduleInstanceAnnotation}
+import paso.chisel.passes._
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
 import uclid.smt
