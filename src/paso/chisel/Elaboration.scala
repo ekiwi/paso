@@ -253,7 +253,7 @@ case class Elaboration() {
       val instance = implementation.submodules(s.module.name)
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.id.startsWith(instance + ".")).map(s => s.copy(id = s.id.substring(prefixLength)))
-      val binding = s.getBinding.map(_.module)
+      val binding = s.getBinding.map(_.instance)
       Subspec(instance, io, spec, binding)
     }
     val endSubSpec= System.nanoTime()

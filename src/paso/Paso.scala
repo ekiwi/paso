@@ -5,7 +5,7 @@
 package paso
 
 import chisel3.RawModule
-import firrtl.annotations.ModuleTarget
+import firrtl.annotations.{InstanceTarget, IsModule, ModuleTarget}
 import paso.chisel.Elaboration
 import paso.verification.VerificationProblem
 
@@ -14,17 +14,18 @@ import scala.collection.mutable
 trait IsSubmodule {
   val makeSpec: () => ProtocolSpec[UntimedModule]
   val module: ModuleTarget
-  def getBinding: Option[ModuleTarget]
+  def getBinding: Option[InstanceTarget]
 }
 
 abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val spec: SM) {
-  case class Submodule[I <: RawModule, S <: UntimedModule](module: ModuleTarget, impl: I, spec: I => ProtocolSpec[S], var binding: Option[ModuleTarget] = None) extends IsSubmodule {
+  case class Submodule[I <: RawModule, S <: UntimedModule](module: ModuleTarget, impl: I, spec: I => ProtocolSpec[S], var binding: Option[InstanceTarget] = None) extends IsSubmodule {
     override val makeSpec = () => spec(impl)
-    override def getBinding: Option[ModuleTarget] = binding
+    override def getBinding: Option[InstanceTarget] = binding
     /** marks a RTL submodule as implementing an untimed submodule */
     def bind(untimed: S): Unit = {
       assert(binding.isEmpty)
-      binding = Some(untimed.toTarget)
+      val ref = untimed.toAbsoluteTarget.asInstanceOf[InstanceTarget]
+      binding = Some(ref)
     }
   }
   val subspecs = mutable.ArrayBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
