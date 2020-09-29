@@ -42,7 +42,7 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
       val signalPortRef = CircuitTarget(main.name).module(main.name).ref(signalPortName)
       val signalFieldsAndAnnos = annos.collect { case SignalToExposeAnnotation(signal, name) =>
         val tpe = findTpe(modules, signal)
-        assert(tpe.isInstanceOf[ir.GroundType], f"Currently, only ground type references are supported. Not: ${tpe.serialize}")
+        assert(tpe.isInstanceOf[ir.GroundType], f"Currently, only ground type references are supported. Not: ${tpe.serialize} of ${signal.serialize}")
         val field = ir.Field(name = name, flip = ir.Default, tpe = tpe)
         val src = SourceAnnotation(signal.toNamed, name)
         val sink = SinkAnnotation(signalPortRef.field(name).toNamed, name)
