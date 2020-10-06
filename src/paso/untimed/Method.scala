@@ -7,34 +7,21 @@ package paso.untimed
 
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
-import firrtl.annotations.{Annotation, ReferenceTarget, SingleTargetAnnotation}
+import firrtl.annotations.{Annotation, InstanceTarget, IsModule, ModuleTarget, MultiTargetAnnotation, ReferenceTarget, SingleTargetAnnotation, Target}
 
 import scala.collection.mutable
 
 private[paso] trait MethodParent {
   private[paso] def addMethod(m: Method): Unit
-  private[paso] def getName: String
+  private[paso] def toTarget: ModuleTarget
+  private[paso] def toAbsoluteTarget: IsModule
   private[paso] def isElaborated: Boolean
 }
 
 trait Method {
   def name: String
   private[paso ]def guard: () => Bool
-  //def getParentName: String
-  private[paso] def generate(): Unit = {
-    assert(name.nonEmpty)
-    val guard_out = IO(Output(Bool())).suggestName(name + "_" + "guard")
-    guard_out := guard()
-    val enabled_in = IO(Input(Bool())).suggestName(name + "_" + "enabled")
-    generateBody(enabled_in)
-  }
-  private[paso] def makeInput[T <: Data](t: T): T = {
-    IO(Input(t)).suggestName(name + "_inputs")
-  }
-  private[paso] def makeOutput[T <: Data](t: T): T = {
-    IO(Output(t)).suggestName(name + "_outputs")
-  }
-  protected def generateBody(enabled: Bool): Unit
+  private[paso] def generate(): Unit
 }
 
 case class NMethod(name: String, guard: () => Bool, impl: () => Unit, parent: MethodParent) extends Method {
@@ -42,7 +29,12 @@ case class NMethod(name: String, guard: () => Bool, impl: () => Unit, parent: Me
     require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedMoudles")
     throw new NotImplementedError("Calling methods with side effects is currently not supported!")
   }
-  override protected def generateBody(enabled: Bool): Unit = when(enabled) { impl() }
+  override private[paso] def generate(): Unit = {
+    val io = IO(new MethodIO(UInt(0.W), UInt(0.W))).suggestName(name)
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    when(io.enabled) { impl() }
+    io.guard := guard()
+  }
 }
 
 case class IMethod[I <: Data](name: String, guard: () => Bool, inputType: I, impl: I => Unit, parent: MethodParent) extends Method {
@@ -50,61 +42,70 @@ case class IMethod[I <: Data](name: String, guard: () => Bool, inputType: I, imp
     require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedMoudles")
     throw new NotImplementedError("Calling methods with side effects is currently not supported!")
   }
-  override def generateBody(enabled: Bool): Unit = {
-    val in = makeInput(inputType)
-    when(enabled) { impl(in) }
+  override private[paso] def generate(): Unit = {
+    val io = IO(new MethodIO(inputType, UInt(0.W))).suggestName(name)
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    when(io.enabled) { impl(io.arg) }
+    io.guard := guard()
   }
 }
 
 case class OMethod[O <: Data](name: String, guard: () => Bool, outputType: O, impl: O => Unit, parent: MethodParent) extends Method {
   def apply(): O = {
-    require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedMoudles")
-    val fullName = parent.getName + "." + name
-    val ii = MethodCall.getCallCount(fullName)
+    require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedModules")
+    val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
-    val call = IO(new OMethodCallBundle(outputType)).suggestName(fullName + "_" + ii)
-    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.ret.toTarget, fullName, ii, false) })
+    val call = IO(new MethodCallIO(UInt(0.W), outputType)).suggestName(name + "_call_" + ii)
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.toTarget, parent.toAbsoluteTarget, name) })
+    call.enabled := true.B
     call.ret
   }
-  override def generateBody(enabled: Bool): Unit = {
-    val out = makeOutput(outputType)
-    out := DontCare
-    when(enabled) { impl(out) }
+  override private[paso] def generate(): Unit = {
+    val io = IO(new MethodIO(UInt(0.W), outputType)).suggestName(name)
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    io.ret := DontCare
+    when(io.enabled) { impl(io.ret) }
+    io.guard := guard()
   }
 }
 
 case class IOMethod[I <: Data, O <: Data](name: String, guard: () => Bool, inputType: I, outputType: O, impl: (I,O) => Unit, parent: MethodParent) extends Method {
   def apply(in: I): O = {
-    require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedMoudles")
-    val fullName = parent.getName + "." + name
-    val ii = MethodCall.getCallCount(fullName)
+    require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedModules")
+    val ii = MethodCall.getCallCount(name)
     // create port to emulate the function call
-    val call = IO(new IOMethodCallBundle(inputType, outputType)).suggestName(fullName + "_" + ii)
-    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.arg.toTarget, fullName, ii, true) })
-    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.ret.toTarget, fullName, ii, false) })
+    val call = IO(new MethodCallIO(inputType, outputType)).suggestName(name + "_call_" + ii)
+    annotate(new ChiselAnnotation { override def toFirrtl: Annotation = MethodCallAnnotation(call.toTarget, parent.toTarget, name) })
     call.arg := in
+    call.enabled := true.B
     call.ret
   }
-  override def generateBody(enabled: Bool): Unit = {
-    val in = makeInput(inputType)
-    val out = makeOutput(outputType)
-    out := DontCare
-    when(enabled) { impl(in, out) }
+  override private[paso] def generate(): Unit = {
+    val io = IO(new MethodIO(inputType, outputType)).suggestName(name)
+    annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    io.ret := DontCare
+    when(io.enabled) { impl(io.arg, io.ret) }
+    io.guard := guard()
   }
 }
 
-
-class OMethodCallBundle[O <: Data](outputType: O) extends Bundle {
-  val ret = Input(outputType)
+// TODO: MethodCallIO is essentially just a flipped MethodIO
+class MethodCallIO[I <: Data, O <: Data](inputType: I, outputType: O) extends Bundle {
+  val arg = Output(inputType)  // inputs to the method, only valid if enabled is true
+  val ret = Input(outputType)  // outputs of the method, only valid if enabled is true
+  val enabled = Output(Bool()) // will be true if the method is called
+  val guard = Input(Bool())
   override def cloneType: this.type = {
-    new OMethodCallBundle(outputType).asInstanceOf[this.type]
+    new MethodCallIO(inputType, outputType).asInstanceOf[this.type]
   }
 }
-class IOMethodCallBundle[I <: Data, O <: Data](inputType: I, outputType: O) extends Bundle {
-  val arg = Output(inputType)
-  val ret = Input(outputType)
+class MethodIO[I <: Data, O <: Data](inputType: I, outputType: O) extends Bundle {
+  val enabled = Input(Bool()) // may only be asserted if guard is true
+  val guard = Output(Bool())  // indicated whether the method can be executed
+  val arg = Input(inputType)
+  val ret = Output(outputType)
   override def cloneType: this.type = {
-    new IOMethodCallBundle(inputType, outputType).asInstanceOf[this.type]
+    new MethodIO(inputType, outputType).asInstanceOf[this.type]
   }
 }
 
@@ -119,6 +120,17 @@ object MethodCall {
   }
 }
 
-case class MethodCallAnnotation(target: ReferenceTarget, name: String, ii: Int, isArg: Boolean) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
+case class MethodIOAnnotation(target: ReferenceTarget, name: String) extends SingleTargetAnnotation[ReferenceTarget] {
+  override def duplicate(n: ReferenceTarget): MethodIOAnnotation = copy(target = n)
+}
+
+case class MethodCallAnnotation(callIO: ReferenceTarget, calleeParent: IsModule, calleeName: String) extends MultiTargetAnnotation {
+  override val targets = List(List(callIO), List(calleeParent))
+
+  override def duplicate(n: Seq[Seq[Target]]): MethodCallAnnotation = {
+    assert(n.length == 2, "Need signal + parent")
+    assert(n(1).length == 1, "Method parent should always stay a single InstanceTarget!")
+    assert(n.head.length == 1, "Call signal should not be split up. Make sure to remove this annotation before running LowerTypes!")
+    copy(callIO = n.head.head.asInstanceOf[ReferenceTarget], calleeParent = n(1).head.asInstanceOf[IsModule])
+  }
 }

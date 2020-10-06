@@ -6,20 +6,27 @@
 package paso
 
 import chisel3._
-import chisel3.experimental.{ChiselAnnotation, annotate}
-import firrtl.annotations.{ModuleTarget, SingleTargetAnnotation}
-import paso.chisel.ChiselCompiler
 import paso.untimed._
 
 import scala.collection.mutable
 
 class UntimedModule extends MultiIOModule with MethodParent {
   override private[paso] def addMethod(m: Method): Unit = _methods.append(m)
-  override def getName: String = this.pathName
   override def isElaborated: Boolean =_isElaborated
   private var _isElaborated = false
   private val _methods = mutable.ArrayBuffer[Method]()
+  private var _chirrtl: Option[firrtl.CircuitState] = None
+  private lazy val _lowfir = UntimedCompiler.run(_chirrtl.get, Set())
+  private lazy val _tester = UntimedCompiler.toTreadleTester(_chirrtl.get)
   private val methodNames = mutable.HashSet[String]()
+  def getFirrtl: firrtl.CircuitState = {
+    assert(_isElaborated, "You need to elaborate the module using UntimedModule(new ...)!")
+    _lowfir
+  }
+  def getTester: treadle.TreadleTester = {
+    assert(_isElaborated, "You need to elaborate the module using UntimedModule(new ...)!")
+    _tester
+  }
   def methods: Seq[Method] = _methods
   // TODO: automagically infer names like Chisel does for its native constructs
   def fun(name: String) = {
@@ -34,8 +41,12 @@ object UntimedModule {
   def apply[M <: UntimedModule](m: => M): M = {
     // when elaborating, this acts like chisel3.Module(...)
     if(elaborating.get()) {
-      val sub = Module(m)
-      annotate(new ChiselAnnotation { override def toFirrtl = SubmoduleAnnotation(sub.toTarget, sub) })
+      val sub = Module {
+        val em = m
+        // generate the circuit for each method
+        em.methods.foreach(_.generate())
+        em
+      }
       sub
     } else { // but it can also be used to elaborate the toplevel
       elaborate(m)
@@ -43,21 +54,17 @@ object UntimedModule {
   }
   def elaborate[M <: UntimedModule](m: => M): M = {
     elaborating.set(true)
-    var opt: Option[M] = None
     val gen = () => {
-      opt = Some(m)
+      val em = m
       // generate the circuit for each method
-      opt.get.methods.foreach(_.generate())
-      opt.get
+      em.methods.foreach(_.generate())
+      em
     }
-    val fir = ChiselCompiler.elaborate(gen)
-    val mod = opt.get
+    val (fir, mod) = ChiselCompiler.elaborate(gen)
+
     mod._isElaborated = true
+    mod._chirrtl = Some(fir)
     elaborating.set(false)
     mod
   }
-}
-
-case class SubmoduleAnnotation(target: ModuleTarget, untimed: UntimedModule) extends SingleTargetAnnotation[ModuleTarget] {
-  def duplicate(n: ModuleTarget) = this.copy(n)
 }
