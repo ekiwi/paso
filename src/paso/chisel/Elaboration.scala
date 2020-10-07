@@ -148,6 +148,10 @@ case class Elaboration() {
   private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]): Untimed[S] = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = ConnectCalls.run(spec.untimed.getChirrtl, Set())
+    val formal = compileToFormal(fixedCalls, List()) // TODO: inject external references
+
+    // now we need to convert the transition system into the (more or less "legacy") UntimedModel format
+
 
 
     // TODO
