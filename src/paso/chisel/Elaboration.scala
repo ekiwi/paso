@@ -14,6 +14,7 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
+import paso.untimed.ConnectCalls
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
@@ -107,92 +108,56 @@ case class Elaboration() {
     }
   }
 
-  private case class Impl[IM <: RawModule](model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
-  private def elaborateImpl[IM <: RawModule](impl: ChiselImpl[IM], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): Impl[IM] = {
+  private def elaborateImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
+    // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the rest.
+    val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
+    val state = CircuitState(impl.circuit, impl.annos ++ doNotInlineAnnos)
+    compileToFormal(state, externalRefs)
+  }
+
+  /** used for both: RTL implementation and untimed module spec */
+  private case class FormalSys(model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
+  private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference]): FormalSys = {
     // We want to wire all external signals to the toplevel
-    val implCircuitName = impl.circuit.main
-    val exposeSignalsAnnos = externalRefs.filter(_.signal.circuit == implCircuitName)
+    val circuitName = state.circuit.main
+    val exposeSignalsAnnos = externalRefs.filter(_.signal.circuit == circuitName)
       .map(r => SignalToExposeAnnotation(r.signal, r.nameInObserver)) ++ Seq(
       RunFirrtlTransformAnnotation(Dependency(passes.ExposeSignalsPass)),
       RunFirrtlTransformAnnotation(Dependency[firrtl.passes.wiring.WiringTransform])
     )
 
     // The firrtl SMT backend expects all submodules that are part of the implementation to be inlined.
-    // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the
-    // rest.
+    // Any DoNotInline annotation from the `state.annotations` will prevent that particular module to be inlined.
     val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoSubmoduleFlatten)),
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
-    val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
-    val annos = impl.annos ++ exposeSignalsAnnos ++ doFlatten ++ doNotInlineAnnos
-    val (transitionSystem, resAnnos) = FirrtlToFormal(impl.circuit, annos, LogLevel.Error)
+    val annos = state.annotations ++ exposeSignalsAnnos ++ doFlatten
+    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, annos, LogLevel.Error)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
 
     // update external references with the type derived from the exposed signal
     val exposed = resAnnos.collect { case ExposedSignalAnnotation(name, portName, tpe) =>
-      s"${impl.circuit.main}.$name" -> (portName, tpe)
+      s"$circuitName.$name" -> (portName, tpe)
     }.toMap
-    Impl(transitionSystem, submoduleNames, exposed)
+
+    FormalSys(transitionSystem, submoduleNames, exposed)
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
   private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]): Untimed[S] = {
-    val name = spec.circuit.main
+    // connect all calls inside the module (TODO: support for bindings with UFs)
+    val fixedCalls = ConnectCalls.run(spec.untimed.getChirrtl, Set())
+
 
     // TODO
-    val model = UntimedModel(name, Seq(), Map(), Map())
+    val model = UntimedModel(spec.untimed.name, Seq(), Map(), Map())
     println("TODO: translate untimed module into SMT")
+
+    // FIXME: remember that by default every state is initialized to zero if not other init value is specified
 
     Untimed(Seq(), model, spec.protos)
   }
-
-/*
-  private def elaborateUntimed(spec_name: String, untimed: UntimedModule, modules: Seq[ir.Module], annos: Seq[Annotation]): (Seq[State], UntimedModel) = {
-    val main = modules.find(_.name == spec_name).get
-    val spec_state = FindModuleState().run(main)
-    val (spec_module, spec_subinstances) = RemoveInstances().run(main)
-
-    // elaborate submodules first
-    val subModules = spec_subinstances.map { case (instanceName, moduleName) =>
-      val instance = annos.collect{ case SubmoduleAnnotation(_, in) => in }.find(_.instanceName == instanceName).get
-      val (subState, subUntimed) =  elaborateUntimed(moduleName, instance, modules, annos)
-      assert(subState.isEmpty, s"Submodules with state are not supported at the moment! ${instanceName}, $subState")
-      instanceName -> subUntimed
-    }
-
-    // compile to untimed module to low firrtl
-    val circuit = ir.Circuit(NoInfo, main=spec_name, modules = Seq(main))
-    val (ff, lo_annos) = toLowFirrtl(circuit, annos)
-    println(ff.serialize)
-
-    // get formal representation for each method
-    val interpreter =  new FirrtlUntimedMethodInterpreter(ff, annos)
-    interpreter.run()
-
-    val methods = untimed.methods.map { meth =>
-      val sem = interpreter.getSemantics(meth.name)
-      println(sem)
-      meth.name -> sem
-    }.toMap
-
-    def toSymbol(name: String, tpe: ir.Type): smt.Symbol = smt.Symbol(name, firrtlToSmtType(tpe))
-    def defaultInitVec(tpe: ir.VectorType): smt.Expr = tpe.tpe match {
-      case t : ir.GroundType => smt.ConstArray(defaultInitGround(t), firrtlToSmtType(tpe).asInstanceOf[smt.ArrayType])
-    }
-    def defaultInitGround(tpe: ir.GroundType): smt.Expr = tpe match {
-      case ir.UIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(0, w.toInt) else smt.BooleanLit(false)
-      case ir.SIntType(ir.IntWidth(w)) => if(w > 1) smt.BitVectorLit(0, w.toInt) else smt.BooleanLit(false)
-    }
-    val spec_smt_state = spec_state.map {
-      case State(name, tpe, Some(init)) => smt.State(toSymbol(name, tpe), Some(init))
-      case State(name, tpe : ir.VectorType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitVec(tpe)))
-      case State(name, tpe : ir.GroundType, None) => smt.State(toSymbol(name, tpe), Some(defaultInitGround(tpe)))
-    }
-    val ut = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, sub = subModules)
-    (spec_state, ut)
-  }
-*/
 
   private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S]) = {
     val ut = elaborateUntimed(spec)
@@ -205,16 +170,11 @@ case class Elaboration() {
     val (state, ip) = elaborate(gen)
     ChiselImpl(ip, state.circuit, state.annotations)
   }
-  case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol], circuit: ir.Circuit, annos: Seq[Annotation])
+  case class ChiselSpec[S <: UntimedModule](untimed: S, protos: Seq[Protocol])
   private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
     var ip: Option[ProtocolSpec[S]] = None
-    val (state, _) = elaborate({ () =>
-      ip = Some(gen())
-      // generate the circuit for each method
-      ip.get.spec.methods.foreach { _.generate() }
-      ip.get.spec
-    })
-    ChiselSpec(ip.get.spec, ip.get.protos, state.circuit, state.annotations)
+    val elaborated = UntimedModule.elaborate { ip = Some(gen()) ; ip.get.spec }
+    ChiselSpec(elaborated, ip.get.protos)
   }
 
   def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
