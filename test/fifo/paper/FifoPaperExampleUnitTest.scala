@@ -4,12 +4,12 @@ import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
 import scala.collection.mutable
 import scala.util.Random
 
-class FifoPaperExampleUnitTest extends FlatSpec with ChiselScalatestTester {
+class FifoPaperExampleUnitTest extends AnyFlatSpec with ChiselScalatestTester {
   val WithVCD = Seq(WriteVcdAnnotation)
   val NoVCD = Seq()
   val withVerilator = Seq(VerilatorBackendAnnotation)

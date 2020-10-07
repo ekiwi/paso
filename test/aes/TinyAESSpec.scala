@@ -1,7 +1,7 @@
 package aes
 
 import chisel3._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 import paso.untimed.IOMethod
 
@@ -233,7 +233,7 @@ class TinyAESProtocol(impl: TinyAES128) extends ProtocolSpec[AES128Spec] {
   }
 }
 
-class TinyAESSpec extends FlatSpec {
+class TinyAESSpec extends AnyFlatSpec {
   "TinyAES OneRound" should "refine its spec" in {
     Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
   }

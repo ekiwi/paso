@@ -6,7 +6,7 @@ package fpga
 
 import chisel3._
 import chisel3.util._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 // NOTE: while the spec is currently hard coded for a certain number of read and write ports, one
@@ -219,7 +219,7 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
   }
 }
 
-class FPGAMemoriesSpec extends FlatSpec {
+class FPGAMemoriesSpec extends AnyFlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
     Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).proof(Paso.MCCVC4, new ProofCollateral(_, _){

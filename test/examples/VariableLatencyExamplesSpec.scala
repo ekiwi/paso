@@ -2,7 +2,7 @@ package examples
 
 import chisel3._
 import chisel3.util._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 /** Simply returns the input unmodified */
@@ -246,7 +246,7 @@ class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean
   }
 }
 
-class VariableLatencyExamplesSpec extends FlatSpec {
+class VariableLatencyExamplesSpec extends AnyFlatSpec {
   "RandomLatency module" should "refine its spec" in {
     Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut => assert(!dut.running)  }

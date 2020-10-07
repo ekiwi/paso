@@ -2,7 +2,7 @@ package examples
 
 import chisel3._
 import chisel3.util._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 class IdentityNoIdle[D <: Data](dataType: D) extends UntimedModule {
@@ -268,7 +268,7 @@ class PipelinedAdd3Delay2ProtocolCompisitional(impl: PipelinedAdd3Delay2) extend
   }
 }
 
-class PipeliningExamplesSpec extends FlatSpec {
+class PipeliningExamplesSpec extends AnyFlatSpec {
   "A simple register" should "refine its spec" in {
     Paso(new Register)(new RegisterProtocol(_)).proof()
   }
@@ -351,7 +351,7 @@ class PipeliningExamplesSpec extends FlatSpec {
 }
 
 // the multiplication makes some of the SMT solvers struggle...
-class PipeliningExamplesWithMulSpec extends FlatSpec {
+class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
   "A pipelined 32-bit multiplier" should "refine its spec" in {
     Paso(new PipelinedMul)(new PipelinedMulProtocol(_)).proof()
   }

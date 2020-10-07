@@ -2,7 +2,7 @@ package fifo
 
 import chisel3._
 import chisel3.util._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -189,7 +189,7 @@ class BasejumpFifoInductive(impl: BasejumpFifo, spec: UntimedSequentialFifo[UInt
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class FifoSpec extends FlatSpec {
+class FifoSpec extends AnyFlatSpec {
 
   "CircularPointerFifo" should "refine its spec" in {
     val depth = 8

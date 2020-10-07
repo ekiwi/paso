@@ -2,7 +2,7 @@ package fifo.paper
 
 import chisel3._
 import chisel3.util._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 // based on https://github.com/bespoke-silicon-group/basejump_stl/blob/master/bsg_dataflow/bsg_fifo_1rw_large.v
@@ -103,7 +103,7 @@ class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
   }
 }
 
-class FifoPaperExampleSpec extends FlatSpec {
+class FifoPaperExampleSpec extends AnyFlatSpec {
   "Fifo" should "refine its spec" in {
     Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
   }

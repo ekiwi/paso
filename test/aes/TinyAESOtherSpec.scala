@@ -1,7 +1,7 @@
 package aes
 
 import chisel3._
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 // contains formal verification collateral that isn't part of the central AES correctness proof
@@ -100,7 +100,7 @@ class TinyAESDebugJustOneRoundProtocol(impl: TinyAES128DebugJustOneRound) extend
 }
 
 
-class TinyAESOtherSpec extends FlatSpec {
+class TinyAESOtherSpec extends AnyFlatSpec {
   // this was used to hunt down a bug in our spec by breaking it into smaller pieces
   "TinyAES TableLookup" should "refine its spec" in {
     Paso(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()

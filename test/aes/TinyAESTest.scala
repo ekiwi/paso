@@ -4,9 +4,9 @@ import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
 import chiseltest.internal.{VerilatorBackendAnnotation, WriteVcdAnnotation}
-import org.scalatest._
+import org.scalatest.flatspec.AnyFlatSpec
 
-class TinyAESTest extends FlatSpec with ChiselScalatestTester {
+class TinyAESTest extends AnyFlatSpec with ChiselScalatestTester {
   val withVcd = Seq(WriteVcdAnnotation)
   val noVcd = Seq()
   val withVerilator = Seq(VerilatorBackendAnnotation)
