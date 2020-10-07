@@ -32,6 +32,7 @@ case class NMethod(name: String, guard: () => Bool, impl: () => Unit, parent: Me
   override private[paso] def generate(): Unit = {
     val io = IO(new MethodIO(UInt(0.W), UInt(0.W))).suggestName(name)
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    io.ret := DontCare
     when(io.enabled) { impl() }
     io.guard := guard()
   }
@@ -45,6 +46,7 @@ case class IMethod[I <: Data](name: String, guard: () => Bool, inputType: I, imp
   override private[paso] def generate(): Unit = {
     val io = IO(new MethodIO(inputType, UInt(0.W))).suggestName(name)
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
+    io.ret := DontCare
     when(io.enabled) { impl(io.arg) }
     io.guard := guard()
   }
