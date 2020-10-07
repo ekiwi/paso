@@ -33,7 +33,7 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
     read := read + 1.U
   }
 
-  val idle = fun("idle")() // TODO: closing brackets are unfortunately required for method to be registered for now :(
+  val idle = fun("idle"){} // TODO: closing brackets are unfortunately required for method to be registered for now :(
 }
 
 class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]] {
