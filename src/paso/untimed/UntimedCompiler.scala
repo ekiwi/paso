@@ -236,10 +236,12 @@ object ConnectCalls {
       case c : ir.Conditionally => c.pred match {
         case ir.SubField(ir.Reference(ioName, _, _, _), "enabled", _, _) if ioToName.contains(ioName) =>
           assert(c.alt == ir.EmptyStmt)
-          methods.append(analyzeMethod(ioToName(ioName), mod.name, ioName, c.conseq, callIO))
-        case _ => // methods should not be enclosed in other when blocks!
+          val (info, newBody) = analyzeMethod(ioToName(ioName), mod.name, ioName, c.conseq, callIO)
+          methods.append(info)
+          // the guard will be moved into the method to solely guard the state updates
+          c.copy(pred = ir.UIntLiteral(1), conseq = newBody)
+        case _ => c // methods should not be enclosed in other when blocks!
       }
-      c
       case c : ir.Connect => c.loc match {
         // we need to include any guards of sub methods!
         case ir.SubField(ir.Reference(ioName, _, _, _), "guard", _, _) if ioToName.contains(ioName) =>
@@ -264,46 +266,59 @@ object ConnectCalls {
    * - what state it writes to
    * - what calls it makes
    */
-  def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo]): MethodInfo = {
+  def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo]): (MethodInfo, ir.Statement) = {
     val locals = mutable.HashSet[String]()
     val writes = mutable.HashSet[String]()
     val localCalls = mutable.HashMap[String, ir.Info]()
 
-    def onWrite(loc: ir.Expression): Unit = {
+    def isWrite(loc: ir.Expression): Boolean = {
       val signal = loc.serialize.split('.').head
       if(!locals.contains(signal) && signal != ioName && !calls.contains(signal)) {
         writes.add(signal)
-      }
+        true
+      } else { false }
     }
 
-    def onStmt(s: ir.Statement): Unit = s match {
-      case ir.DefNode(_, name, _) => locals.add(name)
-      case ir.DefWire(_, name, _) => locals.add(name)
+    val guard = ir.SubField(ir.Reference(ioName), "enabled")
+
+    def onStmt(s: ir.Statement): ir.Statement = s match {
+      case d @ ir.DefNode(_, name, _) => locals.add(name) ; d
+      case d @ ir.DefWire(_, name, _) => locals.add(name) ; d
       case r : ir.DefRegister =>
         throw new UntimedError(s"Cannot create a register ${r.name} in method $name of $parent!")
       case m : ir.DefMemory =>
         throw new UntimedError(s"Cannot create a memory ${m.name} in method $name of $parent!")
       case i : ir.DefInstance =>
         throw new UntimedError(s"Cannot create an instance ${i.name} of ${i.module} in method $name of $parent!")
-      case ir.Connect(info, loc, expr) =>
+      case c @ ir.Connect(info, loc, expr) =>
         (loc, expr) match {
           case (ir.SubField(ir.Reference(maybeCall, _, _, _), "enabled", _, _), _) if calls.contains(maybeCall) =>
             // only use info from enabled if we haven't found better info so far
             if(!localCalls.contains(maybeCall)) { localCalls(maybeCall) = info }
+            c
           case (_, ir.SubField(ir.Reference(maybeCall, _, _, _), "ret", _, _)) if calls.contains(maybeCall) =>
             // ret has better info than enabled!
             localCalls(maybeCall) = info
-          case _ => onWrite(loc)
+            c
+          case _ =>
+            // guard state updates
+            if(isWrite(loc)) {
+              ir.Conditionally(info, guard, c, ir.EmptyStmt)
+            } else { c }
         }
-      case ir.IsInvalid(_, loc) => onWrite(loc)
-      case other => other.foreachStmt(onStmt)
+      case c @ ir.IsInvalid(info, loc) =>
+        // guard state updates
+        if(isWrite(loc)) {
+          ir.Conditionally(info, guard, c, ir.EmptyStmt)
+        } else { c }
+      case other => other.mapStmt(onStmt)
     }
-    onStmt(body)
+    val newBody = onStmt(body)
 
     // update the ir.Info for all calls:
     val callInfos = localCalls.map { case (c, i) => calls(c).copy(info=i) }
 
-    MethodInfo(name, parent, ioName, writes.toSet, callInfos.toSeq)
+    (MethodInfo(name, parent, ioName, writes.toSet, callInfos.toSeq), newBody)
   }
 
 
