@@ -6,6 +6,7 @@
 package paso
 
 import chisel3._
+import paso.chisel.ChiselCompiler
 import paso.untimed._
 
 import scala.collection.mutable

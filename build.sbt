@@ -27,6 +27,8 @@ val chiselSettings = Seq(
 val otherDependencySettings = Seq(
   libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test",
   libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0-RC3" % "test",
+  // treadle is used for concrete exectuion of untimed modules
+  libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.3.0-RC3",
   // required for uclid files
   libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
   libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources(),

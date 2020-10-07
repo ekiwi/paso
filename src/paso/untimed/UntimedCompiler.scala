@@ -9,7 +9,7 @@ import firrtl.analyses.InstanceKeyGraph.InstanceKey
 import firrtl.ir.IntWidth
 import firrtl.passes.PassException
 import firrtl.stage.FirrtlCircuitAnnotation
-import paso.FirrtlCompiler
+import paso.chisel.FirrtlCompiler
 import treadle.TreadleTester
 
 import scala.collection.mutable

@@ -15,7 +15,7 @@ import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, SubmoduleAnnotation, UntimedModule}
+import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
 
 case class Elaboration() {
@@ -138,13 +138,16 @@ case class Elaboration() {
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
   private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]): Untimed[S] = {
-    val spec_name = spec.circuit.main
-    val modules = spec.circuit.modules.map(_.asInstanceOf[ir.Module])
-    val (spec_state, untimed_model) = elaborateUntimed(spec_name, spec.untimed, modules, spec.annos)
-    Untimed(spec_state, untimed_model, spec.protos)
+    val name = spec.circuit.main
+
+    // TODO
+    val model = UntimedModel(name, Seq(), Map(), Map())
+    println("TODO: translate untimed module into SMT")
+
+    Untimed(Seq(), model, spec.protos)
   }
 
-
+/*
   private def elaborateUntimed(spec_name: String, untimed: UntimedModule, modules: Seq[ir.Module], annos: Seq[Annotation]): (Seq[State], UntimedModel) = {
     val main = modules.find(_.name == spec_name).get
     val spec_state = FindModuleState().run(main)
@@ -189,6 +192,7 @@ case class Elaboration() {
     val ut = UntimedModel(name = spec_name, state = spec_smt_state, methods = methods, sub = subModules)
     (spec_state, ut)
   }
+*/
 
   private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S]) = {
     val ut = elaborateUntimed(spec)
