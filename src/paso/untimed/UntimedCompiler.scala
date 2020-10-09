@@ -24,7 +24,8 @@ case class UntimedModuleInfo(name: String, state: Seq[ir.Reference], methods: Se
 object UntimedCompiler {
   def run(state: CircuitState, abstracted: Set[String]): CircuitState = {
     val fixedCalls = ConnectCalls.run(state, abstracted)
-    FirrtlCompiler.toLowFirrtl(fixedCalls)
+    // TODO: make ResetToZeroPass part of the firrtl compiler
+    ResetToZeroPass.runTransform(FirrtlCompiler.toLowFirrtl(fixedCalls))
   }
   def toTreadleTester(chirrtl: CircuitState): TreadleTester = {
     val low = run(chirrtl, Set())
