@@ -36,6 +36,8 @@ object ResetToZeroPass extends Transform with DependencyAPIMigration {
     m.mapStmt(onStmt(_, c.module(m.name), mems))
   }
 
+  private val resetRef = ir.Reference("reset", ir.AsyncResetType, firrtl.PortKind, firrtl.SourceFlow)
+
   private def onStmt(s: ir.Statement, m: ModuleTarget, mems: mutable.ArrayBuffer[ReferenceTarget]): ir.Statement = s match {
     case r : ir.DefRegister =>
       r.init match {
@@ -45,7 +47,8 @@ object ResetToZeroPass extends Transform with DependencyAPIMigration {
             case ir.SIntType(w) => ir.SIntLiteral(0, w)
             case other => throw new RuntimeException(s"Unexpected register type: ${other.serialize}")
           }
-          r.copy(init=zero)
+          // registers without a reset might not be connected to the reset port, we fix that
+          r.copy(init=zero, reset = resetRef)
         case _ => r
       }
     case mem : ir.DefMemory => mems.append(m.ref(mem.name)) ; mem
