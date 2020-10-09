@@ -6,7 +6,7 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
-import firrtl.annotations.Annotation
+import firrtl.annotations.{Annotation, CircuitTarget, PresetAnnotation}
 import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
@@ -14,7 +14,7 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
-import paso.untimed.ConnectCalls
+import paso.untimed.{ConnectCalls, ResetToZeroPass}
 import paso.verification.{Assertion, BasicAssertion, MethodSemantics, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import uclid.smt
@@ -117,7 +117,7 @@ case class Elaboration() {
 
   /** used for both: RTL implementation and untimed module spec */
   private case class FormalSys(model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
-  private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference]): FormalSys = {
+  private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
     val exposeSignalsAnnos = externalRefs.filter(_.signal.circuit == circuitName)
@@ -131,7 +131,7 @@ case class Elaboration() {
     val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoSubmoduleFlatten)),
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val annos = state.annotations ++ exposeSignalsAnnos ++ doFlatten
-    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, annos, LogLevel.Error)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, annos, ll)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
@@ -145,14 +145,20 @@ case class Elaboration() {
   }
 
   private case class Untimed[S <: UntimedModule](state: Seq[State], model: UntimedModel, protocols: Seq[Protocol])
-  private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S]): Untimed[S] = {
+  private def elaborateUntimed[S <: UntimedModule](spec: ChiselSpec[S], externalRefs: Iterable[ExternalReference]): Untimed[S] = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = ConnectCalls.run(spec.untimed.getChirrtl, Set())
-    val formal = compileToFormal(fixedCalls, List()) // TODO: inject external references
+    // make sure that all state is initialized to its reset value or zero
+    val reset = CircuitTarget(fixedCalls.circuit.main).module(fixedCalls.circuit.main).ref("reset")
+    val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(ResetToZeroPass)), PresetAnnotation(reset))
+    // convert to formal
+    val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos)
+    val formal = compileToFormal(withAnnos, externalRefs, ll = LogLevel.Error)
 
     // now we need to convert the transition system into the (more or less "legacy") UntimedModel format
 
-
+    val state = formal.model.states // TODO: make sure all states have proper init value (in ConnectCalls)
+    //val methods =
 
     // TODO
     val model = UntimedModel(spec.untimed.name, Seq(), Map(), Map())
@@ -163,8 +169,8 @@ case class Elaboration() {
     Untimed(Seq(), model, spec.protos)
   }
 
-  private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S]) = {
-    val ut = elaborateUntimed(spec)
+  private def elaborateSpec[S <: UntimedModule](spec: ChiselSpec[S], externalRefs: Iterable[ExternalReference]) = {
+    val ut = elaborateUntimed(spec, externalRefs)
     val pt = elaborateProtocols(ut.protocols, ut.model.methods)
     (Spec(ut.model, pt.toMap), ut.state)
   }
@@ -205,14 +211,14 @@ case class Elaboration() {
     // Firrtl Compilation
     val implementation = elaborateImpl(implChisel, subspecList, externalReferences)
     val endImplementation = System.nanoTime()
-    val (spec, untimed_state) = elaborateSpec(specChisel)
+    val (spec, untimed_state) = elaborateSpec(specChisel, externalReferences)
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
     val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
-      val (spec, _) = elaborateSpec[UntimedModule](elaborated)
+      val (spec, _) = elaborateSpec[UntimedModule](elaborated, List())
       val instance = implementation.submodules(s.module.name)
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.id.startsWith(instance + ".")).map(s => s.copy(id = s.id.substring(prefixLength)))
