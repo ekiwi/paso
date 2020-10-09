@@ -11,7 +11,12 @@ class Identity[D <: Data](dataType: D) extends UntimedModule {
   val idle = fun("idle") {}
 }
 
+class IdentityAndKeepOut[D <: Data](dataType: D)  extends Bundle {
+  val valid = Bool()
+  val data = dataType
+}
 class IdentityAndKeep[D <: Data](dataType: D) extends UntimedModule {
+  // FIXME: convert to manual valid signal instead of implicit valid signal
   val valid = RegInit(false.B)
   val value = Reg(dataType)
   val id = fun("id").in(dataType).out(dataType) { (in, out) =>
