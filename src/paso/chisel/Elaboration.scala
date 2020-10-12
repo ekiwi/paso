@@ -35,26 +35,11 @@ case class Elaboration() {
     firrtlCompilerTime += System.nanoTime() - start
     (st_no_bundles.circuit, st_no_bundles.annotations)
   }
-  private def toLowFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
-    val start = System.nanoTime()
-    val st = FirrtlCompiler.toLowFirrtl(CircuitState(c, annos))
-    firrtlCompilerTime += System.nanoTime() - start
-    (st.circuit, st.annotations)
-  }
   private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
     val start = System.nanoTime()
     val st = FirrtlCompiler.toHighFirrtl(CircuitState(c, annos))
     firrtlCompilerTime += System.nanoTime() - start
     (st.circuit, st.annotations)
-  }
-  private def getMain(c: ir.Circuit): ir.Module = c.modules.find(_.name == c.main).get.asInstanceOf[ir.Module]
-  private def getNonMain(c: ir.Circuit): Seq[ir.Module] = c.modules.filter(_.name != c.main)map(_.asInstanceOf[ir.Module])
-
-  private def elaborateInContext(ctx: RawModule, gen: () => Unit): firrtl.CircuitState = {
-    val start = System.nanoTime()
-    val r = ElaborateInContextOfModule(ctx, gen)
-    chiselElaborationTime += System.nanoTime() - start
-    r
   }
 
   private def elaborateObserver(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
