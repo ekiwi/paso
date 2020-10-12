@@ -5,6 +5,7 @@
 package paso.modelcheck
 
 import maltese.smt
+import scala.collection.mutable
 
 case class Witness(failedBad: Seq[Int], regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], inputs: Seq[Map[Int, BigInt]])
 
@@ -12,8 +13,8 @@ class TransitionSystemSimulator(sys: smt.TransitionSystem, val maxMemVcdSize: In
   private val inputs = sys.inputs.zipWithIndex.map{ case (input, index) => index -> input }
   private val stateOffset = inputs.size
   private val states = sys.states.zipWithIndex.map{ case (state, index) => index -> state.sym}
-  private val outputOffset = stateOffset + states.size
-  private val outputs = sys.outputs.zipWithIndex.map{ case ((name, expr), index) => index -> Symbol(name, expr.typ) }
+  private val signalOffset = stateOffset + states.size
+  private val signals = sys.signals.zipWithIndex.map{ case (s, index) => index -> s.e. }
   private val regStates = sys.states.zipWithIndex.filter(!_._1.sym.typ.isArray)
   private val memStates = sys.states.zipWithIndex.filter(_._1.sym.typ.isArray)
   private val allStates = sys.states.zipWithIndex
@@ -28,11 +29,11 @@ class TransitionSystemSimulator(sys: smt.TransitionSystem, val maxMemVcdSize: In
   private val memSymbolToArrayIndex = memStates.map{ case (state, i) => state.sym -> memStateIdToArrayIndex(i) }.toMap
   private val bvSymbolToDataIndex : Map[Symbol, Int] =
     (inputs.map{ case (i, sym) => sym -> i} ++ regStates.map{ case (state, i) => state.sym -> (i + stateOffset) }
-      ++ outputs.map{ case (i, sym) => sym -> (i + outputOffset) }).toMap
+      ++ outputs.map{ case (i, sym) => sym -> (i + signalOffset) }).toMap
   private val dataIndexToName: Map[Int, String] = bvSymbolToDataIndex.map{ case (symbol, i) => i -> symbol.id}
 
   // vcd dumping
-  private var vcdWriter: Option[vcd.VCD] = None
+  private var vcdWriter: Option[VCD] = None
   private val observedMemories = memSymbolToArrayIndex.filter{case (Symbol(_, typ), _) => getDepthAndWidth(typ)._1 <= maxMemVcdSize}
 
   private case class Memory(data: Seq[BigInt]) {
@@ -53,22 +54,6 @@ class TransitionSystemSimulator(sys: smt.TransitionSystem, val maxMemVcdSize: In
   }
   private def writesToMemory(depth: Int, writes: Iterable[(BigInt, BigInt)]): Memory =
     writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
-
-  private val functionResults = mutable.HashMap[String, BigInt]()
-  private def evalUninterpretedFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
-    val id = foo.id + "(" + args.mkString(";") + ")"
-    val res = functionResults.getOrElseUpdate(id, randomBits(getWidth(foo.typ.asInstanceOf[MapType].outType)))
-    res
-  }
-  private val tmpSymbols = mutable.HashMap[Symbol, BigInt]()
-  private def evalFunctionCall(foo: Symbol, args: Seq[BigInt]): BigInt = {
-    functionDefinitions.find(_.id == foo) match {
-      case None => evalUninterpretedFunctionCall(foo, args)
-      case Some(d) =>
-        d.args.zip(args).foreach{ case (sym, value) => tmpSymbols(sym) = value }
-        eval(d.e)
-    }
-  }
 
   private def eval(expr: Expr): BigInt = {
     val value = expr match {
@@ -130,7 +115,7 @@ class TransitionSystemSimulator(sys: smt.TransitionSystem, val maxMemVcdSize: In
   def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], withVcd: Boolean) = {
     // initialize vcd
     vcdWriter = if(!withVcd) None else {
-      val vv = vcd.VCD(sys.name.getOrElse("Top"))
+      val vv = VCD(sys.name)
       vv.addWire("Step", 64)
       bvSymbolToDataIndex.keys.foreach(s => vv.addWire(s.id, getWidth(s.typ)))
       observedMemories.foreach { case(s, _) =>
@@ -200,8 +185,8 @@ class TransitionSystemSimulator(sys: smt.TransitionSystem, val maxMemVcdSize: In
     }
     // update outputs (constraints, bad states and next state functions could depend on the new value)
     newOutputs.foreach{ case (ii, value) =>
-      data(ii + outputOffset) = value
-      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + outputOffset), value))
+      data(ii + signalOffset) = value
+      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + signalOffset), value))
     }
 
     // calculate next states

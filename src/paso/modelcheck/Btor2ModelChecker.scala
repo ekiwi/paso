@@ -10,7 +10,7 @@ import scala.collection.mutable
 import maltese.smt
 import scala.sys.process._
 
-class BtormcModelChecker extends ModelChecker {
+class BtormcModelChecker extends Btor2ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "btormc"
   override val supportsOutput: Boolean = false
@@ -27,7 +27,7 @@ class BtormcModelChecker extends ModelChecker {
   }
 }
 
-class Cosa2ModelChecker extends ModelChecker {
+class Cosa2ModelChecker extends Btor2ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "cosa2"
   override val supportsOutput: Boolean = true
@@ -52,7 +52,7 @@ class Cosa2ModelChecker extends ModelChecker {
   }
 }
 
-abstract class ModelChecker extends IsModelChecker {
+abstract class Btor2ModelChecker extends IsModelChecker {
   override val name: String
   def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
@@ -109,7 +109,7 @@ abstract class ModelChecker extends IsModelChecker {
     res match {
       case None => ModelCheckSuccess()
       case Some(msg) =>
-        val witness = Btor2.readWitness(res)
+        val witness = Btor2WitnessParser.read(res).head
         ModelCheckFail(witness)
     }
   }

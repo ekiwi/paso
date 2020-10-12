@@ -10,19 +10,19 @@ import chisel3.util.log2Ceil
 
 import scala.sys.process._
 import paso.chisel.{SMTHelpers, SMTSimplifier}
-import uclid.smt
+import maltese.smt
 
 import scala.collection.mutable
 import scala.math
 
-object VerificationGraph extends SMTHelpers {
+object VerificationGraph {
   def merge(a: StepNode, b: StepNode): StepNode = {
     // TODO: also consider guards (i.e. protocols can be identical as long as their method guards are mutually exclusive)
     assert(!a.isFork && !b.isFork)
     assert(a.id == 0 && b.id == 0)
     a.next.foreach { aNext =>
       b.next.foreach { bNext =>
-        val mutuallyExlusive = Checker.isUnsat(and(aNext.constraintExpr, bNext.constraintExpr))
+        val mutuallyExlusive = Checker.isUnsat(smt.BVAnd(aNext.constraintExpr, bNext.constraintExpr))
         assert(mutuallyExlusive, "We currently require all methods to have distinguishing inputs on the first cycle.")
       }
     }
@@ -31,21 +31,21 @@ object VerificationGraph extends SMTHelpers {
 
 }
 
-case class ForkNode(ii: Int, guard: smt.Expr, method: String)
-class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, smt.Expr]) extends SMTHelpers {
+case class ForkNode(ii: Int, guard: smt.BVExpr, method: String)
+class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, smt.BVExpr]) extends SMTHelpers {
 
-  case class State(ii: Int, pathGuard: smt.Expr)
+  case class State(ii: Int, pathGuard: smt.BVExpr)
   def run(proto: StepNode): Seq[ForkNode] = {
     visit(proto, State(-1, tru))
     forkNodes
   }
 
   private var branchCounter: Int = 0
-  private def getUniqueBranchSymbols(choices: Int): Seq[smt.Symbol] = {
+  private def getUniqueBranchSymbols(choices: Int): Seq[smt.BVSymbol] = {
     val base = s"branch_${branchCounter}_c"
     branchCounter += 1
     val names = (0 until choices).map(ii => base + ii.toString)
-    val syms = names.map(smt.Symbol(_, smt.BoolType))
+    val syms = names.map(smt.BVSymbol(_, 1))
     syms.foreach(check.declare)
     syms
   }
@@ -56,8 +56,8 @@ class VerificationTreeEncoder(check: BoundedCheckBuilder, guards: Map[String, sm
     forkNodes += ForkNode(state.ii, state.pathGuard, node.methods.head)
   }
 
-  private def assumeAt(state: State, e: smt.Expr): Unit = check.assumeAt(state.ii, implies(state.pathGuard, e))
-  private def assertAt(state: State, e: smt.Expr): Unit = check.assertAt(state.ii, implies(state.pathGuard, e))
+  private def assumeAt(state: State, e: smt.BVExpr): Unit = check.assumeAt(state.ii, implies(state.pathGuard, e))
+  private def assertAt(state: State, e: smt.BVExpr): Unit = check.assertAt(state.ii, implies(state.pathGuard, e))
 
   private def visit(node: StepNode, oldState: State): Unit = {
     val state = oldState.copy(ii = oldState.ii + 1)
@@ -685,9 +685,9 @@ case class OldVerificationAutomatonEncoder(methodFuns: Map[smt.Symbol, smt.Funct
 
 object Checker extends SMTHelpers with HasSolver {
   val solver = new YicesInterface
-  def isSat(e: smt.Expr): Boolean = check(e).isTrue
-  def isUnsat(e: smt.Expr): Boolean = check(e).isFalse
-  def isValid(e: smt.Expr): Boolean = isUnsat(app(smt.NegationOp, e))
+  def isSat(e: smt.BVExpr): Boolean = check(e).isTrue
+  def isUnsat(e: smt.BVExpr): Boolean = check(e).isFalse
+  def isValid(e: smt.BVExpr): Boolean = isUnsat(app(smt.NegationOp, e))
 }
 
 trait HasSolver {

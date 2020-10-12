@@ -15,12 +15,10 @@ trait PasoModelChecker {
   def check(sys: smt.TransitionSystem, kMax: Int, filename: Option[String] = None): ModelCheckResult
 }
 
-case class PasoBtorMC(btor: smt.ModelChecker) extends PasoModelChecker {
+case class PasoBtorMC(btor: Btor2ModelChecker) extends PasoModelChecker {
   override val name: String = btor.name
-
-  override def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun],
-                     uninterpreted: Seq[smt.Symbol], filename: Option[String]): smt.ModelCheckResult = ???
-
+  override def check(sys: smt.TransitionSystem, kMax: Int, filename: Option[String]): ModelCheckResult =
+    btor.check(sys=sys, kMax=kMax, fileName = filename)
 }
 
 
@@ -123,6 +121,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
  * This Transition System encoding is directly inspired by yosys' SMT backend:
  * https://github.com/YosysHQ/yosys/blob/master/backends/smt2/smt2.cc
  * */
+// TODO: use code from firrtl
 class CompactEncoding(sys: smt.TransitionSystem, doSimplify: Boolean = false) extends SMTHelpers {
   val simplify: smt.SMTExpr => smt.SMTExpr = if(doSimplify) { smt.SMTSimplifier.simplify } else { e => e }
   private val name = sys.name

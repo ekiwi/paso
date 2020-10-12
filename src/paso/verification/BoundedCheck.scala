@@ -6,25 +6,25 @@ package paso.verification
 
 import chisel3.util.log2Ceil
 import paso.chisel.{SMTHelper, SMTSimplifier}
-import uclid.smt
+import maltese.smt
 
 import scala.collection.mutable
 
 case class BoundedCheck()
 
-case class CheckStep(ii: Int, assertions: Seq[smt.Expr] = Seq(), assumptions: Seq[smt.Expr] = Seq())
+case class CheckStep(ii: Int, assertions: Seq[smt.BVExpr] = Seq(), assumptions: Seq[smt.BVExpr] = Seq())
 
 class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean = false) {
-  require(sys.constraints.isEmpty)
-  require(sys.bad.isEmpty)
-  require(sys.fair.isEmpty)
-  private val constraints = mutable.ArrayBuffer[smt.Expr]()
+  require(!sys.signals.exists(_.lbl == smt.IsConstraint))
+  require(!sys.signals.exists(_.lbl == smt.IsBad))
+  require(!sys.signals.exists(_.lbl == smt.IsFair))
+  private val constraints = mutable.ArrayBuffer[smt.BVExpr]()
   private val steps = mutable.ArrayBuffer[CheckStep]()
-  private val sysSymbols =
-    (sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) } ++ sys.inputs ++ sys.states.map(_.sym))
-      .map(s => s.id -> s.typ).toMap
-  private val defines = mutable.HashMap[String, smt.Expr]()
-  private val symConsts = mutable.HashMap[String, smt.Type]()
+  private val sysSymbols = (sys.inputs.map(i => i.name -> i.width) ++
+    sys.signals.collect{ case smt.Signal(name, e: smt.BVExpr, _) => name -> e.width }).toMap
+
+  private val defines = mutable.HashMap[String, smt.SMTExpr]()
+  private val symConsts = mutable.HashMap[String, smt.SMTType]()
 
   private def extendTo(ii: Int): Unit = {
     while(steps.length <= ii) {
@@ -32,7 +32,8 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     }
   }
 
-  def assertAt(ii : Int, expr: smt.Expr): Unit = {
+  def assertAt(ii : Int, expr: smt.BVExpr): Unit = {
+    assert(expr.width == 1)
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assertions = step.assertions ++ Seq(expr))
@@ -42,7 +43,8 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     }
   }
 
-  def assumeAt(ii : Int, expr: smt.Expr): Unit = {
+  def assumeAt(ii : Int, expr: smt.BVExpr): Unit = {
+    assert(expr.width == 1)
     extendTo(ii)
     val step = steps(ii)
     steps(ii) = step.copy(assumptions = step.assumptions ++ Seq(expr))
@@ -54,26 +56,26 @@ class BoundedCheckBuilder(val sys: smt.TransitionSystem, val debugPrint: Boolean
     }
   }
 
-  def assume(expr: smt.Expr): Unit = {
+  def assume(expr: smt.BVExpr): Unit = {
+    assert(expr.width == 1)
     constraints.append(expr)
     if(debugPrint) println(s"assume: $expr")
   }
 
-  // TODO: add support for functions with arguments instead of just defines (this will be used for the new method semantics model)
-  def define(name: smt.Symbol, expr: smt.Expr): Unit = {
-    require(name.typ == expr.typ, s"Type mismatch: ${name.typ} != ${expr.typ}")
-    require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
-    require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
-    require(!symConsts.contains(name.id), s"Name collision with previously declared symbol: ${name.id} : ${symConsts(name.id)}")
-    defines(name.id) = expr
-    if(debugPrint) println(s"define: $name := $expr")
+  def define(sym: smt.SMTSymbol, expr: smt.SMTExpr): Unit = {
+    require(sym.typ == expr.typ, s"Type mismatch: ${name.typ} != ${expr.typ}")
+    require(!sysSymbols.contains(sym.name), s"Name collision with symbol in Transition System: ${sym.name} : ${sysSymbols(sym.name)}")
+    require(!defines.contains(sym.name), s"Name collision with previously defined symbol: ${sym.name} : ${defines(sym.name).typ} := ${defines(sym.name)}")
+    require(!symConsts.contains(sym.name), s"Name collision with previously declared symbol: ${sym.name} : ${symConsts(sym.name)}")
+    defines(sym.name) = expr
+    if(debugPrint) println(s"define: $sym := $expr")
   }
 
-  def declare(name: smt.Symbol): Unit = {
-    require(!sysSymbols.contains(name.id), s"Name collision with symbol in Transition System: ${name.id} : ${sysSymbols(name.id)}")
-    require(!defines.contains(name.id), s"Name collision with previously defined symbol: ${name.id} : ${defines(name.id).typ} := ${defines(name.id)}")
-    require(!symConsts.contains(name.id), s"Name collision with previously declared symbol: ${name.id} : ${symConsts(name.id)}")
-    symConsts(name.id) = name.typ
+  def declare(sym: smt.SMTSymbol): Unit = {
+    require(!sysSymbols.contains(sym.name), s"Name collision with symbol in Transition System: ${sym.name} : ${sysSymbols(sym.name)}")
+    require(!defines.contains(sym.name), s"Name collision with previously defined symbol: ${sym.name} : ${defines(sym.name).typ} := ${defines(sym.name)}")
+    require(!symConsts.contains(sym.name), s"Name collision with previously declared symbol: ${sym.name} : ${symConsts(sym.name)}")
+    symConsts(sym.name) = sym.typ
   }
 
   def getCombinedSystem: smt.TransitionSystem = {
