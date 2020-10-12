@@ -5,9 +5,10 @@
 package paso.verification
 
 import uclid.smt
+import paso.untimed
 
-case class MethodSemantics(guard: smt.Expr, updates: Seq[NamedExpr], outputs: Seq[NamedGuardedExpr], inputs: Seq[smt.Symbol])
-case class UntimedModel(name: String, state: Seq[smt.State], methods: Map[String, MethodSemantics], sub: Map[String, UntimedModel])
+case class UntimedModel(sys: smt.TransitionSystem, methods: Seq[untimed.MethodInfo])
+/*
 
 object UntimedModel {
   def functionAppSubs(m: UntimedModel): Iterable[(smt.Symbol, smt.FunctionApplication)] = m.methods.flatMap { case( name, meth) =>
@@ -51,3 +52,4 @@ case class NamedGuardedExpr(sym: smt.Symbol, expr: smt.Expr, guard: smt.Expr) ex
   def guardFunctionApp: smt.FunctionApplication = smt.FunctionApplication(guardFunSym, guardArgs)
   def guardFunctionDef: smt.DefineFun = smt.DefineFun(guardFunSym, guardArgs, guard)
 }
+*/

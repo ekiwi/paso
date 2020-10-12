@@ -6,6 +6,7 @@ package paso.untimed
 
 import firrtl.{AnnotationSeq, CircuitState, PrimOps, ir}
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
+import firrtl.annotations.{CircuitTarget, ModuleTarget, SingleTargetAnnotation}
 import firrtl.ir.IntWidth
 import firrtl.passes.PassException
 import firrtl.stage.FirrtlCircuitAnnotation
@@ -19,6 +20,10 @@ case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[
 case class CallInfo(parent: String, method: String, ioName: String, info: ir.Info)
 case class UntimedModuleInfo(name: String, state: Seq[ir.Reference], methods: Seq[MethodInfo], submodules: Seq[UntimedModuleInfo]) {
   val hasState: Boolean = state.nonEmpty || (submodules.count(_.hasState) > 0)
+}
+
+case class UntimedModuleInfoAnnotation(target: ModuleTarget, module: UntimedModuleInfo) extends SingleTargetAnnotation[ModuleTarget] {
+  override def duplicate(n: ModuleTarget) = copy(target = n)
 }
 
 object UntimedCompiler {
@@ -46,7 +51,8 @@ object ConnectCalls {
     assert(abstracted.isEmpty, "TODO: allow submodules to be abstracted!")
     val (newModules, mainInfo) = run(state.circuit.main, state, abstracted)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
-    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos)
+    val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
+    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
   }
 
   private def run(name: String, state: CircuitState, abstracted: Set[String]): (Seq[ir.Module], UntimedModuleInfo) = {
