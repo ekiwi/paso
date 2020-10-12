@@ -7,8 +7,8 @@
 
 package paso.verification
 
-import paso.Btormc
 import paso.chisel.{SMTHelper, SMTHelpers, SMTSimplifier}
+import paso.untimed
 import uclid.smt
 import uclid.smt.Expr
 
@@ -125,7 +125,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     val sim = new smt.TransitionSystemSimulator(reducedSys, functionDefinitions = defined)
     (res, sim)
   }
-
+/*
   private def resolveBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
     val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub =>
       sub.binding match {
@@ -158,6 +158,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     val submoduleFoos = topUntimed.sub.flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
     (subSpecMethodFunctionDefinitions ++ submoduleFoos, Seq())
   }
+ */
 
   override protected def execute(p: VerificationProblem): Unit = {
     // first we need to merge the protocol graph to ensure that methods are independent
@@ -170,15 +171,18 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
       NewVerificationAutomatonEncoder.run(sub.spec, sub.instance + ".", resetAssumption, switchAssumesAndGuarantees = true, initArchState = true)
     }
 
+    // TODO
+    /*
     val (foos, ufs) = if(checker.supportsUF) {
       resolveBindings(p.subspecs, p.spec.untimed)
     } else {
       ignoreBindings(p.subspecs, p.spec.untimed)
     }
+    */
 
     // generate the toplevel transition system
     val resetAssumption = VerificationTask.findReset(p.impl.inputs).map(not).getOrElse(tru)
-    val toplevelFoos = UntimedModel.functionDefs(p.spec.untimed)
+    // val toplevelFoos = UntimedModel.functionDefs(p.spec.untimed)
     val topTransitionSystem = NewVerificationAutomatonEncoder.run(p.spec, "", resetAssumption, switchAssumesAndGuarantees = false, initArchState = true)
 
     // add reset values to impl
@@ -192,7 +196,7 @@ class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with S
     // combine systems
     val sys = smt.TransitionSystem.merge(initImpl, Seq(topTransitionSystem.sys) ++ subTransitionsSystems.map(_.sys))
     //sys.bad.zipWithIndex.foreach { case (b, i) => println(s"b$i: ${SMTSimplifier.simplify(b)}") }
-    val (res, sim) = runCheck(kMax, sys, foos ++ toplevelFoos, ufs)
+    val (res, sim) = runCheck(kMax, sys, Seq(), Seq())
 
     // find failing property and print
     res match {
@@ -237,7 +241,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
   }
 
 
-  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Map[String, MethodSemantics], foos: Seq[smt.DefineFun], ufs: Seq[smt.Symbol], sub: Seq[PasoAutomaton]): Unit = {
+  private def verifyMethods(p: VerificationProblem, proto: StepNode, methods: Seq[untimed.MethodInfo], foos: Seq[smt.DefineFun], ufs: Seq[smt.Symbol], sub: Seq[PasoAutomaton]): Unit = {
     //println(s"Trying to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}...")
     val check = new BoundedCheckBuilder(p.impl)
 
@@ -295,6 +299,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
   }
 
+  /*
   private def resolveBindings(subspecs: Seq[Subspec], topUntimed: UntimedModel): (Seq[smt.DefineFun], Seq[smt.Symbol]) = {
     val subSpecMethodFunctionDefinitions = subspecs.flatMap { sub =>
       sub.binding match {
@@ -327,6 +332,7 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     val submoduleFoos = topUntimed.sub.flatMap(s => UntimedModel.functionDefs(s._2)).toSeq
     (subSpecMethodFunctionDefinitions ++ submoduleFoos, Seq())
   }
+   */
 
   override protected def execute(p: VerificationProblem): Unit = {
     // first we need to merge the protocol graph to ensure that methods are independent
@@ -339,16 +345,20 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
       NewVerificationAutomatonEncoder.run(sub.spec, sub.instance + ".", resetAssumption, switchAssumesAndGuarantees = true, initArchState = false)
     }
 
+    // FIXME
+    /*
     val (foos, ufs) = if(checker.supportsUF) {
       resolveBindings(p.subspecs, p.spec.untimed)
     } else {
       ignoreBindings(p.subspecs, p.spec.untimed)
     }
+     */
+    val (foos, ufs) = (List(), List())
 
     // we can verify each method individually or with the combined method graph
     if(oneAtATime) {
-      p.spec.untimed.methods.foreach { case (name, semantics) =>
-        verifyMethods(p, p.spec.protocols(name), Map(name -> semantics), foos, ufs, subTransitionsSystems)
+      p.spec.untimed.methods.foreach { m =>
+        verifyMethods(p, p.spec.protocols(m.name), List(m), foos, ufs, subTransitionsSystems)
       }
     } else {
       verifyMethods(p, combined, p.spec.untimed.methods, foos, ufs, subTransitionsSystems)

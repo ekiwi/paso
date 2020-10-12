@@ -22,8 +22,8 @@ object NamespaceIdentifiers {
   type SymSub =  Map [smt.Expr, smt.Symbol]
 
   def apply(p: VerificationProblem): VerificationProblem = {
-    val (impl, ioSubs, implStateSubs) = renameImpl(p.impl)
-    val (spec, specStateSubs) = renameSpec("", p.spec, ioSubs)
+    val (impl, ioSubs, _) = renameSys(p.impl)
+    val (spec, _) = renameSpec("", p.spec, ioSubs)
     val subspecs = p.subspecs.map(renameSubspec(_, ioSubs))
 
     val invariantPrefixSubs = List(
@@ -44,7 +44,8 @@ object NamespaceIdentifiers {
       ForAllAssertion(variable, start, end, substitutePrefix(guard, prefixSubs), substitutePrefix(pred, prefixSubs))
   }
 
-  def renameImpl(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub, SymSub) = {
+  // used for both, the implementation and the untimed specification transition system
+  def renameSys(sys: smt.TransitionSystem): (smt.TransitionSystem, SymSub, SymSub) = {
     // we want to prefix state and io with the name of the toplevel module
     val prefix = sys.name.get + "."
     val outputSymbols = sys.outputs.map{ case (name, expr) => smt.Symbol(name, expr.typ) }
@@ -75,10 +76,11 @@ object NamespaceIdentifiers {
   }
 
   def renameSpec(prefix: String, spec: Spec, implIoSubs: SymSub): (Spec, SymSub) = {
-    val fullPrefix = prefix + spec.untimed.name + "."
-    val (renamedUntimed, stateSubs) = renameUntimedModel(fullPrefix, spec.untimed)
+    val (renamedSys, ioSubs, stateSubs) = renameSys(spec.untimed.sys.copy(name = Some(prefix + spec.untimed.name)))
+    val renamedMethods = spec.untimed.methods.map(m => m.copy(ioName = renamedSys.name + "." + m.ioName))
+    val renamedUntimed = UntimedModel(renamedSys, renamedMethods)
 
-    // io substitutions for protocols
+    /*
     val args = spec.untimed.methods.flatMap{case (name, sem) =>
       sem.inputs.map{ i => i.copy(id = name + "." + i.id) } ++
         sem.outputs.flatMap{ case NamedGuardedExpr(sym, _,_) => Seq(sym.copy(id = name + "." + sym.id) ,
@@ -88,34 +90,13 @@ object NamespaceIdentifiers {
     val methodNameSubs = spec.untimed.methods.map{case (name, _) => name -> name} // TODO: should this be prefixed or not?
     val protocolIoSubs = specIoSubs ++ implIoSubs
     val renamedProtocols = spec.protocols.map{ case(name, graph) => (name, renameProtocol(graph, protocolIoSubs, methodNameSubs)) }
+     */
+    // TODO: properly rename protocols
+    val renamedProtocols = spec.protocols
+
 
     (Spec(renamedUntimed, renamedProtocols), stateSubs)
   }
-
-  def renameUntimedModel(fullPrefix: String, untimed: UntimedModel): (UntimedModel, SymSub) = {
-    val stateSubs: SymSub = untimed.state.map(_.sym).prefix(fullPrefix).toMap
-
-    def rename(name: String, s: MethodSemantics): MethodSemantics = {
-      val subs: SymSub = (s.inputs ++ s.outputs.map(_.sym)).prefix(fullPrefix + name + ".").toMap ++ stateSubs
-      MethodSemantics(substituteSmt(s.guard, subs), s.updates.map(renameNamed(_, subs)), s.outputs.map(renameGuardedNamed(_, subs)), s.inputs.map(subs))
-    }
-    def renameNamed(n: NamedExpr, subs: SymSub): NamedExpr = {
-      NamedExpr(subs(n.sym), expr = substituteSmt(n.expr, subs))
-    }
-    def renameGuardedNamed(n: NamedGuardedExpr, subs: SymSub): NamedGuardedExpr = {
-      NamedGuardedExpr(subs(n.sym), expr = substituteSmt(n.expr, subs), guard = substituteSmt(n.guard, subs))
-    }
-
-    val renamedUntimed = UntimedModel(
-      name = fullPrefix.dropRight(1),
-      state = untimed.state.map(st => st.copy(sym = stateSubs(st.sym))), // we assume that all inits are constant
-      methods = untimed.methods.map{ case (name, s) => (name,  rename(name, s))},
-      sub = untimed.sub.map { case (name, s) => (name, renameUntimedModel(fullPrefix + name + ".", s)._1) },
-    )
-
-    (renamedUntimed, stateSubs)
-  }
-
 
   def renameProtocol(node: StepNode, subs: SymSub, sm: Map[String, String]): StepNode =
     StepNode(node.next.map(renameProtocol(_, subs, sm)), node.methods.map(sm), node.id, node.isFork)

@@ -334,7 +334,7 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
   private def checkMethodsAreMutuallyExclusive(spec: Spec): Unit = {
-    val guards = spec.untimed.methods.mapValues(_.guard)
+    val guards = spec.untimed.methodGuards.toMap
     spec.protocols.values.foreach(p => assert(p.next.length == 1))
     val inputConstraints = spec.protocols.mapValues(_.next.head.constraintExpr)
     uniquePairs(spec.protocols.keys).foreach { case (a, b) =>
@@ -495,25 +495,29 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     map.find(_.eq.argRange.sym == arg).map(_.eq.range.toExpr()).getOrElse(arg)
   }
 
-  private def createProtocolInstance(name: String, instance: Int, node: StepNode, method: MethodSemantics): Iterable[(InstanceLoc, StepNode)] = {
+  private def createProtocolInstance(name: String, instance: Int, node: StepNode): Iterable[(InstanceLoc, StepNode)] = {
     require(instance >= 0)
     if(instance == 0) {
       findSteps(node).map(s => InstanceLoc(0, Loc(name, s)) -> s)
     } else {
       // rename non default instance
-      val args = method.inputs ++ method.outputs.flatMap(o => Seq(o.sym, o.guardSym))
-      val subs: Map[smt.Symbol, smt.Symbol] = args.map(a => a -> a.copy(id = a.id + "$" + instance)).toMap
+      // val args = method.inputs ++ method.outputs.flatMap(o => Seq(o.sym, o.guardSym))
+      // val subs: Map[smt.Symbol, smt.Symbol] = args.map(a => a -> a.copy(id = a.id + "$" + instance)).toMap
+      // TODO: duplicate spec by creating another transition system
+      val subs = Map[smt.Symbol, smt.Symbol]()
       val subNode = DuplicateProtocolTree(node, subs)
       findSteps(subNode).map(s => InstanceLoc(instance, Loc(name, s)) -> s)
     }
   }
 
-  private def createFunctionAppSubs(name: String, instance: Int, method: MethodSemantics): Iterable[(smt.Symbol, smt.FunctionApplication)] = {
+  private def createFunctionAppSubs(name: String, instance: Int/*, method: MethodSemantics*/): Iterable[(smt.Symbol, smt.FunctionApplication)] = {
     require(instance >= 0)
     val rename: String => String = if(instance == 0) { id: String => id } else { id: String => id + "$" + instance }
     def r(s: smt.Symbol): smt.Symbol = s.copy(id = rename(s.id))
     def rValid(s: smt.Symbol): smt.Symbol = smt.Symbol(rename(s.id) + ".valid", smt.BoolType)
 
+    // TODO: replace with correct binding to the output symbols
+    /*
     // this is similar to UntimedModel.functionAppSubs, but renames the output symbols
     val apps = method.outputs.flatMap(o => Seq(r(o.sym) -> o.functionApp, rValid(o.sym) -> o.guardFunctionApp)) ++
       // for state updated we need to add the s".$name" suffix to avoid name conflicts
@@ -522,6 +526,10 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     // replace the arguments to the function applications
     val argSubs = method.inputs.map(a => a -> r(a)).toMap
     apps.map{ case (sym, app) => (sym, app.copy(args = app.args.map(_.asInstanceOf[smt.Symbol]).map(a => argSubs.getOrElse(a, a)))) }
+
+    */
+
+    List()
   }
 
   private def pathLength(step: StepNode): Int = if(step.isFinal) { 0 } else {
@@ -536,17 +544,19 @@ object NewVerificationAutomatonEncoder extends SMTHelpers {
     val fsm = PasoFsmEncoder(spec.protocols).run()
 
     // make copies of protocols where necessary to create unique protocol trees and function applications
+    // FIXME
     val locToStep = spec.protocols.flatMap{ case (name, step) =>
-      (0 until fsm.instances(name)).flatMap(inst => createProtocolInstance(name, inst, step, spec.untimed.methods(name)))
+      (0 until fsm.instances(name)).flatMap(inst => createProtocolInstance(name, inst, step /*, spec.untimed.methods(name)*/))
     }.toMap
-    val methodFuns = spec.untimed.methods.flatMap { case(name, meth) =>
-      (0 until fsm.instances(name)).flatMap(inst => createFunctionAppSubs(name, inst, meth))
-    }.toMap
+//    val methodFuns = spec.untimed.methods.flatMap { case(name, meth) =>
+//      (0 until fsm.instances(name)).flatMap(inst => createFunctionAppSubs(name, inst/*, meth*/))
+//    }.toMap
+    val methodFuns = Map[smt.Symbol, smt.FunctionApplication]()
 
 
     // encode states
     val edgesByFromId = fsm.edges.groupBy(_.from.id)
-    val guards = spec.untimed.methods.mapValues(_.guard)
+    val guards = spec.untimed.methodGuards.toMap
     val info = EncodeState(locToStep, guards, methodFuns, spec.untimed.state.map(_.sym))
     val states = fsm.states.map(s => encodeState(s, edgesByFromId(s.id), info))
 
