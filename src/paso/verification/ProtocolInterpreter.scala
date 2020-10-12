@@ -5,10 +5,11 @@
 package paso.verification
 
 import paso.chisel.{SMTSimplifier, SMTHelper, SMTHelpers}
-import uclid.smt
+import maltese.smt
 
 import scala.collection.mutable
 
+/*
 
 case class ProtocolState(
   name: String = "",                           // for debugging
@@ -262,24 +263,24 @@ class ProtocolInterpreter(enforceNoInputAfterOutput: Boolean, val debugPrint: Bo
     mapping.flatMap{case (sym, expr) => destructEquality(Range(sym, getBits(sym.typ) - 1, 0), expr) }
   }
 }
+*/
 
-case class Range(sym: smt.Symbol, hi: Int, lo: Int) {
-  def symBits: Int = SMTHelper.getBits(sym.typ)
-  def isFullRange: Boolean = lo == 0 && hi == (symBits - 1)
-  def toExpr(): smt.Expr = if(isFullRange) sym else smt.OperatorApplication(smt.BVExtractOp(hi=hi,lo=lo), List(sym))
+case class Range(sym: smt.BVSymbol, hi: Int, lo: Int) {
+  def symBits: Int = sym.width
+  def isFullRange: Boolean = lo == 0 && hi == (sym.width - 1)
+  def toExpr(): smt.BVExpr = if(isFullRange) sym else smt.BVSlice(sym, hi=hi, lo=lo)
   def width: Int = hi - lo + 1
 }
-trait RangeEquality{ val range: Range ; def toExpr(): smt.Expr }
+trait RangeEquality{ val range: Range ; def toExpr(): smt.BVExpr }
 case class ConstantEq(range: Range, value: BigInt) extends  RangeEquality {
-  override def toExpr(): smt.Expr = {
-    val const = if(range.width == 1) smt.BooleanLit(value != 0) else smt.BitVectorLit(value, range.width)
-    smt.OperatorApplication(smt.EqualityOp, List(range.toExpr(), const))
+  override def toExpr(): smt.BVExpr = {
+    smt.BVEqual(range.toExpr(), smt.BVLiteral(value, range.width))
   }
 }
 case class ArgumentEq(range: Range, argRange: Range) extends RangeEquality {
-  override def toExpr(): smt.Expr = smt.OperatorApplication(smt.EqualityOp, List(range.toExpr(), argRange.toExpr()))
-  def toGuardedExpr(): smt.Expr = {
-    val guard = smt.Symbol(argRange.sym.id + ".valid", smt.BoolType)
-    smt.OperatorApplication(smt.ImplicationOp, List(guard, toExpr()))
+  override def toExpr(): smt.BVExpr = smt.BVEqual(range.toExpr(), argRange.toExpr())
+  def toGuardedExpr(): smt.BVExpr = {
+    val guard = smt.BVSymbol(argRange.sym.name + ".valid", 1)
+    smt.BVImplies(guard, toExpr())
   }
 }

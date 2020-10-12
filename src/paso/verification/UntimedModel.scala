@@ -4,16 +4,16 @@
 
 package paso.verification
 
-import uclid.smt
+import maltese.smt
 import paso.untimed
 
 case class UntimedModel(sys: smt.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
-  def name: String = sys.name.get
+  def name: String = sys.name
   def state: Seq[smt.State] = sys.states
-  def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = Some(prefix + name)))
-  def methodGuards: Iterable[(String, smt.Expr)] = methods.map { m =>
+  def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
+  def methodGuards: Iterable[(String, smt.BVExpr)] = methods.map { m =>
     val guardIO = m.ioName + "_guard"
-    m.name -> sys.outputs.find(_._1 == guardIO).map(_._2).get
+    m.name -> sys.signals.collectFirst{ case smt.Signal(name, e: smt.BVExpr, _) if name == guardIO => e }.get
   }
 
 }

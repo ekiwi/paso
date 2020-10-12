@@ -14,7 +14,7 @@ import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
 import paso.untimed
-import paso.verification.{Assertion, BasicAssertion, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
+import paso.verification.{Assertion, BasicAssertion, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
 
@@ -78,8 +78,8 @@ case class Elaboration() {
 
     // extract the assertions from the transition system outputs
     val asserts = resAnnos.collect{ case a : AssertEnable =>
-      val en = transitionSystem.signals.find(_.name == a.name + "_en").map(_.e).get
-      val pred = transitionSystem.signals.find(_.name == a.name + "_pred").map(_.e).get
+      val en = transitionSystem.signals.find(_.name == a.name + "_en").map(_.e.asInstanceOf[smt.BVExpr]).get
+      val pred = transitionSystem.signals.find(_.name == a.name + "_pred").map(_.e.asInstanceOf[smt.BVExpr]).get
       BasicAssertion(en, pred)
     }
     //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
@@ -100,10 +100,12 @@ case class Elaboration() {
       //println(s"Protocol for: ${p.methodName}")
       val (state, _) = elaborate(() => new MultiIOModule() { p.generate(clock) })
       val (ff, annos) = lowerTypes(toHighFirrtl(state.circuit, state.annotations))
-      val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
+      // FIXME: correctly elaborate protocols!
+      // val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
       //println(ff.serialize)
-      new FirrtlProtocolInterpreter(p.methodName, ff, annos, int, p.stickyInputs).run()
-      (p.methodName, int.getGraph(p.methodName))
+      // new FirrtlProtocolInterpreter(p.methodName, ff, annos, int, p.stickyInputs).run()
+      // int.getGraph(p.methodName)
+      (p.methodName, StepNode(List(), Set(), 0, false)) // FIXME: replace empty node with actual graph!
     }
   }
 
@@ -156,10 +158,10 @@ case class Elaboration() {
 
     // now we need to convert the transition system into the (more or less "legacy") UntimedModel format
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
-    assert(formal.model.name.get == info.name)
+    assert(formal.model.name == info.name)
     val methods = info.methods.map { m =>
-      val args = formal.model.inputs.filter(_.id.startsWith(m.ioName + "_arg")).map(_.id)
-      val ret = formal.model.outputs.filter(_._1.startsWith(m.ioName + "_ret")).map(_._1)
+      val args = formal.model.inputs.filter(_.name.startsWith(m.ioName + "_arg")).map(_.name)
+      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.ioName + "_ret")).map(_.name)
       m.copy(args=args, ret=ret)
     }
     val model = UntimedModel(formal.model, methods)
@@ -213,13 +215,14 @@ case class Elaboration() {
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
-    val implIo = implementation.model.inputs ++ implementation.model.outputs.map(o => smt.Symbol(o._1, o._2.typ))
+    val implIo = implementation.model.inputs ++
+      implementation.model.signals.collect { case smt.Signal(name, e: smt.BVExpr, smt.IsOutput) => smt.BVSymbol(name, e.width) }
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val spec = elaborateSpec(elaborated, List())
       val instance = implementation.submodules(s.module.name)
       val prefixLength = instance.length + 1
-      val io = implIo.filter(_.id.startsWith(instance + ".")).map(s => s.copy(id = s.id.substring(prefixLength)))
+      val io = implIo.filter(_.name.startsWith(instance + ".")).map(s => s.rename(s.name.substring(prefixLength)))
       val binding = s.getBinding.map(_.instance)
       Subspec(instance, io, spec, binding)
     }

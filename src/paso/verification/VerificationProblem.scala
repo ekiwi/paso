@@ -7,11 +7,9 @@
 
 package paso.verification
 
-import paso.chisel.{SMTHelper, SMTHelpers, SMTSimplifier}
 import paso.untimed
 import maltese.smt
-
-import scala.collection.mutable
+import paso.modelcheck._
 
 // Verification Graph
 sealed trait VerificationNode {
@@ -25,10 +23,10 @@ sealed trait IONode {
   val constraints: Seq[smt.BVExpr]
   val mappings: Seq[ArgumentEq]
   val hasGuardedMappings: Boolean = false
-  lazy val constraintExpr: smt.BVExpr = SMTHelper.conjunction(constraints)
+  lazy val constraintExpr: smt.BVExpr = smt.BVAnd(constraints)
   lazy val mappingExpr: smt.BVExpr = {
     val e = if(hasGuardedMappings) { mappings.map(_.toGuardedExpr()) } else { mappings.map(_.toExpr()) }
-    SMTHelper.conjunction(e)
+    smt.BVAnd(e)
   }
 }
 
@@ -40,18 +38,18 @@ case class OutputNode(next: Seq[StepNode], methods: Set[String], constraints: Se
 
 trait Assertion { def toExpr: smt.BVExpr }
 case class BasicAssertion(guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
-  override def toExpr: smt.BVExpr = SMTHelper.implies(guard, pred)
+  override def toExpr: smt.BVExpr = smt.BVImplies(guard, pred)
 }
 case class ForAllAssertion(variable: smt.BVSymbol, start: Int, end: Int, guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
   override def toExpr: smt.BVExpr = {
     val max = 1 << variable.width
     val isFullRange = start == 0 && end == max
     val g = if(isFullRange) { guard } else {
-      val lower = SMTHelper.cmpConst(smt.BVGEUOp, variable, start)
-      val upper = SMTHelper.cmpConst(smt.BVLEUOp, variable, end-1)
-      SMTHelper.and(guard, SMTHelper.and(lower, upper))
+      val lower = smt.BVComparison(smt.Compare.GreaterEqual, variable, smt.BVLiteral(start, variable.width), signed=false)
+      val upper = smt.BVNot(smt.BVComparison(smt.Compare.Greater, variable, smt.BVLiteral(end-1, variable.width), signed=false))
+      smt.BVAnd(guard, smt.BVAnd(lower, upper))
     }
-    SMTHelper.forall(Seq(variable), SMTHelper.implies(g, pred))
+    smt.BVForall(variable, smt.BVImplies(g, pred))
   }
 }
 
@@ -94,7 +92,7 @@ object VerificationProblem {
 }
 
 class RunBmc(solver: paso.SolverName, kMax: Int) extends VerificationTask with SMTHelpers {
-  val checker: smt.IsModelChecker = solver match {
+  val checker: IsModelChecker = solver match {
     case paso.Btormc => smt.Btor2.createBtorMC()
     case paso.Z3 => new SMTModelChecker(new Z3Interface, SMTModelCheckerOptions.Performance)
     case paso.CVC4 => new SMTModelChecker(new CVC4Interface(quantifierFree = true), SMTModelCheckerOptions.Performance)

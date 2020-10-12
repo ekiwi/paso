@@ -8,8 +8,7 @@ import java.io.PrintWriter
 
 import scala.collection.mutable
 import maltese.smt
-
-import scala.sys.process.ProcessLogger
+import scala.sys.process._
 
 class BtormcModelChecker extends ModelChecker {
   // TODO: check to make sure binary exists
