@@ -7,7 +7,6 @@ package paso.chisel
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
 import firrtl.annotations.{Annotation, CircuitTarget, PresetAnnotation}
-import firrtl.ir.NoInfo
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
@@ -17,7 +16,7 @@ import paso.chisel.passes._
 import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, ProtocolInterpreter, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
-import uclid.smt
+import maltese.smt
 
 case class Elaboration() {
   private var chiselElaborationTime = 0L
@@ -79,8 +78,8 @@ case class Elaboration() {
 
     // extract the assertions from the transition system outputs
     val asserts = resAnnos.collect{ case a : AssertEnable =>
-      val en = transitionSystem.outputs.find(_._1 == a.name + "_en").map(_._2).get
-      val pred = transitionSystem.outputs.find(_._1 == a.name + "_pred").map(_._2).get
+      val en = transitionSystem.signals.find(_.name == a.name + "_en").map(_.e).get
+      val pred = transitionSystem.signals.find(_.name == a.name + "_pred").map(_.e).get
       BasicAssertion(en, pred)
     }
     //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts

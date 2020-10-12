@@ -4,11 +4,12 @@
 
 package paso.chisel
 
-import uclid.smt
+import maltese.smt
 import firrtl.annotations.DeletedAnnotation
-import firrtl.options.{Dependency, TargetDirAnnotation}
+import firrtl.backends.experimental.smt.ExpressionConverter
+import firrtl.options.TargetDirAnnotation
 import firrtl.{AnnotationSeq, ir}
-import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation, RunFirrtlTransformAnnotation}
+import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation}
 import firrtl.transforms.NoCircuitDedupAnnotation
 import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
@@ -28,9 +29,10 @@ object FirrtlToFormal  {
 
     val resAnnos = res.filterNot(_.isInstanceOf[DeletedAnnotation])
 
+    // TODO: prevent btor file from being generated
     val btorFile = testDir.getAbsolutePath + s"/${name.get}.btor2"
-    println(btorFile)
-    val sys = smt.Btor2.load(btorFile)
-    (sys.copy(name = Some(c.main)), resAnnos)
+
+    val sys = ExpressionConverter.toMaltese(resAnnos).getOrElse(throw new RuntimeException("Failed to find transition system annotation!"))
+    (sys, resAnnos)
   }
 }
