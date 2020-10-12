@@ -31,24 +31,25 @@ object SMTModelCheckerOptions {
 }
 
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
-class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Default) extends SMTHelpers with smt.IsModelChecker {
+class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Default) extends IsModelChecker {
   override val name: String = "SMTModelChecker with " + solver.name
   override val supportsUF: Boolean = true
   override val supportsQuantifiers: Boolean = solver.supportsQuantifiers
 
-  override def check(sys: smt.TransitionSystem, kMax: Int, fileName: Option[String] = None, defined: Seq[smt.DefineFun] = Seq(), uninterpreted: Seq[smt.Symbol] = Seq()): smt.ModelCheckResult = {
+  override def check(sys: smt.TransitionSystem, kMax: Int, fileName: Option[String] = None): ModelCheckResult = {
     require(kMax > 0 && kMax <= 2000, s"unreasonable kMax=$kMax")
     if(fileName.nonEmpty) println("WARN: dumping to file is not supported at the moment.")
 
     // create new context
     solver.push()
 
-    // declare/define functions and encode the transition system
-    uninterpreted.foreach(solver.declare)
-    defined.foreach(solver.define)
+    // encode the transition system
     val enc = new CompactEncoding(sys, options.simplify)
     enc.defineHeader(solver)
     enc.init(solver)
+
+    // extract constraints and bad states
+
 
     (0 to kMax).foreach { k =>
       // assume all constraints hold in this step
@@ -99,7 +100,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
     smt.ModelCheckSuccess()
   }
 
-  private def getWitness(sys: smt.TransitionSystem, enc: CompactEncoding, kMax: Int, failedBad: Seq[Int]): smt.Witness = {
+  private def getWitness(sys: smt.TransitionSystem, enc: CompactEncoding, kMax: Int, failedBad: Seq[Int]): Witness = {
     val regInit = sys.states.zipWithIndex.map { case (state, i) =>
       assert(!state.sym.typ.isArray, "TODO: support arrays!")
       val value = solver.getValue(enc.getSignalAt(state.sym, 0))
@@ -113,7 +114,7 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
       }.toMap
     }
 
-    smt.Witness(failedBad, regInit, Map(), inputs)
+    Witness(failedBad, regInit, Map(), inputs)
   }
 
 }
@@ -123,8 +124,8 @@ class SMTModelChecker(val solver: Solver, options: SMTModelCheckerOptions = SMTM
  * https://github.com/YosysHQ/yosys/blob/master/backends/smt2/smt2.cc
  * */
 class CompactEncoding(sys: smt.TransitionSystem, doSimplify: Boolean = false) extends SMTHelpers {
-  val simplify: smt.Expr => smt.Expr = if(doSimplify) { SMTSimplifier.simplify } else { e => e }
-  private val name = sys.name.get
+  val simplify: smt.SMTExpr => smt.SMTExpr = if(doSimplify) { smt.SMTSimplifier.simplify } else { e => e }
+  private val name = sys.name
   private val stateType = smt.UninterpretedType(name + "_s")
   private val stateInitFun = smt.Symbol(name + "_is", smt.MapType(List(stateType), smt.BoolType))
   private val stateTransitionFun = smt.Symbol(name + "_t", smt.MapType(List(stateType, stateType), smt.BoolType))

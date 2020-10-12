@@ -17,5 +17,5 @@ trait IsModelChecker {
   val name: String
   val supportsUF: Boolean = false
   val supportsQuantifiers: Boolean = false
-  def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None, defined: Seq[DefineFun] = Seq(), uninterpreted: Seq[Symbol] = Seq()): ModelCheckResult
+  def check(sys: smt.TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult
 }
