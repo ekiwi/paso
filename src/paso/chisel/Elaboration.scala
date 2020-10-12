@@ -158,7 +158,12 @@ case class Elaboration() {
     // now we need to convert the transition system into the (more or less "legacy") UntimedModel format
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
     assert(formal.model.name.get == info.name)
-    val model = UntimedModel(formal.model, info.methods)
+    val methods = info.methods.map { m =>
+      val args = formal.model.inputs.filter(_.id.startsWith(m.ioName + "_arg")).map(_.id)
+      val ret = formal.model.outputs.filter(_._1.startsWith(m.ioName + "_ret")).map(_._1)
+      m.copy(args=args, ret=ret)
+    }
+    val model = UntimedModel(formal.model, methods)
 
     Untimed(model, spec.protos)
   }

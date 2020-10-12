@@ -259,8 +259,11 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     // declare starting state
     p.spec.untimed.state.map(_.sym).foreach(check.declare)
     // declare method inputs
-    methods.values.flatMap(_.inputs).foreach(check.declare)
+    // TODO
+    // methods.values.flatMap(_.inputs).foreach(check.declare)
     // define method outputs
+    // TODO
+    /*
     methods.foreach { case (_, sem) =>
       sem.outputs.foreach { o => check.define(o.sym, o.expr) }
       sem.outputs.foreach { o => check.define(smt.Symbol(o.sym.id + ".valid", smt.BoolType), o.guard) }
@@ -270,15 +273,16 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
       sem.updates.foreach{ o => check.define(o.sym.copy(id = o.sym.id + s".$name"), o.expr) }
       name -> sem.updates.map(_.sym).map(s => s -> s.copy(id = s.id + s".$name"))
     }
+     */
 
     // encode the protocol tree
-    val guards = methods.mapValues(_.guard)
+    val guards = Map[String, smt.Expr]() // TODO: methods.mapValues(_.guard)
     val final_edges = new VerificationTreeEncoder(check, guards).run(proto)
 
     // make sure that in any fork state, the mapping as well as the invariances hold
     final_edges.foreach { case ForkNode(ii, guard, method) =>
       // substitute any references to the state of the untimed model with the result of applying the method
-      val subs: Map[smt.Expr, smt.Expr] = method_state_subs(method).toMap
+      val subs: Map[smt.Expr, smt.Expr] = Map() // TODO: method_state_subs(method).toMap
       p.invariances.foreach(i => check.assertAt(ii, implies(guard, elim(i.toExpr))))
       p.mapping.map(substituteSmt(_, subs)).foreach(m => check.assertAt(ii, implies(guard, elim(m.toExpr))))
       // any subsystem needs to also be in a fork state
@@ -291,12 +295,12 @@ class VerifyMethods(oneAtATime: Boolean, solver: paso.SolverName, quantifierFree
     // find failing property and print
     res match {
       case smt.ModelCheckFail(witness) =>
-        println(s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
+        println(s"Failed to verify ${methods.map(_.name).mkString(", ")} on ${p.spec.untimed.name}")
         sim.run(witness, Some("test.vcd"))
       case smt.ModelCheckSuccess() =>
     }
 
-    assert(res.isSuccess, s"Failed to verify ${methods.keys.mkString(", ")} on ${p.spec.untimed.name}")
+    assert(res.isSuccess, s"Failed to verify ${methods.map(_.name).mkString(", ")} on ${p.spec.untimed.name}")
   }
 
   /*
