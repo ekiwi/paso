@@ -2,17 +2,17 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.verification
+package paso.modelcheck
 
 import paso.chisel.{SMTHelpers, SMTSimplifier}
-import uclid.smt
+import paso.verification.Solver
+import maltese.smt
 
 import scala.collection.mutable
 
 trait PasoModelChecker {
   val name: String
-  def check(sys: smt.TransitionSystem, kMax: Int, defined: Seq[smt.DefineFun] = Seq(),
-            uninterpreted: Seq[smt.Symbol] = Seq(), filename: Option[String] = None): smt.ModelCheckResult
+  def check(sys: smt.TransitionSystem, kMax: Int, filename: Option[String] = None): ModelCheckResult
 }
 
 case class PasoBtorMC(btor: smt.ModelChecker) extends PasoModelChecker {
