@@ -38,20 +38,18 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
     def poke(value: DontCare.type): Unit = set(value)
     def get(): T = x
     def peek(): T = get()
-    def expect(value: T): Unit = {
-      chisel3.experimental.verification.assert(x === value)
-    }
+    def expect(value: T): Unit = { assert(x === value) }
   }
 
   implicit class testableClock(x: Clock) {
     def step(): Unit = {
-      val w = Wire(Bool()).suggestName("step")
-      annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
+      // step is modeled with a stop statement
+      stop(ProtocolCompiler.StepFunctionCode)
     }
     def stepAndFork(): Unit = {
       step()
-      val w = Wire(Bool()).suggestName("fork")
-      annotate(new ChiselAnnotation { override def toFirrtl = ForkAnnotation(w.toTarget) })
+      // fork is modeled with a stop statement
+      stop(ProtocolCompiler.ForkFunctionCode)
     }
   }
 
@@ -101,15 +99,4 @@ case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMeth
   override def generate(clock: Clock): Unit = {
     impl(clock, implIO(ioType), methodArg(meth.inputType), methodRet(meth.outputType))
   }
-}
-
-
-
-
-case class ExpectAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
-
-case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
 }
