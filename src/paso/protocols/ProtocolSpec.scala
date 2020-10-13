@@ -1,11 +1,12 @@
 // Copyright 2020 The Regents of the University of California
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
-package paso
+package paso.protocols
 
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
+import paso.UntimedModule
 import paso.untimed.{IMethod, IOMethod, NMethod, OMethod}
 
 import scala.collection.mutable
