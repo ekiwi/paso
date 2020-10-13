@@ -5,19 +5,53 @@
 package paso.protocols
 
 import firrtl.ir
+import firrtl.options.Dependency
 import firrtl.passes.PassException
-import firrtl.stage.Forms
+import firrtl.stage.{Forms, TransformManager}
 import firrtl.{CircuitState, DependencyAPIMigration, Transform}
 
-/** Normalizes a protocol program to make it easier to interpret. */
 object ProtocolCompiler {
   val StepFunctionCode = 23456
   val ForkFunctionCode = 34678
+
+  private val compiler = new TransformManager(Seq(Dependency(CheckStatementsPass), Dependency(ProtocolNormalizationPass)))
+
+  def run(state: CircuitState): CircuitState = {
+    println(compiler.prettyPrint())
+    compiler.runTransform(state)
+  }
 }
 
+/** Normalizes a protocol program to make it easier to interpret. */
+object ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
+  // we need bundles and vectors to be lowered
+  override def prerequisites = Seq(Dependency(firrtl.passes.LowerTypes))
+  override def invalidates(a: Transform) = false
+
+  // we must run before whens are removed
+  override def optionalPrerequisiteOf = Seq(Dependency(firrtl.passes.ExpandWhens))
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    val c = state.circuit.mapModule(onModule)
+
+    println("Normalization")
+    println(state.circuit.serialize)
+
+    state.copy(circuit = c)
+  }
+
+  private def onModule(m: ir.DefModule): ir.DefModule = {
+    m.mapStmt(onStmt)
+  }
+
+  private def onStmt(s: ir.Statement): ir.Statement = s match {
+    case other => other
+  }
+}
 
 object CheckStatementsPass extends Transform with DependencyAPIMigration {
   override def prerequisites = Forms.Resolved
+  override def invalidates(a: Transform) = false
   override protected def execute(state: CircuitState): CircuitState = {
     state.circuit.foreachModule(m => m.foreachStmt(onStmt))
     // this is purely a checking transform which has no effect
