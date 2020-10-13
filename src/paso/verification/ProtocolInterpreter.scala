@@ -4,7 +4,6 @@
 
 package paso.verification
 
-import paso.chisel.{SMTSimplifier, SMTHelper, SMTHelpers}
 import maltese.smt
 
 import scala.collection.mutable
