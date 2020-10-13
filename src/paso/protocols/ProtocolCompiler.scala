@@ -10,10 +10,10 @@ import firrtl.passes.PassException
 import firrtl.stage.{Forms, TransformManager}
 
 object ProtocolCompiler {
-  private val compiler = new TransformManager(Seq(Dependency(CheckStatementsPass), Dependency(ProtocolNormalizationPass)))
+  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(ProtocolNormalizationPass))
+  private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState): CircuitState = {
-    println(compiler.prettyPrint())
     compiler.runTransform(state)
   }
 }
@@ -29,10 +29,6 @@ object ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
 
   override protected def execute(state: CircuitState): CircuitState = {
     val c = state.circuit.mapModule(onModule)
-
-    println("Normalization")
-    println(state.circuit.serialize)
-
     state.copy(circuit = c)
   }
 
@@ -41,6 +37,7 @@ object ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
   }
 
   private def onStmt(s: ir.Statement): ir.Statement = s match {
+    // TODO: actually normalize things
     case other => other
   }
 }

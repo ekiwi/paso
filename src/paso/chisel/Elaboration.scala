@@ -5,7 +5,7 @@
 package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
-import chisel3.hacks.{ElaborateInContextOfModule, ElaborateObserver, ExternalReference}
+import chisel3.hacks.{ElaborateObserver, ExternalReference}
 import firrtl.annotations.{Annotation, CircuitTarget, PresetAnnotation}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
@@ -15,8 +15,9 @@ import logger.LogLevel
 import paso.chisel.passes._
 import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, Protocol, ProtocolSpec, SubSpecs, UntimedModule}
+import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
+import paso.protocols.{Protocol, ProtocolCompiler}
 
 case class Elaboration() {
   private var chiselElaborationTime = 0L
@@ -67,7 +68,6 @@ case class Elaboration() {
       val pred = transitionSystem.signals.find(_.name == a.name + "_pred").map(_.e.asInstanceOf[smt.BVExpr]).get
       BasicAssertion(en, pred)
     }
-    //val a  = new FirrtlInvarianceInterpreter(lo.circuit, lo.annotations).run().asserts
 
     // rename cross module references
     // e.g. RandomLatency_running -> RandomLatency.signals_running
@@ -80,16 +80,18 @@ case class Elaboration() {
     asserts
   }
 
-  private def elaborateProtocols(protos: Seq[paso.Protocol], methods: Seq[untimed.MethodInfo]): Seq[(String, StepNode)] = {
+  private def elaborateProtocols(protos: Seq[Protocol], methods: Seq[untimed.MethodInfo]): Seq[(String, StepNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
-      val (state, _) = elaborate(() => new MultiIOModule() { p.generate(clock) })
-      val (ff, annos) = lowerTypes(toHighFirrtl(state.circuit, state.annotations))
+      val (state, _) = elaborate(() => new MultiIOModule() {
+        override def circuitName: String = p.methodName + "Protocol"
+        override def desiredName: String = circuitName
+        p.generate(clock)
+      })
+      val normalized = ProtocolCompiler.run(state)
+
       // FIXME: correctly elaborate protocols!
-      // val int = new ProtocolInterpreter(enforceNoInputAfterOutput = false)
-      //println(ff.serialize)
-      // new FirrtlProtocolInterpreter(p.methodName, ff, annos, int, p.stickyInputs).run()
-      // int.getGraph(p.methodName)
+
       (p.methodName, StepNode(List(), Set(), 0, false)) // FIXME: replace empty node with actual graph!
     }
   }
