@@ -39,9 +39,7 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
     def get(): T = x
     def peek(): T = get()
     def expect(value: T): Unit = {
-      val w = Wire(Bool()).suggestName("expect")
-      w := x === value
-      annotate(new ChiselAnnotation { override def toFirrtl = ExpectAnnotation(w.toTarget) })
+      chisel3.experimental.verification.assert(x === value)
     }
   }
 
@@ -113,9 +111,5 @@ case class ExpectAnnotation(target: ReferenceTarget) extends SingleTargetAnnotat
 }
 
 case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
-
-case class ForkAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
