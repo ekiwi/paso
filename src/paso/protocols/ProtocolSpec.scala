@@ -43,13 +43,13 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
 
   implicit class testableClock(x: Clock) {
     def step(): Unit = {
-      // step is modeled with a stop statement
-      stop(ProtocolCompiler.StepFunctionCode)
+      val w = Wire(Bool()).suggestName("step")
+      annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget) })
     }
     def stepAndFork(): Unit = {
       step()
-      // fork is modeled with a stop statement
-      stop(ProtocolCompiler.ForkFunctionCode)
+      val w = Wire(Bool()).suggestName("fork")
+      annotate(new ChiselAnnotation { override def toFirrtl = ForkAnnotation(w.toTarget) })
     }
   }
 
@@ -99,4 +99,12 @@ case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMeth
   override def generate(clock: Clock): Unit = {
     impl(clock, implIO(ioType), methodArg(meth.inputType), methodRet(meth.outputType))
   }
+}
+
+
+case class StepAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
+}
+case class ForkAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+  def duplicate(n: ReferenceTarget) = this.copy(n)
 }

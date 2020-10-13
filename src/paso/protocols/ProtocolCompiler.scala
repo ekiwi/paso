@@ -4,16 +4,12 @@
 
 package paso.protocols
 
-import firrtl.ir
+import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform, ir}
 import firrtl.options.Dependency
 import firrtl.passes.PassException
 import firrtl.stage.{Forms, TransformManager}
-import firrtl.{CircuitState, DependencyAPIMigration, Transform}
 
 object ProtocolCompiler {
-  val StepFunctionCode = 23456
-  val ForkFunctionCode = 34678
-
   private val compiler = new TransformManager(Seq(Dependency(CheckStatementsPass), Dependency(ProtocolNormalizationPass)))
 
   def run(state: CircuitState): CircuitState = {
@@ -53,13 +49,19 @@ object CheckStatementsPass extends Transform with DependencyAPIMigration {
   override def prerequisites = Forms.Resolved
   override def invalidates(a: Transform) = false
   override protected def execute(state: CircuitState): CircuitState = {
-    state.circuit.foreachModule(m => m.foreachStmt(onStmt))
+    state.circuit.foreachModule(onModule(_, state.annotations))
     // this is purely a checking transform which has no effect
     state
   }
-  private val allowedStopRets = Set(ProtocolCompiler.StepFunctionCode, ProtocolCompiler.ForkFunctionCode)
-  private def onStmt(s: ir.Statement): Unit = s match {
-    case ir.DefWire(info, name, _) =>
+  private def onModule(m: ir.DefModule, annos: AnnotationSeq): Unit = {
+    val allowedWires = annos.collect {
+      case ForkAnnotation(target) if target.module == m.name => target.ref
+      case StepAnnotation(target) if target.module == m.name => target.ref
+    }.toSet
+    m.foreachStmt(onStmt(_, allowedWires))
+  }
+  private def onStmt(s: ir.Statement, allowedWires: Set[String]): Unit = s match {
+    case ir.DefWire(info, name, _) if !allowedWires.contains(name) =>
       throw new ProtocolError(s"Cannot declare wire $name in protocol (${info.serialize}")
     case ir.DefInstance(info, name, module, _) =>
       throw new ProtocolError(s"Cannot declare instance $name of $module in protocol (${info.serialize}")
@@ -75,9 +77,9 @@ object CheckStatementsPass extends Transform with DependencyAPIMigration {
       throw new ProtocolError(s"Cannot use the assume statement in protocol (might be worth considering though) (${info.serialize}")
     case ir.Verification(ir.Formal.Cover, info, _, _, _, _) =>
       throw new ProtocolError(s"Cannot use the cover statement in protocol (${info.serialize}")
-    case ir.Stop(info, ret, _, _) if !allowedStopRets.contains(ret) =>
+    case ir.Stop(info, _, _, _) =>
       throw new ProtocolError(s"Cannot use the stop statement in protocol (${info.serialize}")
-    case other => other.foreachStmt(onStmt)
+    case other => other.foreachStmt(onStmt(_, allowedWires))
   }
 }
 
