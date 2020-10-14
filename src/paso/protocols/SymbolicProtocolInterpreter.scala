@@ -4,6 +4,7 @@
 
 package paso.protocols
 
+import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
 import maltese.smt
 
@@ -33,7 +34,44 @@ case class Next(guards: List[smt.BVExpr], inputAssumptions: List[smt.BVExpr], ma
 case class ProtocolGraph(name: String, cycles: Array[Cycle])
 
 
-/** Encodes imperative protocol into a more declarative graph  */
-class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, methodPrefix: String, ioPrefix: String) {
-  def run(): ProtocolGraph = ???
+/** Encodes imperative protocol into a more declarative graph.
+ *  - currently assumes that there are no cycles in the CFG!
+ */
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, methodPrefix: String, ioPrefix: String) extends ProtocolInterpreter(protocol) {
+  private case class Context()
+
+  def run(): ProtocolGraph = {
+    // start executing at block 0
+    onBlock(0)
+
+    // TODO: actual graph!
+    ProtocolGraph(name, Array())
+  }
+
+  override protected def onSet(info: ir.Info, loc: String, expr: ir.Expression): Unit = {
+    val smt = toSMT(expr, inputs(loc), allowNarrow = true)
+    println(f"SET $loc <= $smt ${info.serialize}")
+  }
+  override protected def onUnSet(info: ir.Info, loc: String): Unit = {
+    println(f"UNSET $loc ${info.serialize}")
+  }
+  override protected def onAssert(info: ir.Info, expr: ir.Expression): Unit = {
+    val smt = toSMT(expr)
+    println(f"ASSERT $smt ${info.serialize}")
+  }
+  override protected def onGoto(g: Goto): Unit = {
+    val smt = toSMT(g.cond)
+    println(f"IF $smt GOTO ${g.conseq} ELSE ${g.alt}")
+  }
+  override protected def onStep(info: ir.Info, loc: Loc, name: String): Unit = {
+    println(f"STEP @ $loc ${info.serialize}")
+  }
+  override protected def onFork(info: ir.Info, loc: Loc, name: String): Unit = {
+    println(f"FORK @ $loc ${info.serialize}")
+  }
+  private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
+    val e = ExpressionConverter.toMaltese(expr, width, allowNarrow)
+    // we simplify once, after converting FIRRTL to SMT
+    smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
+  }
 }
