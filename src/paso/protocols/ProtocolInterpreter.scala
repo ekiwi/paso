@@ -4,7 +4,9 @@
 
 package paso.protocols
 
-abstract class ProtocolInterpreter(val protocol: Protocol) {
+import firrtl.ir
+
+abstract class ProtocolInterpreter(val protocol: ir.Circuit) {
   def expect()
 
 }
@@ -13,6 +15,7 @@ sealed trait ProtocolResult
 case object ProtocolFail extends ProtocolResult
 case object ProtocolSuccess extends ProtocolResult
 
+/*
 class ConcreteProtocolInterpreter(protocol: Protocol) extends ProtocolInterpreter(protocol) {
 
   def run(methodIO: Map[String, BigInt]): ProtocolResult = {
@@ -20,3 +23,4 @@ class ConcreteProtocolInterpreter(protocol: Protocol) extends ProtocolInterprete
   }
 
 }
+*/

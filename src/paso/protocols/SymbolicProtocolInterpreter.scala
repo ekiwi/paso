@@ -19,13 +19,21 @@ import maltese.smt
  * - TODO: encode mapping of method args (the first time args are applied to the inputs, they are treated as a mapping,
  *         after that they are a constraint)
  * */
-case class Cycle()
+case class Cycle(name: String, assertions: List[Guarded], next: List[Next])
+
+case class Guarded(guards: List[smt.BVExpr], pred: smt.BVExpr) {
+  def toExpr: smt.BVExpr = if(guards.isEmpty) { pred } else {
+    smt.BVImplies(smt.BVAnd(guards), pred)
+  }
+}
+
+case class Next(guards: List[smt.BVExpr], inputAssumptions: List[smt.BVExpr], mappings: List[smt.BVExpr], cycleId: Int)
 
 /** the first cycle is always cycles.head */
 case class ProtocolGraph(name: String, cycles: Array[Cycle])
 
 
 /** Encodes imperative protocol into a more declarative graph  */
-class SymbolicProtocolInterpreter(protocol: Protocol, methodPrefix: String, ioPrefix: String) {
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, methodPrefix: String, ioPrefix: String) {
   def run(): ProtocolGraph = ???
 }
