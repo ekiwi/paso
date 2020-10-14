@@ -17,7 +17,7 @@ import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
-import paso.protocols.{Protocol, ProtocolCompiler}
+import paso.protocols.{Protocol, ProtocolCompiler, SymbolicProtocolInterpreter}
 
 case class Elaboration() {
   private var chiselElaborationTime = 0L
@@ -89,6 +89,7 @@ case class Elaboration() {
         p.generate(clock)
       })
       val normalized = ProtocolCompiler.run(state)
+      val graph = new SymbolicProtocolInterpreter(normalized, "MethodPrefix.", "IOPrefix.").run()
 
       // FIXME: correctly elaborate protocols!
 
