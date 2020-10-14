@@ -23,3 +23,21 @@ case class Goto(info: ir.Info, cond: ir.Expression, conseq: Int, alt: Int) exten
     case other => s"when ${other.serialize} goto $conseq else goto $alt"
   }
 }
+
+object Goto {
+  def apply(info: ir.Info, conseq: Int): Goto = Goto(info, ir.UIntLiteral(1, ir.IntWidth(1)), conseq, -1)
+}
+
+case class BlockId(id: Int) extends ir.Statement {
+  override def mapStmt(f: ir.Statement => ir.Statement) = this
+  override def mapExpr(f: ir.Expression => ir.Expression) = this
+  override def mapType(f: ir.Type => ir.Type) = this
+  override def mapString(f: String => String) = this
+  override def mapInfo(f: ir.Info => ir.Info) = this
+  override def foreachStmt(f: ir.Statement => Unit): Unit = ()
+  override def foreachExpr(f: ir.Expression => Unit): Unit = ()
+  override def foreachType(f: ir.Type => Unit): Unit = ()
+  override def foreachString(f: String => Unit): Unit = ()
+  override def foreachInfo(f: ir.Info => Unit): Unit = ()
+  override def serialize = s"$id:"
+}

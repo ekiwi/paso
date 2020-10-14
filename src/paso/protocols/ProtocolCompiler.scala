@@ -9,8 +9,10 @@ import firrtl.options.Dependency
 import firrtl.passes.PassException
 import firrtl.stage.{Forms, TransformManager}
 
+import scala.collection.mutable
+
 object ProtocolCompiler {
-  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(ProtocolNormalizationPass))
+  private val passes = Seq(Dependency(CheckStatementsPass), Dependency[ProtocolNormalizationPass])
   private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState): CircuitState = {
@@ -18,8 +20,10 @@ object ProtocolCompiler {
   }
 }
 
-/** Normalizes a protocol program to make it easier to interpret. */
-object ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
+/** Normalizes a protocol program to make it easier to interpret.
+ * One transformation we do is to turn the Conditionally statements into custom Goto statements
+ * */
+class ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
   // we need bundles and vectors to be lowered
   override def prerequisites = Seq(Dependency(firrtl.passes.LowerTypes))
   override def invalidates(a: Transform) = false
@@ -27,18 +31,69 @@ object ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
   // we must run before whens are removed
   override def optionalPrerequisiteOf = Seq(Dependency(firrtl.passes.ExpandWhens))
 
+  //
+  private val statements = mutable.ArrayBuffer[ir.Statement]()
+  private val blocks = mutable.ArrayBuffer[(Int, ir.Block)]()
+  private var activeBlockId = 0
+  private var blockIdCounter = 1
+  private def finishBlock(nextBlockId: Int): Unit = {
+    blocks.append((activeBlockId, ir.Block(statements.toVector)))
+    statements.clear()
+    activeBlockId = nextBlockId
+    statements.append(BlockId(nextBlockId))
+  }
+  private def resetState(): Unit = {
+    statements.clear()
+    blocks.clear()
+    activeBlockId = 0
+    blockIdCounter = 1
+    statements.append(BlockId(0))
+  }
+
   override protected def execute(state: CircuitState): CircuitState = {
-    val c = state.circuit.mapModule(onModule)
-    state.copy(circuit = c)
-  }
+    assert(state.circuit.modules.size == 1, "Protocols should never have submodules!")
+    val m = state.circuit.modules.head.asInstanceOf[ir.Module]
 
-  private def onModule(m: ir.DefModule): ir.DefModule = {
-    m.mapStmt(onStmt)
-  }
+    // generate blocks by visiting all statements
+    resetState()
+    onStmt(m.body)
+    finishBlock(-1)
 
-  private def onStmt(s: ir.Statement): ir.Statement = s match {
-    // TODO: actually normalize things
-    case other => other
+    // turn blocks into an array that is indexed by block id
+    val sortedBlocks = blocks.sortBy(_._1)
+    val blockArray = sortedBlocks.map(_._2).toArray
+    // replace body of module with our blocks
+    val mGoto = m.copy(body = ir.Block(blockArray))
+
+    println(mGoto.serialize)
+
+    state.copy(circuit = state.circuit.copy(modules = List(mGoto)))
+  }
+  private def onStmt(s: ir.Statement): Unit = s match {
+    case ir.Conditionally(info, pred, conseq, alt) =>
+      val altIsEmpty = alt == ir.EmptyStmt
+      // reserve ids
+      val conseqId = blockIdCounter ; blockIdCounter += (if(altIsEmpty) 2 else 3)
+      // add goto statement and finish current block
+      statements.append(Goto(info, pred, conseqId, conseqId + 1))
+      // make conseq block
+      finishBlock(conseqId)
+      onStmt(conseq)
+      // make alt if it is not empty
+      if(!altIsEmpty) {
+        statements.append(Goto(info, conseqId + 2))
+        finishBlock(conseqId + 1)
+        onStmt(alt)
+        statements.append(Goto(info, conseqId + 2))
+        // start block after when:
+        finishBlock(conseqId + 2)
+      } else {
+        statements.append(Goto(info, conseqId + 1))
+        // start block after when:
+        finishBlock(conseqId + 1)
+      }
+    case ir.Block(stmts) => stmts.foreach(onStmt)
+    case other => statements.append(other)
   }
 }
 
