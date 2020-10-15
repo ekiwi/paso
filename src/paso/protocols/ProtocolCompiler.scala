@@ -12,7 +12,7 @@ import firrtl.stage.{Forms, TransformManager}
 import scala.collection.mutable
 
 object ProtocolCompiler {
-  private val passes = Seq(Dependency(CheckStatementsPass), Dependency[ProtocolNormalizationPass])
+  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(InlineNodesPass), Dependency[GotoProgramTransform])
   private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState): CircuitState = {
@@ -20,16 +20,55 @@ object ProtocolCompiler {
   }
 }
 
-/** Normalizes a protocol program to make it easier to interpret.
- * One transformation we do is to turn the Conditionally statements into custom Goto statements
+/** Inlines all nodes. */
+object InlineNodesPass extends Transform with DependencyAPIMigration {
+  // we need bundles and vectors to be lowered (=> all nodes have ground type)
+  override def prerequisites = Seq(Dependency(firrtl.passes.LowerTypes))
+  override def invalidates(a: Transform) = false
+  // we must run before whens are removed
+  override def optionalPrerequisiteOf = Seq(Dependency(firrtl.passes.ExpandWhens))
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    state.copy(circuit = state.circuit.mapModule(onModule))
+  }
+
+  private def onModule(m: ir.DefModule): ir.DefModule = m match {
+    case e : ir.ExtModule => e
+    case mod : ir.Module =>
+      val nodes = mutable.HashMap[String, ir.Expression]()
+      mod.mapStmt(onStmt(nodes))
+
+  }
+
+  private def onStmt(nodes: mutable.HashMap[String, ir.Expression])(s: ir.Statement): ir.Statement = s.mapExpr(onExpr(nodes.get)) match {
+    case ir.DefNode(_, name, value) => nodes(name) = value ; ir.EmptyStmt
+    case other => other.mapStmt(onStmt(nodes))
+  }
+
+  private def onExpr(nodes: String => Option[ir.Expression])(expr: ir.Expression): ir.Expression = expr match {
+    case r @ ir.Reference(name, tpe, _, _) => nodes(name) match {
+      case Some(e) => assert(e.tpe == tpe) ; e
+      case None => r
+    }
+    case other => other.mapExpr(onExpr(nodes))
+  }
+}
+
+/** Turns the body of the main module into a goto program similar to CBMC's internal representation (or LLVM IR).
+ *  - the basic blocks are encoded in the main body which will contain a block of blocks, with each inner block
+ *    representing a basic block
+ *  - basic blocks are zero-indexed
+ *  - the (conditional) [[Goto]] statement encodes the next block ids which correspond to the block indices!
  * */
-class ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
+class GotoProgramTransform extends Transform with DependencyAPIMigration {
   // we need bundles and vectors to be lowered
   override def prerequisites = Seq(Dependency(firrtl.passes.LowerTypes))
   override def invalidates(a: Transform) = false
 
   // we must run before whens are removed
   override def optionalPrerequisiteOf = Seq(Dependency(firrtl.passes.ExpandWhens))
+  // nodes must be inlined first!
+  override def optionalPrerequisites = Seq(Dependency(InlineNodesPass))
 
   //
   private val statements = mutable.ArrayBuffer[ir.Statement]()
@@ -93,6 +132,7 @@ class ProtocolNormalizationPass extends Transform with DependencyAPIMigration {
         finishBlock(conseqId + 1)
       }
     case ir.Block(stmts) => stmts.foreach(onStmt)
+    case ir.EmptyStmt => // ignore empty statements
     case other => statements.append(other)
   }
 }
