@@ -39,10 +39,9 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
     do_while(!io.ready.get(), max=70) {
       clock.step()
     }
+    io.valid.set(false.B)
     io.rd.expect(rd)
     io.wr.expect(true.B)
-    clock.step()
-    io.valid.set(false.B)
     clock.step()
   }
 
