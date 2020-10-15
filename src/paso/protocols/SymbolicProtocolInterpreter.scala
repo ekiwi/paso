@@ -37,7 +37,7 @@ case class ProtocolGraph(name: String, cycles: Array[Cycle])
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
  */
-class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, methodPrefix: String, ioPrefix: String) extends ProtocolInterpreter(protocol) {
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends ProtocolInterpreter(protocol) {
   private case class Context()
 
   def run(): ProtocolGraph = {
@@ -62,6 +62,10 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, methodPrefix: S
   override protected def onGoto(g: Goto): Unit = {
     val smt = toSMT(g.cond)
     println(f"IF $smt GOTO ${g.conseq} ELSE ${g.alt}")
+    onBlock(g.conseq)
+    if(g.alt > 0) {
+      onBlock(g.alt)
+    }
   }
   override protected def onStep(info: ir.Info, loc: Loc, name: String): Unit = {
     println(f"STEP @ $loc ${info.serialize}")

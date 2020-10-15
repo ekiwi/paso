@@ -80,7 +80,7 @@ case class Elaboration() {
     asserts
   }
 
-  private def elaborateProtocols(protos: Seq[Protocol], methods: Seq[untimed.MethodInfo]): Seq[(String, StepNode)] = {
+  private def elaborateProtocols(protos: Seq[Protocol], implName: String, specName: String): Seq[(String, StepNode)] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
       val (state, _) = elaborate(() => new MultiIOModule() {
@@ -88,8 +88,8 @@ case class Elaboration() {
         override def desiredName: String = circuitName
         p.generate(clock)
       })
-      val normalized = ProtocolCompiler.run(state)
-      val graph = new SymbolicProtocolInterpreter(normalized, "MethodPrefix.", "IOPrefix.").run()
+      val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", methodPrefix = f"$specName.${p.methodName}_")
+      val graph = new SymbolicProtocolInterpreter(normalized).run()
 
       // FIXME: correctly elaborate protocols!
 
@@ -157,9 +157,9 @@ case class Elaboration() {
     Untimed(model, spec.protos)
   }
 
-  private def elaborateSpec(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference]): Spec = {
+  private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]): Spec = {
     val ut = elaborateUntimed(spec, externalRefs)
-    val pt = elaborateProtocols(ut.protocols, ut.model.methods)
+    val pt = elaborateProtocols(ut.protocols, implName, ut.model.name)
     Spec(ut.model, pt.toMap)
   }
 
@@ -199,7 +199,7 @@ case class Elaboration() {
     // Firrtl Compilation
     val implementation = elaborateImpl(implChisel, subspecList, externalReferences)
     val endImplementation = System.nanoTime()
-    val spec = elaborateSpec(specChisel, externalReferences)
+    val spec = elaborateSpec(specChisel, implementation.model.name, externalReferences)
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
@@ -207,8 +207,8 @@ case class Elaboration() {
       implementation.model.signals.collect { case smt.Signal(name, e: smt.BVExpr, smt.IsOutput) => smt.BVSymbol(name, e.width) }
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
-      val spec = elaborateSpec(elaborated, List())
       val instance = implementation.submodules(s.module.name)
+      val spec = elaborateSpec(elaborated, implementation.model.name + "." + instance, List())
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.name.startsWith(instance + ".")).map(s => s.rename(s.name.substring(prefixLength)))
       val binding = s.getBinding.map(_.instance)

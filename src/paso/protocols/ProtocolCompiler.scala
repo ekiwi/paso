@@ -4,6 +4,7 @@
 
 package paso.protocols
 
+import firrtl.annotations.NoTargetAnnotation
 import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform, ir}
 import firrtl.options.Dependency
 import firrtl.passes.PassException
@@ -12,11 +13,14 @@ import firrtl.stage.{Forms, TransformManager}
 import scala.collection.mutable
 
 object ProtocolCompiler {
-  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(InlineNodesPass), Dependency[GotoProgramTransform])
+  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(InlineNodesPass),
+    Dependency(ProtocolPrefixingPass), Dependency[GotoProgramTransform])
   private val compiler = new TransformManager(passes)
 
-  def run(state: CircuitState): CircuitState = {
-    compiler.runTransform(state)
+  def run(state: CircuitState, ioPrefix: String = "io_", methodPrefix: String = ""): CircuitState = {
+    val annos = Set(ProtocolPrefixAnnotation(ioPrefix, methodPrefix))
+    val st = state.copy(annotations = state.annotations ++ annos)
+    compiler.runTransform(st)
   }
 }
 
@@ -54,6 +58,57 @@ object InlineNodesPass extends Transform with DependencyAPIMigration {
   }
 }
 
+case class ProtocolPrefixAnnotation(ioPrefix: String, methodPrefix: String) extends NoTargetAnnotation {
+  assert(ioPrefix != methodPrefix, "Prefixes need to be distinguishable")
+}
+
+/** Prefixes the protocol IO according to the ProtocolPrefixAnnotation:
+ * - e.g.: "io_start" -> "$ioPrefix_start" (io is removed)
+ * - e.g.: "arg_a" -> "${methodPrefix}arg_a" (for method we just prepend)
+ * */
+object ProtocolPrefixingPass extends Transform with DependencyAPIMigration {
+  // we need bundles and vectors to be lowered
+  override def prerequisites = Seq(Dependency(firrtl.passes.LowerTypes))
+  override def invalidates(a: Transform) = false
+
+  // we need to run right before turning things into a goto program since firrtl passes won't necessarily deal will
+  // with out prefixing (the `.` in the prefixes means we produce illegal firrtl identifiers)
+  override def optionalPrerequisiteOf = Seq(Dependency[GotoProgramTransform])
+  override def optionalPrerequisites = Seq(Dependency(InlineNodesPass))
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    val anno = state.annotations.collectFirst{ case a : ProtocolPrefixAnnotation => a } match {
+      case Some(a) => a
+      case None => return state
+    }
+
+    assert(state.circuit.modules.size == 1, "Protocols should never have submodules!")
+    val m = state.circuit.modules.head.asInstanceOf[ir.Module]
+
+    val (ioPorts, notIOPorts) = m.ports.partition(_.name.startsWith("io_"))
+    val methodPorts = notIOPorts.filterNot(p => p.name == "clock" || p.name == "reset")
+    methodPorts.foreach { p =>
+      assert(p.name.startsWith("arg") || p.name.startsWith("ret"), f"Unexpected port: ${p.serialize}")
+    }
+
+    val renames = (ioPorts.map(p => p.name -> (anno.ioPrefix + p.name.substring(2))) ++
+      methodPorts.map(p => p.name -> (anno.methodPrefix + p.name))).toMap
+
+    val renamedPorts = m.mapPort(p => renames.get(p.name).map(n => p.copy(name = n)).getOrElse(p))
+    val renamedExpr = renamedPorts.mapStmt(onStmt(renames))
+
+    state.copy(circuit = state.circuit.copy(modules = List(renamedExpr)))
+  }
+
+  private def onStmt(renames: Map[String,String])(s: ir.Statement): ir.Statement = s.mapExpr(onExpr(renames))
+  private def onExpr(renames: Map[String,String])(e: ir.Expression): ir.Expression = e match {
+    case r @ ir.Reference(name, _, _, _) if renames.contains(name) => r.copy(name = renames(name))
+    case other => other.mapExpr(onExpr(renames))
+  }
+
+
+
+}
 /** Turns the body of the main module into a goto program similar to CBMC's internal representation (or LLVM IR).
  *  - the basic blocks are encoded in the main body which will contain a block of blocks, with each inner block
  *    representing a basic block
