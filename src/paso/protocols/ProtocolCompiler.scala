@@ -100,7 +100,8 @@ object ProtocolPrefixingPass extends Transform with DependencyAPIMigration {
     state.copy(circuit = state.circuit.copy(modules = List(renamedExpr)))
   }
 
-  private def onStmt(renames: Map[String,String])(s: ir.Statement): ir.Statement = s.mapExpr(onExpr(renames))
+  private def onStmt(renames: Map[String,String])(s: ir.Statement): ir.Statement =
+    s.mapExpr(onExpr(renames)).mapStmt(onStmt(renames))
   private def onExpr(renames: Map[String,String])(e: ir.Expression): ir.Expression = e match {
     case r @ ir.Reference(name, _, _, _) if renames.contains(name) => r.copy(name = renames(name))
     case other => other.mapExpr(onExpr(renames))

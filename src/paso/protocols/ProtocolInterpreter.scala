@@ -25,13 +25,16 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   protected val name = protocol.circuit.main
   protected val module = protocol.circuit.modules.head.asInstanceOf[ir.Module]
   protected val blocks = module.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block]).toArray
-  private val ioPorts = module.ports.filter(_.name.startsWith("io"))
+  val prefixAnno = protocol.annotations.collectFirst{ case a : ProtocolPrefixAnnotation => a }
+  val ioPrefix = prefixAnno.map(_.ioPrefix).getOrElse("io_")
+  private val ioPorts = module.ports.filter(_.name.startsWith(ioPrefix))
   protected val io = ioPorts.map(p => p.name -> toWidth(p.tpe)).toMap
   // RTL implementation inputs are outputs to the protocol and vice versa!
   protected val inputs = ioPorts.filter(_.direction == ir.Output).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val outputs = ioPorts.filter(_.direction == ir.Input).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val args = module.ports.filter(_.name.startsWith("arg")).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val rets = module.ports.filter(_.name.startsWith("ret")).map(p => p.name -> toWidth(p.tpe)).toMap
+  val methodPrefix = prefixAnno.map(_.methodPrefix).getOrElse("")
+  protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
+  protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val steps = protocol.annotations.collect { case StepAnnotation(wire) =>
     assert(wire.circuit == protocol.circuit.main)
     assert(wire.module == module.name)
