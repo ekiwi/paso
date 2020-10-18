@@ -59,14 +59,26 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     ProtocolGraph(name, Array())
   }
 
+  private def executeFrom(loc: Loc): Unit = {
+    val stmts = getBlock(loc.block).drop(loc.stmt)
+    stmts.foreach {
+      case (_, stmt: ) =>
+
+    }
+
+  }
+
   override protected def onSet(info: ir.Info, loc: String, expr: ir.Expression): Unit = {
     val value = toSMT(expr, inputs(loc), allowNarrow = true)
+    /*
     value match {
       case l : smt.BVLiteral =>
     }
 
+     */
 
-    println(f"SET $loc <= $smt ${info.serialize}")
+
+    println(f"SET $loc <= $value ${info.serialize}")
   }
   override protected def onUnSet(info: ir.Info, loc: String): Unit = {
     println(f"UNSET $loc ${info.serialize}")

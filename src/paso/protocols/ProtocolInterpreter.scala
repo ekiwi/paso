@@ -7,18 +7,12 @@ package paso.protocols
 import firrtl.backends.experimental.smt.FirrtlToSMT
 import firrtl.ir
 
-import scala.collection.mutable
+object ProtocolInterpreter {
+  case class Loc(block: Int, stmt: Int) { override def toString = f"$block:$stmt" }
+}
 
 abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
-  case class Loc(block: Int, stmt: Int) { override def toString = f"$block:$stmt" }
-
-  // callbacks that need to be implemented
-  protected def onSet(info: ir.Info, loc: String, expr: ir.Expression): Unit
-  protected def onUnSet(info: ir.Info, loc: String): Unit
-  protected def onAssert(info: ir.Info, expr: ir.Expression): Unit
-  protected def onGoto(g: Goto): Unit
-  protected def onStep(info: ir.Info, loc: Loc, name: String): Unit
-  protected def onFork(info: ir.Info, loc: Loc, name: String): Unit
+  import ProtocolInterpreter.Loc
 
   // The Protocol Compiler should make sure that the circuit is of a valid form!
   assert(protocol.circuit.modules.size == 1)
@@ -35,38 +29,35 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   val methodPrefix = prefixAnno.map(_.methodPrefix).getOrElse("")
   protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val steps = protocol.annotations.collect { case StepAnnotation(wire) =>
+  protected val steps = protocol.annotations.collect { case StepAnnotation(wire, doFork) =>
     assert(wire.circuit == protocol.circuit.main)
     assert(wire.module == module.name)
-    wire.ref
-  }.toSet
-  protected val forks = protocol.annotations.collect { case ForkAnnotation(wire) =>
-    assert(wire.circuit == protocol.circuit.main)
-    assert(wire.module == module.name)
-    wire.ref
-  }.toSet
+    wire.ref -> doFork
+  }.toMap
 
-  protected def onBlock(id: Int): Unit = {
+  protected def onBlock(id: Int): Unit = getBlock(id).foreach { case (loc, s) => onStmt(s, loc) }
+
+  /** returns the instructions of the basic block */
+  protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {
     assert(blocks.length > id && id >= 0, f"Invalid block id: $id")
     val b = blocks(id)
     assert(b.stmts.head == BlockId(id), f"Block id mismatch! ${b.stmts.head.serialize} != $id")
-    b.stmts.drop(1).zipWithIndex.foreach{ case (s,i) => onStmt(s, Loc(id, i)) }
+    b.stmts.drop(1).zipWithIndex.map{ case (s,i) => (Loc(id, i), s) }.toIndexedSeq
   }
 
-  protected def onStmt(s: ir.Statement, loc: Loc): Unit = s match {
+  protected def parseStmt(s: ir.Statement, loc: Loc): ProtocolStatement = s match {
     case n : ir.DefNode => throw new RuntimeException(f"Found non-inlined node: ${n.serialize}")
     case ir.Connect(info, ir.Reference(loc, _, _, _), expr) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      onSet(info, loc, expr)
+      Set(info, loc, expr)
     case ir.IsInvalid(info, ir.Reference(loc, _, _, _)) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      onUnSet(info, loc)
+      UnSet(info, loc)
     case ir.Verification(ir.Formal.Assert, info, _, pred, en, _) =>
       assert(en == ir.UIntLiteral(1,ir.IntWidth(1)), f"Expected enabled to be true! Not: ${en.serialize}")
-      onAssert(info, pred)
-    case g : Goto => onGoto(g)
-    case ir.DefWire(info, name, _) if steps.contains(name) => onStep(info, loc, name)
-    case ir.DefWire(info, name, _) if forks.contains(name) => onFork(info, loc, name)
+      Assert(info, pred)
+    case g : Goto => g
+    case ir.DefWire(info, name, _) if steps.contains(name) => Step(info, loc, name, steps(name))
     case other => throw new RuntimeException(f"Unexpected statement: ${other.serialize}")
   }
 
@@ -76,6 +67,12 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
 sealed trait ProtocolResult
 case object ProtocolFail extends ProtocolResult
 case object ProtocolSuccess extends ProtocolResult
+
+trait ProtocolStatement
+case class Set(info: ir.Info, loc: String, expr: ir.Expression) extends ProtocolStatement
+case class UnSet(info: ir.Info, loc: String) extends ProtocolStatement
+case class Assert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
+case class Step(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement
 
 /*
 class ConcreteProtocolInterpreter(protocol: Protocol) extends ProtocolInterpreter(protocol) {

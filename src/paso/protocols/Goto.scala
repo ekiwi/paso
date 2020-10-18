@@ -6,7 +6,7 @@ package paso.protocols
 
 import firrtl.ir
 
-case class Goto(info: ir.Info, cond: ir.Expression, conseq: Int, alt: Int) extends ir.Statement {
+case class Goto(info: ir.Info, cond: ir.Expression, conseq: Int, alt: Int) extends ir.Statement with ProtocolStatement {
   override def mapStmt(f: ir.Statement => ir.Statement) = this
   override def mapExpr(f: ir.Expression => ir.Expression) = Goto(info, f(cond), conseq, alt)
   override def mapType(f: ir.Type => ir.Type) = this
