@@ -37,7 +37,7 @@ case class Guarded(guards: List[smt.BVExpr], pred: smt.BVExpr) {
   }
 }
 
-case class Next(guard: smt.BVExpr, doCommit: Boolean, cycleId: Int)
+case class Next(guard: smt.BVExpr, fork: Boolean, cycleId: Int)
 
 /** the first cycle is always cycles.head */
 case class ProtocolGraph(name: String, cycles: Array[Cycle])
@@ -47,13 +47,23 @@ case class ProtocolGraph(name: String, cycles: Array[Cycle])
  *  - currently assumes that there are no cycles in the CFG!
  */
 class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean = false) extends ProtocolInterpreter(protocol) {
+  import ProtocolInterpreter.Loc
   private case class Context()
 
-  private val pathCondition = mutable.ArrayBuffer[smt.BVExpr]()
+  // predicates that "guard" the current instructions
+  private val guards = mutable.ArrayBuffer[smt.BVExpr]()
+  private def guardExpr = guards.foldLeft[smt.BVExpr](smt.True())((a,b) => smt.BVAnd(a, b))
+
+  // keep track of steps we still need to visit
+  private val stepsToProcess = mutable.ArrayBuffer[(DoStep, Int)]()
+  private var stepCount = 1
+
+  // build a "cycle"
+  private var cycle = Cycle("", List(), List(), List(), List())
 
   def run(): ProtocolGraph = {
     // start executing at block 0
-    onBlock(0)
+    executeFrom(Loc(0,0))
 
     // TODO: actual graph!
     ProtocolGraph(name, Array())
@@ -61,59 +71,61 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
 
   private def executeFrom(loc: Loc): Unit = {
     val stmts = getBlock(loc.block).drop(loc.stmt)
-    stmts.foreach {
-      case (_, stmt: ) =>
-
+    stmts.map{ case (l, s) => parseStmt(s, l) }.foreach {
+      case s: DoStep =>
+        onStep(s, loc.stmt + 1 == stmts.length)
+        return // end method here
+      case s: DoSet => onSet(s)
+      case s: DoUnSet => onUnSet(s)
+      case s: DoAssert => onAssert(s)
+      case s: Goto => onGoto(s)
     }
-
   }
 
-  override protected def onSet(info: ir.Info, loc: String, expr: ir.Expression): Unit = {
-    val value = toSMT(expr, inputs(loc), allowNarrow = true)
-    /*
-    value match {
-      case l : smt.BVLiteral =>
-    }
+  private def onSet(set: DoSet): Unit = {
+    val value = toSMT(set.expr, inputs(set.loc), allowNarrow = true)
 
-     */
-
-
-    println(f"SET $loc <= $value ${info.serialize}")
+    println(f"SET ${set.loc} <= $value ${set.info.serialize}")
   }
-  override protected def onUnSet(info: ir.Info, loc: String): Unit = {
-    println(f"UNSET $loc ${info.serialize}")
+  protected def onUnSet(unset: DoUnSet): Unit = {
+    println(f"UNSET ${unset.loc} ${unset.info.serialize}")
   }
-  override protected def onAssert(info: ir.Info, expr: ir.Expression): Unit = {
-    val smt = toSMT(expr)
-    println(f"ASSERT $smt ${info.serialize}")
+  protected def onAssert(a: DoAssert): Unit = {
+    val expr = toSMT(a.expr)
+    println(f"ASSERT $expr ${a.info.serialize}")
   }
-  override protected def onGoto(g: Goto): Unit = {
+  protected def onGoto(g: Goto): Unit = {
     val cond = toSMT(g.cond)
     println(f"IF $cond GOTO ${g.conseq} ELSE ${g.alt}")
     if(cond == smt.True()) {
       assert(g.alt == -1)
-      onBlock(g.conseq)
+      executeFrom(Loc(g.conseq, 0))
     } else {
-      pathCondition.append(cond)
+      guards.append(cond)
       // TODO: check pc feasibility
-      onBlock(g.conseq)
-      pathCondition.dropRight(1)
-      pathCondition.append(simplify(smt.BVNot(cond)))
+      executeFrom(Loc(g.conseq, 0))
+      guards.dropRight(1)
+      guards.append(simplify(smt.BVNot(cond)))
       // TODO: check pc feasibility
-      onBlock(g.alt)
-      pathCondition.dropRight(1)
+      executeFrom(Loc(g.alt, 0))
+      guards.dropRight(1)
     }
   }
-  override protected def onStep(info: ir.Info, loc: Loc, name: String): Unit = {
-    println(f"STEP @ $loc ${info.serialize}")
+  protected def onStep(step: DoStep, isLast: Boolean): Unit = {
+    val id = if(isLast) { -1 } else {
+      val  i = stepCount ; stepCount += 1
+      stepsToProcess.append((step, i))
+      i
+    }
+    val next = Next(guardExpr, step.fork, id)
+    cycle = cycle.copy(next = cycle.next :+ next)
+    println(f"STEP @ ${step.loc} ${step.info.serialize}")
   }
-  override protected def onFork(info: ir.Info, loc: Loc, name: String): Unit = {
-    println(f"FORK @ $loc ${info.serialize}")
-  }
-  private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
+
+  def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
     val e = ExpressionConverter.toMaltese(expr, width, allowNarrow)
     // we simplify once, after converting FIRRTL to SMT
     simplify(e)
   }
-  private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
+  def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }

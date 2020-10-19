@@ -35,8 +35,6 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     wire.ref -> doFork
   }.toMap
 
-  protected def onBlock(id: Int): Unit = getBlock(id).foreach { case (loc, s) => onStmt(s, loc) }
-
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {
     assert(blocks.length > id && id >= 0, f"Invalid block id: $id")
@@ -49,15 +47,15 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     case n : ir.DefNode => throw new RuntimeException(f"Found non-inlined node: ${n.serialize}")
     case ir.Connect(info, ir.Reference(loc, _, _, _), expr) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      Set(info, loc, expr)
+      DoSet(info, loc, expr)
     case ir.IsInvalid(info, ir.Reference(loc, _, _, _)) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      UnSet(info, loc)
+      DoUnSet(info, loc)
     case ir.Verification(ir.Formal.Assert, info, _, pred, en, _) =>
       assert(en == ir.UIntLiteral(1,ir.IntWidth(1)), f"Expected enabled to be true! Not: ${en.serialize}")
-      Assert(info, pred)
+      DoAssert(info, pred)
     case g : Goto => g
-    case ir.DefWire(info, name, _) if steps.contains(name) => Step(info, loc, name, steps(name))
+    case ir.DefWire(info, name, _) if steps.contains(name) => DoStep(info, loc, name, steps(name))
     case other => throw new RuntimeException(f"Unexpected statement: ${other.serialize}")
   }
 
@@ -69,7 +67,7 @@ case object ProtocolFail extends ProtocolResult
 case object ProtocolSuccess extends ProtocolResult
 
 trait ProtocolStatement
-case class Set(info: ir.Info, loc: String, expr: ir.Expression) extends ProtocolStatement
-case class UnSet(info: ir.Info, loc: String) extends ProtocolStatement
-case class Assert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
-case class Step(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement
+case class DoSet(info: ir.Info, loc: String, expr: ir.Expression) extends ProtocolStatement
+case class DoUnSet(info: ir.Info, loc: String) extends ProtocolStatement
+case class DoAssert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
+case class DoStep(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement

@@ -208,7 +208,7 @@ object CheckStatementsPass extends Transform with DependencyAPIMigration {
     }.toSet
     m.foreachStmt(onStmt(_, allowedWires))
   }
-  private def onStmt(s: ir.Statement, allowedWires: Set[String]): Unit = s match {
+  private def onStmt(s: ir.Statement, allowedWires: DoSet[String]): Unit = s match {
     case ir.DefWire(info, name, _) if !allowedWires.contains(name) =>
       throw new ProtocolError(s"Cannot declare wire $name in protocol (${info.serialize}")
     case ir.DefInstance(info, name, module, _) =>
