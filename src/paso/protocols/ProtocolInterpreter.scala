@@ -73,13 +73,3 @@ case class Set(info: ir.Info, loc: String, expr: ir.Expression) extends Protocol
 case class UnSet(info: ir.Info, loc: String) extends ProtocolStatement
 case class Assert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
 case class Step(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement
-
-/*
-class ConcreteProtocolInterpreter(protocol: Protocol) extends ProtocolInterpreter(protocol) {
-
-  def run(methodIO: Map[String, BigInt]): ProtocolResult = {
-    ProtocolFail
-  }
-
-}
-*/
