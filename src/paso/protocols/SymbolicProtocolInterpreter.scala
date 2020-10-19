@@ -62,7 +62,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
 
   def run(): ProtocolGraph = {
     // start executing at block 0
-    executeFrom(Loc(0,0))
+    //executeFrom(Loc(0,0))
 
     // TODO: actual graph!
     ProtocolGraph(name, Array())
@@ -90,17 +90,26 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
    * - inputs: (1) if already set: just return value (2) if not set: create new random input (not supported yet)
    * - outputs: output will be added to read outputs which are used to decide whether an input can be set
    */
-  private def analyzeRValue(ctx: PathCtx, e: smt.BVExpr, info: ir.Info = ir.NoInfo): (PathCtx, smt.BVExpr) = {
+  private def analyzeRValue(ctx: PathCtx, e: smt.BVExpr, info: ir.Info = ir.NoInfo, isSet: Boolean = false): (PathCtx, smt.BVExpr) = {
     val syms = findSymbols(e)
-    filterArgs(syms).foreach { arg =>
-      assert(isMapped(ctx, arg), s"Argument $arg needs to first be bound to an input before reading it!${info.serialize}")
+
+    // args
+    if(!isSet) { // set maps any unmapped args
+      filterArgs(syms).foreach { arg =>
+        assert(isMapped(ctx, arg), s"Argument $arg needs to first be bound to an input before reading it!${info.serialize}")
+      }
     }
+
     // Note on rets: if their corresponding args are not mapped yet, the test becomes somewhat meaningless
-    //               no matter whether it is concretely or symbolically executed
+    //               no matter whether it is concretely or symbolically executed. However, we do not check for this...
+
+    // inputs
     val inputReplacements = filterInputs(syms).map { i => i.name ->
       ctx.inputValues.get(i.name).map(_.value)
         .getOrElse(throw new RuntimeException(s"Input $i cannot be read before it is set!${info.serialize}"))
     }.toMap
+
+    // outputs
     val newOutputs = filterOutputs(syms).filterNot(o => ctx.outputsRead.contains(o.name))
       .map(o => o.name -> OutputRead(o.name, info))
 
@@ -109,35 +118,38 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     (newCtx, newExpr)
   }
 
-  private def analyzeSet(input: smt.BVExpr, value: smt.BVExpr): Unit = value match {
-    case l : smt.BVLiteral => // constraint
-    case e : smt.BVSlice => // mapping or constraint
+  /**
+   * Set has its own stricter rules for the format of the rhs
+
+  private def analyzeSetRValue(ctx: PathCtx, input: smt.BVExpr, value: smt.BVExpr): (List[smt.BVExpr], List[smt.BVExpr]) = value match {
+    case l : smt.BVLiteral => (List(smt.BVEqual(input, l)), List())
+    case slice @ smt.BVSlice(s: smt.BVSymbol, hi, lo) =>
+      val mask = ((BigInt(1) << slice.width) - 1) << lo
+
     case s : smt.BVSymbol => // mapping or constraint
       
-  }
+  }   */
 
   private def onSet(ctx: PathCtx, set: DoSet): PathCtx = {
-    val value = toSMT(set.expr, inputs(set.loc), allowNarrow = true)
-    value match {
-      case l : smt.BVLiteral =>
-    }
-
+    val (c1, value) = analyzeRValue(ctx, toSMT(set.expr, inputs(set.loc), allowNarrow = true), set.info, isSet=true)
     //println(f"SET ${set.loc} <= $value ${set.info.serialize}")
+    val inp = InputValue(set.loc, value, set.isSticky, set.info)
+    c1.copy(inputValues = c1.inputValues + (set.loc -> inp))
   }
 
-  protected def onUnSet(ctx: PathCtx, unset: DoUnSet): PathCtx = {
+  private def onUnSet(ctx: PathCtx, unset: DoUnSet): PathCtx = {
     //println(f"UNSET ${unset.loc} ${unset.info.serialize}")
     // TODO: check if we remove a mapping of an argument that was read
     ctx.copy(inputValues = ctx.inputValues - unset.loc)
   }
 
-  protected def onAssert(ctx: PathCtx, a: DoAssert): PathCtx = {
+  private def onAssert(ctx: PathCtx, a: DoAssert): PathCtx = {
     val (c1, expr) = analyzeRValue(ctx, toSMT(a.expr), a.info)
     //println(f"ASSERT $expr ${a.info.serialize}")
     c1.copy(asserts = c1.asserts :+ expr)
   }
 
-  protected def onGoto(ctx: PathCtx, g: Goto): List[PathCtx] = {
+  private def onGoto(ctx: PathCtx, g: Goto): List[PathCtx] = {
     val (c1, cond) = analyzeRValue(ctx, toSMT(g.cond), g.info)
 
     if(cond == smt.True()) { // just a GOTO, not a branch!
@@ -162,7 +174,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     }
   }
 
-  protected def onStep(ctx: PathCtx, step: DoStep, isLast: Boolean): PathCtx = {
+  private def onStep(ctx: PathCtx, step: DoStep, isLast: Boolean): PathCtx = {
     val id = if(isLast) { -1 } else {
       val  i = stepCount ; stepCount += 1
       stepsToProcess.append((step, i))

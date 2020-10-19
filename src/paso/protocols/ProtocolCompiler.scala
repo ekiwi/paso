@@ -203,12 +203,11 @@ object CheckStatementsPass extends Transform with DependencyAPIMigration {
   }
   private def onModule(m: ir.DefModule, annos: AnnotationSeq): Unit = {
     val allowedWires = annos.collect {
-      case ForkAnnotation(target) if target.module == m.name => target.ref
-      case StepAnnotation(target) if target.module == m.name => target.ref
+      case StepAnnotation(target, _) if target.module == m.name => target.ref
     }.toSet
     m.foreachStmt(onStmt(_, allowedWires))
   }
-  private def onStmt(s: ir.Statement, allowedWires: DoSet[String]): Unit = s match {
+  private def onStmt(s: ir.Statement, allowedWires: Set[String]): Unit = s match {
     case ir.DefWire(info, name, _) if !allowedWires.contains(name) =>
       throw new ProtocolError(s"Cannot declare wire $name in protocol (${info.serialize}")
     case ir.DefInstance(info, name, module, _) =>

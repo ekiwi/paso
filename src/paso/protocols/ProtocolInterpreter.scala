@@ -47,7 +47,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     case n : ir.DefNode => throw new RuntimeException(f"Found non-inlined node: ${n.serialize}")
     case ir.Connect(info, ir.Reference(loc, _, _, _), expr) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      DoSet(info, loc, expr)
+      DoSet(info, loc, false, expr)
     case ir.IsInvalid(info, ir.Reference(loc, _, _, _)) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
       DoUnSet(info, loc)
@@ -67,7 +67,7 @@ case object ProtocolFail extends ProtocolResult
 case object ProtocolSuccess extends ProtocolResult
 
 trait ProtocolStatement
-case class DoSet(info: ir.Info, loc: String, expr: ir.Expression) extends ProtocolStatement
+case class DoSet(info: ir.Info, loc: String, isSticky: Boolean, expr: ir.Expression) extends ProtocolStatement
 case class DoUnSet(info: ir.Info, loc: String) extends ProtocolStatement
 case class DoAssert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
 case class DoStep(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement
