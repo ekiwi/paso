@@ -8,6 +8,7 @@ import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
 import maltese.smt
 import maltese.smt.solvers.Yices2
+import scala.collection.mutable
 
 case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir.Info = ir.NoInfo)
 case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
@@ -27,22 +28,40 @@ case class PathCtx(
 
 case class ProtocolPaths(info: ProtocolInfo, steps: Seq[(String, List[PathCtx])])
 
+private case class Mapping(prevSteps: List[String], map: Map[String, BigInt])
 
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
  */
-class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean = false) extends ProtocolInterpreter(protocol) {
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends ProtocolInterpreter(protocol) {
   import ProtocolInterpreter.Loc
 
   def run(): ProtocolPaths = {
+    val incomingMappings = mutable.HashMap[String, Mapping]()
+    // for the "start" step, all args are un-mapped
+    incomingMappings("start") = Mapping(List(), args.map{ case (name, _) => name -> BigInt(0) })
+
     // symbolically execute each step
     val stepsToPaths = stepOrder.map { case (stepName, blockId, stmtId) =>
-      //println(s"Processing ${stepName}")
-      val prevMappings = args.map{ case (name, _) => name -> BigInt(0) }.toMap
-      val ctx = PathCtx(smt.True(), prevMappings, List(), Map(), Map(), None)
+      val ctx = PathCtx(smt.True(), incomingMappings(stepName).map, List(), Map(), Map(), None)
       val paths = executeFrom(ctx, Loc(blockId, stmtId))
-      //println(s"Found ${paths.size} paths for ${stepName}")
-      //paths.foreach(println)
+      // update mappings for all following paths
+      paths.filter(_.next.isDefined).foreach { p =>
+        val next = p.next.get
+        val map = p.mappedArgs
+        if(incomingMappings.contains(next)) {
+          val cur = incomingMappings(next)
+          cur.map.foreach { case (arg, bits) =>
+            val newBits = map(arg)
+            if(newBits != bits) {
+              throw new RuntimeException(s"Inconsistent mapping for $arg, coming into $next. ${cur.prevSteps} vs $stepName")
+            }
+          }
+          incomingMappings(next) = cur.copy(cur.prevSteps :+ stepName)
+        } else {
+          incomingMappings(next) = Mapping(List(stepName), map)
+        }
+      }
       stepName -> paths
     }
 
