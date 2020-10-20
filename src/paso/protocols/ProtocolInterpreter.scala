@@ -11,6 +11,8 @@ object ProtocolInterpreter {
   case class Loc(block: Int, stmt: Int) { override def toString = f"$block:$stmt" }
 }
 
+case class ProtocolInfo(name: String, args: Map[String, Int], ioPrefix: String, methodPrefix: String)
+
 abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   import ProtocolInterpreter.Loc
 
@@ -35,6 +37,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     wire.ref -> doFork
   }.toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
+  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix)
 
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {
