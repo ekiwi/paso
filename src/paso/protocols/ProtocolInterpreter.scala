@@ -34,6 +34,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     assert(wire.module == module.name)
     wire.ref -> doFork
   }.toMap
+  protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
 
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {

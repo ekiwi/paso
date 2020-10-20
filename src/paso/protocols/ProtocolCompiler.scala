@@ -5,6 +5,7 @@
 package paso.protocols
 
 import firrtl.annotations.{NoTargetAnnotation, SingleTargetAnnotation}
+import firrtl.graph.DiGraph
 import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform, ir}
 import firrtl.options.Dependency
 import firrtl.passes.PassException
@@ -14,7 +15,7 @@ import scala.collection.mutable
 
 object ProtocolCompiler {
   private val passes = Seq(Dependency(CheckStatementsPass), Dependency(InlineNodesPass),
-    Dependency(ProtocolPrefixingPass), Dependency[GotoProgramTransform])
+    Dependency(ProtocolPrefixingPass), Dependency[GotoProgramTransform], Dependency(StepOrderPass))
   private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState, ioPrefix: String = "io_", methodPrefix: String = ""): CircuitState = {
@@ -191,7 +192,7 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
 }
 
 // contains the names of all steps in topological order
-case class StepOrderAnnotation(steps: List[String]) extends NoTargetAnnotation
+case class StepOrderAnnotation(steps: Seq[String]) extends NoTargetAnnotation
 
 /** adds a topological order for steps */
 object StepOrderPass extends Transform with DependencyAPIMigration {
@@ -200,16 +201,33 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
   override def invalidates(a: Transform) = false
 
   override protected def execute(state: CircuitState): CircuitState = {
-    val steps =
+    val isStep = (state.annotations.collect { case s : StepAnnotation => s.target.ref } :+ "start").toSet
     val m = state.circuit.modules.head.asInstanceOf[ir.Module]
+    val bbs = m.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block].stmts)
+    val steps = ("start", 0, 0) +: findSteps(bbs, isStep)
+    val stepEdges = steps.map { case (name, blockId, stmtId) =>
+      name -> findNextStep(bbs, isStep)(blockId, stmtId).toSet
+    }
+    val stepGraph = DiGraph[String](stepEdges.toMap)
+    val anno = StepOrderAnnotation(stepGraph.linearize)
 
-    state
+    state.copy(annotations = state.annotations :+ anno)
   }
 
-  private def onStmt(s: ir.Statement): Unit = s match {
-
+  private def findNextStep(blocks: Seq[Seq[ir.Statement]], isStep: String => Boolean)(block: Int, stmt: Int): List[String] = {
+    assert(block >= 0)
+    blocks(block).drop(stmt).collectFirst {
+      case ir.DefWire(_, name, _) if isStep(name) => List(name)
+      case Goto(_, _, a, b) if b >= 0 => findNextStep(blocks, isStep)(a, 0) ++ findNextStep(blocks, isStep)(b, 0)
+      case Goto(_, _, a, _) => findNextStep(blocks, isStep)(a, 0)
+    }.getOrElse(List())
   }
 
+  private def findSteps(blocks: Seq[Seq[ir.Statement]], isStep: String => Boolean): Seq[(String, Int, Int)] = {
+    blocks.zipWithIndex.flatMap { case (stmts, blockId) =>
+      stmts.zipWithIndex.collect { case (ir.DefWire(_, name, _), stmtId) if isStep(name) => (name, blockId, stmtId+1)}
+    }
+  }
 }
 
 object CheckStatementsPass extends Transform with DependencyAPIMigration {

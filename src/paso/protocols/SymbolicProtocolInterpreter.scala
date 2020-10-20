@@ -67,6 +67,8 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     stepsToProcess.push(StepInfo("start", Loc(0,0), 0))
     stepCount = 1
 
+    println(s"Step Order: ${stepOrder}")
+
     while(stepsToProcess.nonEmpty) {
       val step = stepsToProcess.pop()
       println(s"Processing ${step.name}")
