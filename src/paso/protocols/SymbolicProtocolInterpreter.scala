@@ -50,32 +50,14 @@ case class ProtocolGraph(name: String, cycles: Array[Cycle])
 class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean = false) extends ProtocolInterpreter(protocol) {
   import ProtocolInterpreter.Loc
 
-  // predicates that "guard" the current instructions
-  private val guards = mutable.ArrayBuffer[smt.BVExpr]()
-  private def guardExpr = guards.foldLeft[smt.BVExpr](smt.True())((a,b) => smt.BVAnd(a, b))
-
-  // keep track of steps we still need to visit
-  private val stepsToProcess = mutable.ArrayStack[StepInfo]()
-  private var stepCount = 1
-
-  // build a "cycle"
-  private var cycle = Cycle("", List(), List(), List(), List())
-
   def run(): ProtocolGraph = {
-    // we start with the implicit starting step
-    stepsToProcess.clear()
-    stepsToProcess.push(StepInfo("start", Loc(0,0), 0))
-    stepCount = 1
-
-    println(s"Step Order: ${stepOrder}")
-
-    while(stepsToProcess.nonEmpty) {
-      val step = stepsToProcess.pop()
-      println(s"Processing ${step.name}")
+    // symbolically execute each step
+    stepOrder.foreach { case (stepName, blockId, stmtId) =>
+      println(s"Processing ${stepName}")
       val prevMappings = args.map{ case (name, _) => name -> BigInt(0) }.toMap
       val ctx = PathCtx(smt.True(), prevMappings, List(), Map(), Map(), None)
-      val paths = executeFrom(ctx, step.loc)
-      println(s"Found ${paths.size} paths for ${step.name}")
+      val paths = executeFrom(ctx, Loc(blockId, stmtId))
+      println(s"Found ${paths.size} paths for ${stepName}")
     }
 
     // TODO: actual graph!
@@ -86,9 +68,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     var ctx = startCtx
     val stmts = getBlock(loc.block).drop(loc.stmt)
     stmts.map{ case (l, s) => parseStmt(s, l) }.foreach {
-      case s: DoStep =>
-        // return final ctx
-        return List(onStep(ctx, s, loc.stmt + 1 == stmts.length))
+      case s: DoStep => return List(onStep(ctx, s))
       case s: DoSet => ctx = onSet(ctx, s)
       case s: DoUnSet => ctx = onUnSet(ctx, s)
       case s: DoAssert => ctx = onAssert(ctx, s)
@@ -176,19 +156,9 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     }
   }
 
-  private def onStep(ctx: PathCtx, step: DoStep, isLast: Boolean): PathCtx = {
-    val id = if(isLast) { -1 } else {
-      val id = stepsToProcess.find(_.name == step.name).map(_.id).getOrElse(stepCount)
-      if(id == stepCount) {
-        stepCount += 1
-        val nextLoc = step.loc.copy(stmt = step.loc.stmt + 1)
-        stepsToProcess.push(StepInfo(step.name, nextLoc, id))
-      }
-      id
-    }
-    val next = Next(guardExpr, step.fork, id)
+  private def onStep(ctx: PathCtx, step: DoStep): PathCtx = {
     //println(f"STEP @ ${step.loc} ${step.info.serialize}")
-    ctx.copy(next = Some(next))
+    ctx.copy(next = Some(step.name))
   }
 
   private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
@@ -227,7 +197,7 @@ private case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
 private case class PathCtx(
   cond: smt.BVExpr, prevMappings: Map[String, BigInt], asserts: List[smt.BVExpr],
   inputValues: Map[String, InputValue], outputsRead: Map[String, OutputRead],
-  next: Option[Next]
+  next: Option[String]
 ) {
   def mappedArgs: Map[String, BigInt] = {
     val updates =
