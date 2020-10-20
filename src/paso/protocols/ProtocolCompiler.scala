@@ -192,7 +192,7 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
 }
 
 // contains the names of all steps in topological order
-case class StepOrderAnnotation(steps: Seq[String]) extends NoTargetAnnotation
+case class StepOrderAnnotation(steps: Seq[(String, Int, Int)]) extends NoTargetAnnotation
 
 /** adds a topological order for steps */
 object StepOrderPass extends Transform with DependencyAPIMigration {
@@ -208,8 +208,9 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
     val stepEdges = steps.map { case (name, blockId, stmtId) =>
       name -> findNextStep(bbs, isStep)(blockId, stmtId).toSet
     }
-    val stepGraph = DiGraph[String](stepEdges.toMap)
-    val anno = StepOrderAnnotation(stepGraph.linearize)
+    val stepOrder = DiGraph[String](stepEdges.toMap).linearize
+    val stepMap = steps.map(s => s._1 -> s).toMap
+    val anno = StepOrderAnnotation(stepOrder.map(stepMap))
 
     state.copy(annotations = state.annotations :+ anno)
   }
