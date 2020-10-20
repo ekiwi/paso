@@ -4,7 +4,7 @@
 
 package paso.protocols
 
-import firrtl.annotations.NoTargetAnnotation
+import firrtl.annotations.{NoTargetAnnotation, SingleTargetAnnotation}
 import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform, ir}
 import firrtl.options.Dependency
 import firrtl.passes.PassException
@@ -106,9 +106,6 @@ object ProtocolPrefixingPass extends Transform with DependencyAPIMigration {
     case r @ ir.Reference(name, _, _, _) if renames.contains(name) => r.copy(name = renames(name))
     case other => other.mapExpr(onExpr(renames))
   }
-
-
-
 }
 /** Turns the body of the main module into a goto program similar to CBMC's internal representation (or LLVM IR).
  *  - the basic blocks are encoded in the main body which will contain a block of blocks, with each inner block
@@ -191,6 +188,28 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
     case ir.EmptyStmt => // ignore empty statements
     case other => statements.append(other)
   }
+}
+
+// contains the names of all steps in topological order
+case class StepOrderAnnotation(steps: List[String]) extends NoTargetAnnotation
+
+/** adds a topological order for steps */
+object StepOrderPass extends Transform with DependencyAPIMigration {
+  // we need to run on the goto program
+  override def prerequisites = Seq(Dependency[GotoProgramTransform])
+  override def invalidates(a: Transform) = false
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    val steps =
+    val m = state.circuit.modules.head.asInstanceOf[ir.Module]
+
+    state
+  }
+
+  private def onStmt(s: ir.Statement): Unit = s match {
+
+  }
+
 }
 
 object CheckStatementsPass extends Transform with DependencyAPIMigration {

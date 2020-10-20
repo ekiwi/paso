@@ -7,6 +7,7 @@ package paso.protocols
 import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
 import maltese.smt
+import maltese.smt.solvers.Yices2
 
 import scala.collection.mutable
 
@@ -54,21 +55,32 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
   private def guardExpr = guards.foldLeft[smt.BVExpr](smt.True())((a,b) => smt.BVAnd(a, b))
 
   // keep track of steps we still need to visit
-  private val stepsToProcess = mutable.ArrayBuffer[(DoStep, Int)]()
+  private val stepsToProcess = mutable.ArrayStack[StepInfo]()
   private var stepCount = 1
 
   // build a "cycle"
   private var cycle = Cycle("", List(), List(), List(), List())
 
   def run(): ProtocolGraph = {
-    // start executing at block 0
-    //executeFrom(Loc(0,0))
+    // we start with the implicit starting step
+    stepsToProcess.clear()
+    stepsToProcess.push(StepInfo("start", Loc(0,0), 0))
+    stepCount = 1
+
+    while(stepsToProcess.nonEmpty) {
+      val step = stepsToProcess.pop()
+      println(s"Processing ${step.name}")
+      val prevMappings = args.map{ case (name, _) => name -> BigInt(0) }.toMap
+      val ctx = PathCtx(smt.True(), prevMappings, List(), Map(), Map(), None)
+      val paths = executeFrom(ctx, step.loc)
+      println(s"Found ${paths.size} paths for ${step.name}")
+    }
 
     // TODO: actual graph!
     ProtocolGraph(name, Array())
   }
 
-  private def executeFrom(loc: Loc, startCtx: PathCtx): List[PathCtx] = {
+  private def executeFrom(startCtx: PathCtx, loc: Loc): List[PathCtx] = {
     var ctx = startCtx
     val stmts = getBlock(loc.block).drop(loc.stmt)
     stmts.map{ case (l, s) => parseStmt(s, l) }.foreach {
@@ -118,18 +130,6 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     (newCtx, newExpr)
   }
 
-  /**
-   * Set has its own stricter rules for the format of the rhs
-
-  private def analyzeSetRValue(ctx: PathCtx, input: smt.BVExpr, value: smt.BVExpr): (List[smt.BVExpr], List[smt.BVExpr]) = value match {
-    case l : smt.BVLiteral => (List(smt.BVEqual(input, l)), List())
-    case slice @ smt.BVSlice(s: smt.BVSymbol, hi, lo) =>
-      val mask = ((BigInt(1) << slice.width) - 1) << lo
-
-    case s : smt.BVSymbol => // mapping or constraint
-      
-  }   */
-
   private def onSet(ctx: PathCtx, set: DoSet): PathCtx = {
     val (c1, value) = analyzeRValue(ctx, toSMT(set.expr, inputs(set.loc), allowNarrow = true), set.info, isSet=true)
     //println(f"SET ${set.loc} <= $value ${set.info.serialize}")
@@ -154,20 +154,20 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
 
     if(cond == smt.True()) { // just a GOTO, not a branch!
       assert(g.alt == -1)
-      executeFrom(Loc(g.conseq, 0), c1)
+      executeFrom(c1, Loc(g.conseq, 0))
     } else { // actually a branch
       //println(f"IF $cond GOTO ${g.conseq} ELSE ${g.alt}")
 
       // execute true path
       val truPath = simplify(smt.BVAnd(c1.cond, cond))
       val truCtxs = if(isFeasible(truPath)) {
-        executeFrom(Loc(g.conseq, 0), c1.copy(cond = truPath))
+        executeFrom(c1.copy(cond = truPath), Loc(g.conseq, 0))
       } else { List() }
 
       // execute false path
       val falsPath = simplify(smt.BVAnd(c1.cond, smt.BVNot(cond)))
       val falsCtxs = if(isFeasible(falsPath)) {
-        executeFrom(Loc(g.alt, 0), c1.copy(cond = falsPath))
+        executeFrom(c1.copy(cond = falsPath), Loc(g.alt, 0))
       } else { List() }
 
       truCtxs ++ falsCtxs
@@ -176,53 +176,61 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
 
   private def onStep(ctx: PathCtx, step: DoStep, isLast: Boolean): PathCtx = {
     val id = if(isLast) { -1 } else {
-      val  i = stepCount ; stepCount += 1
-      stepsToProcess.append((step, i))
-      i
+      val id = stepsToProcess.find(_.name == step.name).map(_.id).getOrElse(stepCount)
+      if(id == stepCount) {
+        stepCount += 1
+        val nextLoc = step.loc.copy(stmt = step.loc.stmt + 1)
+        stepsToProcess.push(StepInfo(step.name, nextLoc, id))
+      }
+      id
     }
     val next = Next(guardExpr, step.fork, id)
     //println(f"STEP @ ${step.loc} ${step.info.serialize}")
     ctx.copy(next = Some(next))
   }
 
-  def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
+  private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
     val e = ExpressionConverter.toMaltese(expr, width, allowNarrow)
     // we simplify once, after converting FIRRTL to SMT
     simplify(e)
   }
-  def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
-  def findSymbols(e: smt.SMTExpr): List[smt.SMTSymbol] = e match {
+  private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
+  private def findSymbols(e: smt.SMTExpr): List[smt.SMTSymbol] = e match {
     case s: smt.BVSymbol => List(s)
     case s: smt.ArraySymbol => List(s)
     case other => other.children.flatMap(findSymbols)
   }
-  def replace(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
+  private def replace(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
     case s : smt.BVSymbol => subs.getOrElse(s.name, s)
     case other => other.mapExpr(replace(_, subs))
   }
-  def filterInputs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => inputs.contains(s.name))
-  def filterOutputs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => outputs.contains(s.name))
-  def filterArgs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => args.contains(s.name))
-  def filterRets(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => rets.contains(s.name))
-  def isMapped(ctx: PathCtx, arg: smt.SMTSymbol): Boolean = {
+  private def filterInputs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => inputs.contains(s.name))
+  private def filterOutputs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => outputs.contains(s.name))
+  private def filterArgs(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => args.contains(s.name))
+  private def filterRets(e: List[smt.SMTSymbol]): Iterable[smt.SMTSymbol] = e.filter(s => rets.contains(s.name))
+  private def isMapped(ctx: PathCtx, arg: smt.SMTSymbol): Boolean = {
     require(args.contains(arg.name))
     val allBits = (BigInt(1) << args.asInstanceOf[smt.BVSymbol].width) - 1
     ctx.mappedArgs.get(arg.name).contains(allBits)
   }
-  def isFeasible(cond: smt.BVExpr): Boolean = ??? // feasible = satisfiable
+  private val solver = Yices2()
+  private def isFeasible(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isSat
 }
 
+private case class StepInfo(name: String, loc: ProtocolInterpreter.Loc, id: Int)
 
 private case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir.Info = ir.NoInfo)
 private case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
 
 private case class PathCtx(
-  cond: smt.BVExpr, asserts: List[smt.BVExpr],
+  cond: smt.BVExpr, prevMappings: Map[String, BigInt], asserts: List[smt.BVExpr],
   inputValues: Map[String, InputValue], outputsRead: Map[String, OutputRead],
   next: Option[Next]
 ) {
-  def mappedArgs: Map[String, BigInt] = ???
-}
-private object PathCtx {
-  def apply(): PathCtx = PathCtx(smt.True(), List(), Map(), Map(), None)
+  def mappedArgs: Map[String, BigInt] = {
+    val updates =
+      inputValues.flatMap{ case (_, v) => BitMapping.mappedBits(v.value) }
+        .filter{ case (name, _) => prevMappings.contains(name) }
+    updates.foldLeft(prevMappings){ case (map, (name, bits)) => map + (name -> (map.getOrElse(name, BigInt(0)) | bits)) }
+  }
 }

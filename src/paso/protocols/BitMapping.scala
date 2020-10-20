@@ -41,6 +41,16 @@ object BitMapping {
     intervals
   }
 
+  def mappedBits(e: smt.BVExpr): Iterable[(String, BigInt)] = e match {
+    case smt.BVSlice(smt.BVSymbol(name, _), hi, lo) => List((name, toMask(hi, lo)))
+    case smt.BVSymbol(name, width) => List((name, toMask(width)))
+    case _ : smt.BVLiteral => List()
+    case smt.BVConcat(a, b) => mappedBits(a) ++ mappedBits(b)
+    case other => throw new RuntimeException(s"Unexpected expression ${other}")
+  }
+
+  private def toMask(width: Int): BigInt = (BigInt(1) << width) - 1
+  private def toMask(hi: Int, lo: Int): BigInt = toMask(hi-lo+1) << lo
   private def findOne(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(isSet(mask, _))
   private def findZero(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(!isSet(mask, _))
   private def isSet(value: BigInt, bit: Int): Boolean = (value & (BigInt(1) << bit)) != 0
