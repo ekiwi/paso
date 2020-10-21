@@ -67,7 +67,13 @@ object ProtocolGraph {
     val assertions = paths.flatMap{ p => p.asserts.map(simplify).map(Guarded(p.cond, _)) }
 
     // find the next states
-    val next = paths.flatMap{ p => p.next.map(name => Next(p.cond, info.steps(name).doFork, stepToId(name))) }
+    val next = paths.flatMap{ p => p.next.map{ nextName =>
+      val nextInfo = info.steps(nextName)
+      // we commit if it is the final node and the execution has not forked yet, or if it is a fork node
+      val doCommit = (nextInfo.isFinal && !p.hasForked) || nextInfo.doFork
+      val commit = if(doCommit) List(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else List()
+      Next(p.cond, nextInfo.doFork, commit, stepToId(nextName))
+    }}
 
     // TODO: path-merging
 

@@ -211,8 +211,15 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
     val stepOrder = DiGraph[String](stepEdges.toMap).linearize
     val stepMap = steps.map(s => s._1 -> s).toMap
     val anno = StepOrderAnnotation(stepOrder.map(stepMap))
+    // final steps have no next step
+    val finalSteps = stepEdges.filter(_._2.isEmpty).map(_._1).toSet
+    // change annotation for final steps
+    val (stepAnnos, otherAnnos) = state.annotations.partition(_.isInstanceOf[StepAnnotation])
+    stepAnnos.collect{ case a : StepAnnotation => a }
+      .foreach(a => assert(!a.isFinal, f"Should not have been marked as final yet! ${a.target}"))
+    val newStepAnnos = stepAnnos.map{ case a : StepAnnotation => a.copy(isFinal = finalSteps.contains(a.target.ref)) }
 
-    state.copy(annotations = state.annotations :+ anno)
+    state.copy(annotations = otherAnnos ++ newStepAnnos :+ anno)
   }
 
   private def findNextStep(blocks: Seq[Seq[ir.Statement]], isStep: String => Boolean)(block: Int, stmt: Int): List[String] = {
@@ -241,7 +248,7 @@ object CheckStatementsPass extends Transform with DependencyAPIMigration {
   }
   private def onModule(m: ir.DefModule, annos: AnnotationSeq): Unit = {
     val allowedWires = annos.collect {
-      case StepAnnotation(target, _) if target.module == m.name => target.ref
+      case s : StepAnnotation if s.target.module == m.name => s.target.ref
     }.toSet
     m.foreachStmt(onStmt(_, allowedWires))
   }

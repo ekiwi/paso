@@ -14,7 +14,8 @@ case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir
 case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
 
 case class PathCtx(
-  cond: smt.BVExpr, prevMappings: Map[String, BigInt], asserts: List[smt.BVExpr],
+  cond: smt.BVExpr, prevMappings: Map[String, BigInt], hasForked: Boolean,
+  asserts: List[smt.BVExpr],
   inputValues: Map[String, InputValue], outputsRead: Map[String, OutputRead],
   next: Option[String]
 ) {
@@ -29,6 +30,7 @@ case class PathCtx(
 case class ProtocolPaths(info: ProtocolInfo, steps: Seq[(String, List[PathCtx])])
 
 private case class Mapping(prevSteps: List[String], map: Map[String, BigInt])
+private case class DataFlowInfo(prevSteps: List[String], prevMappings: Map[String, BigInt], hasForked: Boolean)
 
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
@@ -38,29 +40,34 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
 
   def run(): ProtocolPaths = {
     // TODO: also track sticky inputs, sticky inputs may not refer to outputs!
-    val incomingMappings = mutable.HashMap[String, Mapping]()
-    // for the "start" step, all args are un-mapped
-    incomingMappings("start") = Mapping(List(), args.map{ case (name, _) => name -> BigInt(0) })
+    val incomingFlow = mutable.HashMap[String, DataFlowInfo]()
+    // for the "start" step, all args are un-mapped and the execution has not forked!
+    incomingFlow("start") = DataFlowInfo(List(), args.map{ case (name, _) => name -> BigInt(0) }, false)
 
     // symbolically execute each step
     val stepsToPaths = stepOrder.map { case (stepName, blockId, stmtId) =>
-      val ctx = PathCtx(smt.True(), incomingMappings(stepName).map, List(), Map(), Map(), None)
+      val map = incomingFlow(stepName).prevMappings
+      val forked = incomingFlow(stepName).hasForked || steps.get(stepName).exists(_.doFork)
+      val ctx = PathCtx(smt.True(), map, forked, List(), Map(), Map(), None)
       val paths = executeFrom(ctx, Loc(blockId, stmtId))
-      // update mappings for all following paths
+      // update mappings / forkInfo for all following paths
       paths.filter(_.next.isDefined).foreach { p =>
         val next = p.next.get
         val map = p.mappedArgs
-        if(incomingMappings.contains(next)) {
-          val cur = incomingMappings(next)
-          cur.map.foreach { case (arg, bits) =>
+        if(incomingFlow.contains(next)) {
+          val cur = incomingFlow(next)
+          cur.prevMappings.foreach { case (arg, bits) =>
             val newBits = map(arg)
             if(newBits != bits) {
               throw new RuntimeException(s"Inconsistent mapping for $arg, coming into $next. ${cur.prevSteps} vs $stepName")
             }
           }
-          incomingMappings(next) = cur.copy(cur.prevSteps :+ stepName)
+          if(cur.hasForked != p.hasForked) {
+            throw new RuntimeException(s"Inconsistent forking, coming into $next. ${cur.prevSteps} vs $stepName")
+          }
+          incomingFlow(next) = cur.copy(cur.prevSteps :+ stepName)
         } else {
-          incomingMappings(next) = Mapping(List(stepName), map)
+          incomingFlow(next) = DataFlowInfo(List(stepName), map, p.hasForked)
         }
       }
       stepName -> paths
@@ -84,7 +91,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
   }
 
   /** Reading a symbol has different restrictions depending on its kind:
-   * - args: needs to be mapped before it is used as a rvalue; TODO: different effect when used on rhs of set
+   * - args: needs to be mapped before it is used as a rvalue
    * - rets: should only be used after dependent input args have been mapped (currently just allowed ... :( )
    * - inputs: (1) if already set: just return value (2) if not set: create new random input (not supported yet)
    * - outputs: output will be added to read outputs which are used to decide whether an input can be set
@@ -120,6 +127,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
   private def onSet(ctx: PathCtx, set: DoSet): PathCtx = {
     val (c1, value) = analyzeRValue(ctx, toSMT(set.expr, inputs(set.loc), allowNarrow = true), set.info, isSet=true)
     //println(f"SET ${set.loc} <= $value ${set.info.serialize}")
+    assert(!set.isSticky, "TODO: implement sticky inputs!")
     val inp = InputValue(set.loc, value, set.isSticky, set.info)
     c1.copy(inputValues = c1.inputValues + (set.loc -> inp))
   }

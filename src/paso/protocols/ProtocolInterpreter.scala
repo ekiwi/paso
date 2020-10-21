@@ -31,10 +31,10 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   val methodPrefix = prefixAnno.map(_.methodPrefix).getOrElse("")
   protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val steps = protocol.annotations.collect { case a @ StepAnnotation(wire, doFork) =>
-    assert(wire.circuit == protocol.circuit.main)
-    assert(wire.module == module.name)
-    wire.ref -> a
+  protected val steps = protocol.annotations.collect { case a : StepAnnotation =>
+    assert(a.target.circuit == protocol.circuit.main)
+    assert(a.target.module == module.name)
+    a.target.ref -> a
   }.toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
   protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix, steps)
