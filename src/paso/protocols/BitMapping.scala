@@ -72,7 +72,7 @@ object BitMapping {
   }
 
   private def toMask(width: Int): BigInt = (BigInt(1) << width) - 1
-  private def toMask(hi: Int, lo: Int): BigInt = toMask(hi-lo+1) << lo
+  def toMask(hi: Int, lo: Int): BigInt = toMask(hi-lo+1) << lo
   private def findOne(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(isSet(mask, _))
   private def findZero(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(!isSet(mask, _))
   private def isSet(value: BigInt, bit: Int): Boolean = (value & (BigInt(1) << bit)) != 0

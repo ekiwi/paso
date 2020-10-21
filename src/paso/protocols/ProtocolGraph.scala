@@ -29,8 +29,8 @@ case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition])
  *         after that they are a constraint)
  * */
 case class Transition(
-  name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded], mappings: Seq[Guarded],
-  ioAccess: Seq[GuardedAccess], next: Seq[Next]
+  name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded],
+  mappings: Seq[GuardedMapping], ioAccess: Seq[GuardedAccess], next: Seq[Next]
 )
 
 case class GuardedAccess(guard: smt.BVExpr, pin: String, bits: BigInt)
@@ -38,6 +38,8 @@ case class GuardedAccess(guard: smt.BVExpr, pin: String, bits: BigInt)
 case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
   def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
 }
+
+case class GuardedMapping(guard: smt.BVExpr, arg: String, bits: BigInt, update: smt.BVExpr)
 
 /**
  * @param guard   if true, we go to cycleId
@@ -83,16 +85,34 @@ object ProtocolGraph {
     // find all I/O pins that are accessed
     val ioAccess = findIOUses(info.ioPrefix, assumptions ++ mappings ++ assertions) ++ findIOGuardUses(info.ioPrefix, paths)
 
-    Transition(stepName, assertions, assumptions, mappings, ioAccess.toList, next)
+    Transition(stepName, assertions, assumptions, mappings.map(exprToMapping), ioAccess.toList, next)
   }
 
-  private def findIOGuardUses(ioPrfix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
-    BitMapping.mappedBits(smt.BVOr(p.map(_.cond))).map { case (name, bits) => GuardedAccess(smt.True(), name, bits) }
+  private def exprToMapping(e: Guarded): GuardedMapping = {
+    val eq = e.pred.asInstanceOf[smt.BVEqual]
+    val input = eq.a
+    val (arg, hi, lo) = eq.b match {
+      case s : smt.BVSymbol => (s, s.width-1, 0)
+      case smt.BVSlice(s: smt.BVSymbol, hi, lo) => (s, hi, lo)
+      case other => throw new RuntimeException(s"Unexpected argument mapping expr: $other")
+    }
+
+    // if not the whole arg is update at once, we need to retain some of the previous state
+    val prev = arg.rename(arg.name + ".prev")
+    val leftPad = if(hi == arg.width - 1) { input }
+    else { smt.BVConcat(smt.BVSlice(prev, arg.width-1, hi + 1), input) }
+    val rightPad = if(lo == 0) { leftPad }
+    else { smt.BVConcat(leftPad, smt.BVSlice(prev, lo-1, 0)) }
+
+    GuardedMapping(e.guard, arg.name, BitMapping.toMask(hi, lo), rightPad)
+  }
+
+  private def findIOGuardUses(ioPrefix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
+    findIOUses(ioPrefix, Guarded(smt.True(), smt.BVOr(p.map(_.cond))))
   private def findIOUses(ioPrefix: String, g: Iterable[Guarded]): Iterable[GuardedAccess] =
     g.flatMap(findIOUses(ioPrefix, _))
   private def findIOUses(ioPrefix: String, g: Guarded): Iterable[GuardedAccess] =
     BitMapping.mappedBits(g.pred).filter(_._1.startsWith(ioPrefix)).map { case (name, bits) => GuardedAccess(g.guard, name, bits) }
-
 
   private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }
