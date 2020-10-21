@@ -37,6 +37,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
   import ProtocolInterpreter.Loc
 
   def run(): ProtocolPaths = {
+    // TODO: also track sticky inputs, sticky inputs may not refer to outputs!
     val incomingMappings = mutable.HashMap[String, Mapping]()
     // for the "start" step, all args are un-mapped
     incomingMappings("start") = Mapping(List(), args.map{ case (name, _) => name -> BigInt(0) })

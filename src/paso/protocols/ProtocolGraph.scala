@@ -28,12 +28,10 @@ case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition])
  * - TODO: encode mapping of method args (the first time args are applied to the inputs, they are treated as a mapping,
  *         after that they are a constraint)
  * */
-case class Transition(name: String, assertions: List[Guarded], assumptions: List[Guarded], mappings: List[Guarded], next: List[Next])
+case class Transition(name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded], mappings: Seq[Guarded], next: Seq[Next])
 
-case class Guarded(guards: List[smt.BVExpr], pred: smt.BVExpr) {
-  def toExpr: smt.BVExpr = if(guards.isEmpty) { pred } else {
-    smt.BVImplies(smt.BVAnd(guards), pred)
-  }
+case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
+  def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
 }
 
 case class Next(guard: smt.BVExpr, fork: Boolean, cycleId: Int)
@@ -48,18 +46,34 @@ object ProtocolGraph {
     */
 
     val stepToId = proto.steps.zipWithIndex.map{ case ((name, _), i) => name -> i }.toMap
-    val transitions = proto.steps.map{ case (name, paths) => encodeTransition(name, paths, stepToId) }
+    val transitions = proto.steps.map{ case (name, paths) => encodeTransition(name, paths, stepToId, proto.info) }
     // TODO: encode argument state updates
     ProtocolGraph(proto.info, transitions.toArray)
   }
 
-  private def encodeTransition(stepName: String, paths: Seq[PathCtx], stepToId: String => Int): Transition = {
-    var mappings = paths.head.prevMappings // prevMappings should be the same for every path!
-    // val assumptions = paths.map { p => Guarded(List(p.cond), ) }
+  private def encodeTransition(stepName: String, paths: Seq[PathCtx], stepToId: String => Int, info: ProtocolInfo): Transition = {
+    // find the assumptions and mappings for all paths
+    val am = paths.map { p =>
+      var mappings = paths.head.prevMappings
+      val am = p.inputValues.map { case (input, v) =>
+        val r = BitMapping.analyze(mappings, smt.BVSymbol(input, v.value.width), v.value)
+        mappings = r._3
+        (r._1, r._2)
+      }
+      (am.flatMap(_._1).map(simplify).map(Guarded(p.cond, _)), am.flatMap(_._2).map(simplify).map(Guarded(p.cond, _)))
+    }
+    val (assumptions, mappings) = (am.flatMap(_._1), am.flatMap(_._2))
 
+    // find the assertions for all paths
+    val assertions = paths.flatMap{ p => p.asserts.map(simplify).map(Guarded(p.cond, _)) }
 
+    // find the next states
+    val next = paths.flatMap{ p => p.next.map(name => Next(p.cond, info.steps(name).doFork, stepToId(name))) }
 
+    // TODO: path-merging
 
-    ???
+    Transition(stepName, assertions, assumptions, mappings, next)
   }
+
+  private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }

@@ -11,7 +11,7 @@ object ProtocolInterpreter {
   case class Loc(block: Int, stmt: Int) { override def toString = f"$block:$stmt" }
 }
 
-case class ProtocolInfo(name: String, args: Map[String, Int], ioPrefix: String, methodPrefix: String)
+case class ProtocolInfo(name: String, args: Map[String, Int], ioPrefix: String, methodPrefix: String, steps: Map[String, StepAnnotation])
 
 abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   import ProtocolInterpreter.Loc
@@ -31,13 +31,13 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   val methodPrefix = prefixAnno.map(_.methodPrefix).getOrElse("")
   protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val steps = protocol.annotations.collect { case StepAnnotation(wire, doFork) =>
+  protected val steps = protocol.annotations.collect { case a @ StepAnnotation(wire, doFork) =>
     assert(wire.circuit == protocol.circuit.main)
     assert(wire.module == module.name)
-    wire.ref -> doFork
+    wire.ref -> a
   }.toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
-  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix)
+  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix, steps)
 
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {
@@ -59,7 +59,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
       assert(en == ir.UIntLiteral(1,ir.IntWidth(1)), f"Expected enabled to be true! Not: ${en.serialize}")
       DoAssert(info, pred)
     case g : Goto => g
-    case ir.DefWire(info, name, _) if steps.contains(name) => DoStep(info, loc, name, steps(name))
+    case ir.DefWire(info, name, _) if steps.contains(name) => DoStep(info, loc, name)
     case other => throw new RuntimeException(f"Unexpected statement: ${other.serialize}")
   }
 
@@ -74,4 +74,4 @@ trait ProtocolStatement
 case class DoSet(info: ir.Info, loc: String, isSticky: Boolean, expr: ir.Expression) extends ProtocolStatement
 case class DoUnSet(info: ir.Info, loc: String) extends ProtocolStatement
 case class DoAssert(info: ir.Info, expr: ir.Expression) extends ProtocolStatement
-case class DoStep(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String, fork: Boolean) extends ProtocolStatement
+case class DoStep(info: ir.Info, loc: ProtocolInterpreter.Loc, name: String) extends ProtocolStatement
