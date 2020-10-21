@@ -57,12 +57,18 @@ object BitMapping {
     intervals
   }
 
-  def mappedBits(e: smt.BVExpr): Iterable[(String, BigInt)] = e match {
-    case smt.BVSlice(smt.BVSymbol(name, _), hi, lo) => List((name, toMask(hi, lo)))
-    case smt.BVSymbol(name, width) => List((name, toMask(width)))
-    case _ : smt.BVLiteral => List()
-    case smt.BVConcat(a, b) => mappedBits(a) ++ mappedBits(b)
-    case other => throw new RuntimeException(s"Unexpected expression ${other}")
+  def mappedBits(e: smt.SMTExpr): Map[String, BigInt] = e match {
+    case smt.BVSlice(smt.BVSymbol(name, _), hi, lo) => Map(name -> toMask(hi, lo))
+    case smt.BVSymbol(name, width) => Map(name -> toMask(width))
+    case other =>
+      if(other.children.isEmpty) { Map() }
+      else if(other.children.size == 1) { mappedBits(other.children.head) }
+      else {
+        val maps = other.children.flatMap(c => mappedBits(c).toSeq)
+        maps.foldLeft(Map[String, BigInt]()){ case (map, (name, bits)) =>
+          map + (name -> (bits | map.getOrElse(name, BigInt(0))))
+        }
+      }
   }
 
   private def toMask(width: Int): BigInt = (BigInt(1) << width) - 1

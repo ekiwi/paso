@@ -28,7 +28,12 @@ case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition])
  * - TODO: encode mapping of method args (the first time args are applied to the inputs, they are treated as a mapping,
  *         after that they are a constraint)
  * */
-case class Transition(name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded], mappings: Seq[Guarded], next: Seq[Next])
+case class Transition(
+  name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded], mappings: Seq[Guarded],
+  ioAccess: Seq[GuardedAccess], next: Seq[Next]
+)
+
+case class GuardedAccess(guard: smt.BVExpr, pin: String, bits: BigInt)
 
 case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
   def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
@@ -75,10 +80,19 @@ object ProtocolGraph {
       Next(p.cond, nextInfo.doFork, commit, stepToId(nextName))
     }}
 
-    // TODO: path-merging
+    // find all I/O pins that are accessed
+    val ioAccess = findIOUses(info.ioPrefix, assumptions ++ mappings ++ assertions) ++ findIOGuardUses(info.ioPrefix, paths)
 
-    Transition(stepName, assertions, assumptions, mappings, next)
+    Transition(stepName, assertions, assumptions, mappings, ioAccess.toList, next)
   }
+
+  private def findIOGuardUses(ioPrfix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
+    BitMapping.mappedBits(smt.BVOr(p.map(_.cond))).map { case (name, bits) => GuardedAccess(smt.True(), name, bits) }
+  private def findIOUses(ioPrefix: String, g: Iterable[Guarded]): Iterable[GuardedAccess] =
+    g.flatMap(findIOUses(ioPrefix, _))
+  private def findIOUses(ioPrefix: String, g: Guarded): Iterable[GuardedAccess] =
+    BitMapping.mappedBits(g.pred).filter(_._1.startsWith(ioPrefix)).map { case (name, bits) => GuardedAccess(g.guard, name, bits) }
+
 
   private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }
