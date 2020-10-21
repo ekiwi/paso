@@ -34,17 +34,16 @@ case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
   def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
 }
 
-case class Next(guard: smt.BVExpr, fork: Boolean, cycleId: Int)
+/**
+ * @param guard   if true, we go to cycleId
+ * @param fork    indicates whether new transactions can be started in the next cycle
+ * @param commit  list of commit signals that need to be asserted in order to advance the state of the transactional model
+ * @param cycleId index of the next cycle
+ */
+case class Next(guard: smt.BVExpr, fork: Boolean, commit: Seq[smt.BVSymbol], cycleId: Int)
 
 object ProtocolGraph {
   def encode(proto: ProtocolPaths): ProtocolGraph = {
-    /*
-    proto.steps.foreach { case (name, paths) =>
-      println(s"Step: $name")
-      paths.foreach(println)
-    }
-    */
-
     val stepToId = proto.steps.zipWithIndex.map{ case ((name, _), i) => name -> i }.toMap
     val transitions = proto.steps.map{ case (name, paths) => encodeTransition(name, paths, stepToId, proto.info) }
     // TODO: encode argument state updates
