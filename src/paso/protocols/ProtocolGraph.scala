@@ -39,7 +39,7 @@ case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
   def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
 }
 
-case class GuardedMapping(guard: smt.BVExpr, arg: String, bits: BigInt, update: smt.BVExpr)
+case class GuardedMapping(guard: smt.BVExpr, arg: smt.BVSymbol, bits: BigInt, update: smt.BVExpr)
 
 /**
  * @param guard   if true, we go to cycleId
@@ -104,7 +104,7 @@ object ProtocolGraph {
     val rightPad = if(lo == 0) { leftPad }
     else { smt.BVConcat(leftPad, smt.BVSlice(prev, lo-1, 0)) }
 
-    GuardedMapping(e.guard, arg.name, BitMapping.toMask(hi, lo), rightPad)
+    GuardedMapping(e.guard, arg, BitMapping.toMask(hi, lo), rightPad)
   }
 
   private def findIOGuardUses(ioPrefix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
