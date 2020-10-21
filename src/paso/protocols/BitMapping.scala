@@ -8,6 +8,22 @@ import maltese.smt
 
 /** helper functions for mappings individual bits of bitvector expressions while trying to retain the word structure */
 object BitMapping {
+  def analyze(mappedBits: Map[String, BigInt], lhs: smt.BVExpr, rhs: smt.BVExpr):
+  (List[smt.BVExpr], List[smt.BVExpr], Map[String, BigInt]) = rhs match {
+    case smt.BVConcat(a, b) =>
+      val aRes = analyze(mappedBits, smt.BVSlice(lhs, lhs.width - 1, b.width), a)
+      val bRes = analyze(aRes._3, smt.BVSlice(lhs, b.width - 1, 0), b)
+      (aRes._1 ++ bRes._1, aRes._2 ++ bRes._2, bRes._3)
+    case smt.BVSlice(s: smt.BVSymbol, hi, lo) =>
+      val res = analyze(mappedBits(s.name), lhs, s, hi, lo)
+      (List(res._1), List(res._2), mappedBits + (s.name -> res._3))
+    case s : smt.BVSymbol =>
+      val res = analyze(mappedBits(s.name), lhs, s, s.width - 1, 0)
+      (List(res._1), List(res._2), mappedBits + (s.name -> res._3))
+    case l : smt.BVLiteral =>
+      (List(smt.BVEqual(lhs, l)), List(), mappedBits)
+  }
+
   def analyze(alreadyMapped: BigInt, lhs: smt.BVExpr, s: smt.BVSymbol, hi: Int, lo: Int): (smt.BVExpr, smt.BVExpr, BigInt) = {
     val width = hi - lo + 1
     val mask = ((BigInt(1) << width) - 1) << lo
@@ -25,7 +41,7 @@ object BitMapping {
     val eqs = intervals.map { case (hi, lo) =>
       smt.BVEqual(smt.BVSlice(lhs, hi, lo), smt.BVSlice(rhs, hi, lo))
     }
-    simplify(smt.BVAnd(eqs))
+    smt.BVAnd(eqs)
   }
 
   /** e.g. findIntervals(011001, 6) = List((0,0), (4,3)) */
@@ -54,6 +70,4 @@ object BitMapping {
   private def findOne(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(isSet(mask, _))
   private def findZero(mask: BigInt, msb: Int): Option[Int] = (msb to 0 by -1).find(!isSet(mask, _))
   private def isSet(value: BigInt, bit: Int): Boolean = (value & (BigInt(1) << bit)) != 0
-
-  def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }

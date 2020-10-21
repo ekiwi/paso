@@ -9,6 +9,8 @@ import maltese.smt
 import org.scalatest.flatspec.AnyFlatSpec
 
 class BitMappingSpec extends AnyFlatSpec {
+  def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
+
   "findIntervals" should "find all the intervals" in {
     assert(BitMapping.findIntervals(BigInt("0011010", 2), 7) == List((4,3), (1,1)))
     assert(BitMapping.findIntervals(BigInt("1011010", 2), 7) == List((6,6), (4,3), (1,1)))
@@ -24,7 +26,7 @@ class BitMappingSpec extends AnyFlatSpec {
     val (a,b) = (smt.BVSymbol("a", 7), smt.BVSymbol("b", 10))
     val bSlice = smt.BVSlice(b, 8, 2)
 
-    assert(BitMapping.mapBits(a, bSlice, BigInt("0011010", 2)) ==
+    assert(simplify(BitMapping.mapBits(a, bSlice, BigInt("0011010", 2))) ==
       smt.BVAnd(smt.BVEqual(smt.BVSlice(a, 4, 3), smt.BVSlice(b, 6, 5)),
                 smt.BVEqual(smt.BVSlice(a, 1, 1), smt.BVSlice(b, 3, 3)))
     )
@@ -39,7 +41,7 @@ class BitMappingSpec extends AnyFlatSpec {
       val (const, map, mask) = ana(BigInt("0", 2))
       assert(mask == BigInt("11111110000", 2))
       assert(const == smt.True())
-      assert(map == smt.BVEqual(lhs, smt.BVSlice(arg, 10, 4)))
+      assert(simplify(map) == smt.BVEqual(lhs, smt.BVSlice(arg, 10, 4)))
     }
   }
 }
