@@ -7,6 +7,7 @@ package paso
 import chisel3.RawModule
 import firrtl.annotations.{InstanceTarget, ModuleTarget}
 import paso.chisel.Elaboration
+import paso.verification.VerificationProblem
 
 import scala.collection.mutable
 
@@ -67,14 +68,12 @@ object Paso {
 
   private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default): Boolean = {
     val elaborated = Elaboration()[I, S](impl, spec, subspecs, inv)
-    throw new NotImplementedError("TODO: VerificationProblem.verify(elaborated, opt)")
-    //VerificationProblem.verify(elaborated, opt)
+    VerificationProblem.verify(elaborated, opt)
     true
   }
   private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default): Boolean = {
     val elaborated = Elaboration()[I, S](impl, spec, subspecs, NoProofCollateral(_, _))
-    throw new NotImplementedError("TODO: VerificationProblem.bmc(elaborated, opt.modelChecker, kMax)")
-    //VerificationProblem.bmc(elaborated, opt.modelChecker, kMax)
+    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax)
     true
   }
   private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???

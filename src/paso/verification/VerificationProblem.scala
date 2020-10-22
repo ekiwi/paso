@@ -5,7 +5,7 @@
 package paso.verification
 
 import maltese.smt
-import paso.protocols.ProtocolGraph
+import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 
 trait Assertion { def toExpr: smt.BVExpr }
 case class BasicAssertion(guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
@@ -28,3 +28,26 @@ case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
 case class Subspec(instance: String, ioSymbols: Seq[smt.BVSymbol], spec: Spec, binding: Option[String])
 case class VerificationProblem(impl: smt.TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
                                invariances: Seq[Assertion], mapping: Seq[Assertion])
+
+object VerificationProblem {
+  def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
+    // check to see if the mappings contain quantifiers
+    val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
+
+    val automaton = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols)
+
+    // check all our simplifications
+    assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
+  }
+
+  def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
+    assert(problem.mapping.isEmpty)
+    assert(problem.invariances.isEmpty)
+
+    throw new NotImplementedError("TODO: implement BMC")
+  }
+
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph]): smt.TransitionSystem = {
+    new PasoAutomatonEncoder(untimed, protocols).run()
+  }
+}
