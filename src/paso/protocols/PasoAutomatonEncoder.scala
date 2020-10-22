@@ -10,6 +10,18 @@ import maltese.smt.solvers.Solver
 
 import scala.collection.mutable
 
+case class PasoAutomaton(
+  states: Array[PasoState], edges: Seq[PasoStateEdge], assumptions: Seq[PasoStateGuarded],
+  assertions: Seq[PasoStateGuarded], mappings: Seq[PasoStateGuardedMapping],
+  commits: Seq[PasoGuardedCommit], untimed: UntimedModel
+)
+case class PasoState(id: Int, info: String)
+/** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
+case class PasoStateEdge(from: Int, to: Int, guard: smt.BVExpr)
+case class PasoStateGuarded(stateId: Int, pred: Guarded)
+case class PasoStateGuardedMapping(stateId: Int, map: GuardedMapping)
+case class PasoGuardedCommit(stateId: Int, guard: smt.BVExpr, commit: smt.BVSymbol)
+
 /**
  * Combines the untimed module and all its protocols into a "Paso Automaton" transition system.
  *
@@ -46,32 +58,27 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   }
   private val statesToBeEncoded = mutable.ArrayStack[State]()
 
-  /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
-  case class StateEdge(from: Int, to: Int, guard: Seq[smt.BVExpr])
   /** collects all state transitions */
-  private val stateEdges = mutable.ArrayBuffer[StateEdge]()
+  private val stateEdges = mutable.ArrayBuffer[PasoStateEdge]()
 
-  case class StateGuarded(stateId: Int, pred: Guarded)
   /** collects all assumptions over the inputs, depending on the state */
-  private val assumptions = mutable.ArrayBuffer[StateGuarded]()
+  private val assumptions = mutable.ArrayBuffer[PasoStateGuarded]()
 
   /** collects all assertions depending on the state */
-  private val assertions = mutable.ArrayBuffer[StateGuarded]()
+  private val assertions = mutable.ArrayBuffer[PasoStateGuarded]()
 
-  case class StateGuardedMapping(stateId: Int, map: GuardedMapping)
   /** collects all argument mappings for all protocols depending on the state */
-  private val mappings = mutable.ArrayBuffer[StateGuardedMapping]()
+  private val mappings = mutable.ArrayBuffer[PasoStateGuardedMapping]()
 
-  case class GuardedCommit(stateId: Int, guard: smt.BVExpr, commit: smt.BVSymbol)
   /** collects all state updates for all protocols depending on the state */
-  private val commits = mutable.ArrayBuffer[GuardedCommit]()
+  private val commits = mutable.ArrayBuffer[PasoGuardedCommit]()
 
   /** symbols that describe which protocol is starting to execute this cycle,
    *  this relies on these conditions to be mutually exclusive
    */
   private val newTransaction = protocols.map{ p => p.name -> smt.BVSymbol(p.name + ".active", 1) }.toMap
 
-  def run(): smt.TransitionSystem = {
+  def run(): PasoAutomaton = {
     // check that all transactions are mutually exclusive in their first transition
     val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.ioName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
     val newTransactionPred = protocols
@@ -79,16 +86,15 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     ensureMutuallyExclusive(newTransactionPred, protocols.map(_.info))
 
     // we start in a state where no protocols are running
-    val start = getStateId(active = List(), start = true)
+    val startId = getStateId(active = List(), start = true)
+    assert(startId == 0)
     // recursively encode states until we reach a fixed point
     while(statesToBeEncoded.nonEmpty) {
       encodeState(statesToBeEncoded.pop())
     }
 
-
-    // TODO: return a case class with all parts of our encoding
-    println()
-    ???
+    PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.toString)).sortBy(_.id), stateEdges.toSeq,
+      assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq, untimed)
   }
 
   private def encodeState(st: State): Unit = {
@@ -104,7 +110,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
         val next = na.map(_._1)
         val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
         val nextId = getStateId(active = active, start = next.exists(_.fork))
-        stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard))
+        stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = smt.BVAnd(next.map(_.guard)))
       }
     } else {
       // if we do need to start new transactions, we need to chose an unused copy of each transaction's protocol
@@ -115,7 +121,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       // We need to assume that one of the guards is true.
       // Since they are all mutually exclusive (checked earlier) if at least one is true, exactly one is true.
       val pickOne = smt.BVOr(guardedNewLocs.map(_._1))
-      assumptions += StateGuarded(st.id, Guarded(smt.True(), pickOne))
+      assumptions += PasoStateGuarded(st.id, Guarded(smt.True(), pickOne))
 
       // we add all inputs, assumptions, mappings, assertions and commits, but guarded by whether we actually start the transaction
       guardedNewLocs.foreach { case (guard, loc) => addTransition(st.id, Some(guard), transition(loc)) }
@@ -129,7 +135,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
           val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
           val nextId = getStateId(active = active, start = next.exists(_.fork))
           // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
-          stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard) :+ newGuard)
+          stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = smt.BVAnd(next.map(_.guard) :+ newGuard))
         }
       }
     }
@@ -138,10 +144,10 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   /** add all assumptions, assertions, mappings and commit to the global data structure */
   private def addTransition(stateId: Int, guard: Option[smt.BVExpr], tran: Transition): Unit = {
     def addGuard(e: smt.BVExpr): smt.BVExpr = guard.map(smt.BVAnd(_, e)).getOrElse(e)
-    assumptions ++= tran.assumptions.map(g => StateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
-    mappings ++= tran.mappings.map(g => StateGuardedMapping(stateId, g.copy(guard = addGuard(g.guard))))
-    assertions ++= tran.assertions.map(g => StateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
-    commits ++= tran.next.collect{ case Next(g, _, Some(commit), _, _) => GuardedCommit(stateId, addGuard(g), commit) }
+    assumptions ++= tran.assumptions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
+    mappings ++= tran.mappings.map(g => PasoStateGuardedMapping(stateId, g.copy(guard = addGuard(g.guard))))
+    assertions ++= tran.assertions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
+    commits ++= tran.next.collect{ case Next(g, _, Some(commit), _, _) => PasoGuardedCommit(stateId, addGuard(g), commit) }
   }
 
   private def getFreeCopy(name: String, active: Iterable[Loc]): Loc = {

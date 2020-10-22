@@ -50,6 +50,7 @@ object VerificationProblem {
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): smt.TransitionSystem = {
-    new PasoAutomatonEncoder(untimed, protocols, solver).run()
+    val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
+    ???
   }
 }
