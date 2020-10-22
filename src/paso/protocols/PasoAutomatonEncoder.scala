@@ -4,7 +4,6 @@
 
 package paso.protocols
 
-import firrtl.passes.PassException
 import paso.verification.UntimedModel
 import maltese.smt
 import maltese.smt.solvers.Yices2
@@ -98,13 +97,13 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     st.active.map(transition).foreach(addTransition(st.id, None, _))
 
     if(!st.start) {
-      // find all possible combinations of (non-final) next locations for the active protocols
-      val nextActive = product(st.active.map(getNonFinalNext))
+      // find all possible combinations of next locations for the active protocols
+      val nextActive = product(st.active.map(getNext))
       // if we do not start any new transactions, we just encode the nextActive states
       nextActive.foreach { na =>
         val next = na.map(_._1)
-        val nextId = getStateId(active = na.map(_._2), start = next.exists(_.fork))
-        // TODO: we also need to encode final transitions!
+        val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
+        val nextId = getStateId(active = active, start = next.exists(_.fork))
         stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard))
       }
     } else {
@@ -123,11 +122,12 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
       // now we need to combine all normal next locs with each one of the possibly started locations
       guardedNewLocs.foreach { case (newGuard, newLoc) =>
-        // find all possible combinations of (non-final) next locations for the active protocols + one new protocol
-        val nextActive = product((st.active :+ newLoc).map(getNonFinalNext))
+        // find all possible combinations of next locations for the active protocols + one new protocol
+        val nextActive = product((st.active :+ newLoc).map(getNext))
         nextActive.foreach { na =>
           val next = na.map(_._1)
-          val nextId = getStateId(active = na.map(_._2), start = next.exists(_.fork))
+          val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
+          val nextId = getStateId(active = active, start = next.exists(_.fork))
           // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
           stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard) :+ newGuard)
         }
@@ -150,8 +150,14 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     Loc(name, 0, copyId)
   }
 
-  private def getNonFinalNext(loc: Loc): Seq[(Next, Loc)] =
-    transition(loc).next.filterNot(_.isFinal).map(n => (n, loc.copy(transition = n.cycleId)))
+  /** returns all transitions */
+  private def getNext(loc: Loc): Seq[(Next, Loc)] = {
+    // for now, let's not try to merge as it may not be needed
+    //val sameBody = transition(loc).next.groupBy(n => (n.cycleId, n.fork))
+    // merge all next that have the same next property and fork
+    //val merged = sameBody.map{ case (_, ns) => ns.head.copy(guard = smt.BVOr(ns.map(_.guard))) }
+    transition(loc).next.map(n => (n, loc.copy(transition = n.cycleId)))
+  }
 
   private def ensureMutuallyExclusive(pred: Seq[smt.BVExpr], info: Iterable[ProtocolInfo]): Unit = {
     pred.zipWithIndex.foreach { case (predI, i) =>

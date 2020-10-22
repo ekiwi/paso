@@ -44,14 +44,16 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
     // for the "start" step, all args are un-mapped and the execution has not forked!
     incomingFlow("start") = DataFlowInfo(List(), args.map{ case (name, _) => name -> BigInt(0) }, false)
 
+    // we ignore final steps as they are equivalent with the first, the "start", step
+    val nonFinalSteps = stepOrder.filterNot(s => steps(s._1).isFinal)
     // symbolically execute each step
-    val stepsToPaths = stepOrder.map { case (stepName, blockId, stmtId) =>
+    val stepsToPaths = nonFinalSteps.map { case (stepName, blockId, stmtId) =>
       val map = incomingFlow(stepName).prevMappings
       val forked = incomingFlow(stepName).hasForked || steps.get(stepName).exists(_.doFork)
       val ctx = PathCtx(smt.True(), map, forked, List(), Map(), Map(), None)
       val paths = executeFrom(ctx, Loc(blockId, stmtId))
       // update mappings / forkInfo for all following paths
-      paths.filter(_.next.isDefined).foreach { p =>
+      paths.filter(p => p.next.isDefined && !p.next.contains("start")).foreach { p =>
         val next = p.next.get
         val map = p.mappedArgs
         if(incomingFlow.contains(next)) {
@@ -171,7 +173,9 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
 
   private def onStep(ctx: PathCtx, step: DoStep): PathCtx = {
     //println(f"STEP @ ${step.loc} ${step.info.serialize}")
-    ctx.copy(next = Some(step.name))
+    // final steps are equivalent to the start step
+    val name = if(steps(step.name).isFinal) { "start" } else { step.name }
+    ctx.copy(next = Some(name))
   }
 
   private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {

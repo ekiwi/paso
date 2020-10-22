@@ -4,6 +4,7 @@
 
 package paso.protocols
 
+import firrtl.annotations.CircuitTarget
 import firrtl.backends.experimental.smt.FirrtlToSMT
 import firrtl.ir
 
@@ -30,11 +31,14 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
   val methodPrefix = prefixAnno.methodPrefix
   protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
-  protected val steps = protocol.annotations.collect { case a : StepAnnotation =>
+  // we treat the state at the beginning of the protocol as an implicit start step
+  private val startStepAnnotation =
+    StepAnnotation(CircuitTarget(module.name).module(module.name).ref("start"), doFork = true, isFinal = false)
+  protected val steps = (protocol.annotations.collect { case a : StepAnnotation =>
     assert(a.target.circuit == protocol.circuit.main)
     assert(a.target.module == module.name)
     a.target.ref -> a
-  }.toMap
+  } :+ ("start" -> startStepAnnotation)).toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
   protected val name = s"${prefixAnno.specName}.${prefixAnno.methodName}"
   protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix, steps)
