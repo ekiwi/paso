@@ -4,6 +4,7 @@
 
 package paso.protocols
 
+import firrtl.passes.PassException
 import maltese.smt
 
 /** the first cycle is always cycles.head */
@@ -31,7 +32,7 @@ case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition]) {
  *         after that they are a constraint)
  * */
 case class Transition(
-  name: String, assertions: Seq[Guarded], assumptions: Seq[Guarded],
+  name: String, protocolName: String, assertions: Seq[Guarded], assumptions: Seq[Guarded],
   mappings: Seq[GuardedMapping], ioAccess: Seq[GuardedAccess], next: Seq[Next]
 )
 
@@ -87,7 +88,7 @@ object ProtocolGraph {
     // find all I/O pins that are accessed
     val ioAccess = findIOUses(info.ioPrefix, assumptions ++ mappings ++ assertions) ++ findIOGuardUses(info.ioPrefix, paths)
 
-    Transition(stepName, assertions, assumptions, mappings.map(exprToMapping), ioAccess.toList, next)
+    Transition(stepName, info.name, assertions, assumptions, mappings.map(exprToMapping), ioAccess.toList, next)
   }
 
   private def exprToMapping(e: Guarded): GuardedMapping = {
@@ -118,3 +119,36 @@ object ProtocolGraph {
 
   private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }
+
+/** helper functions to work with transitions */
+object Transition {
+  /** asserts that the ioPins used by the transitions are mutually exclusive */
+  def checkCompatibility(isSat: smt.BVExpr => Boolean, transitions: Seq[Transition]): Map[String, List[GuardedAccess]] = {
+    lazy val transitionNames = transitions.map(t => s"${t.protocolName}:${t.name}")
+    transitions.foldLeft(Map[String, List[GuardedAccess]]()) { case (prev, t) =>
+      // check that there are no conflicting accesses
+      t.ioAccess.foreach { access =>
+        val potentialConflicts = prev.getOrElse(access.pin, List()).filter(p => (p.bits & access.bits) != 0)
+        potentialConflicts.foreach { conflict =>
+          val mayConflict = isSat(smt.BVAnd(conflict.guard, access.guard))
+          if(mayConflict) {
+            val commonBits = access.bits & conflict.bits
+            val msg = f"There may be a conflicting access to ${access.pin} bits ${commonBits.toString(2)}" +
+              f"involving the following protocols: ${transitionNames.mkString(",")}"
+            throw new ProtocolConflictError(msg)
+          }
+        }
+      }
+      // merge accesses from this transition
+      t.ioAccess.foldLeft(prev) { case (m, a) => m + (a.pin -> (m.getOrElse(a.pin, List()) :+ a)) }
+    }
+  }
+
+  /** combines the transitions into one, also verifies compatibility */
+  def combineTransitions(transitions: Seq[Transition]): Transition = {
+    ???
+  }
+
+}
+
+class ProtocolConflictError(s: String) extends PassException(s)
