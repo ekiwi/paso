@@ -196,11 +196,19 @@ case class BVForall(variable: BVSymbol, e: BVExpr) extends BVUnaryExpr {
 
 object BVAnd {
   def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.And, a, b)
-  def apply(exprs: Iterable[BVExpr]): BVExpr = exprs.reduce(apply)
+  def apply(exprs: Iterable[BVExpr]): BVExpr = {
+    assert(exprs.nonEmpty, "Don't know what to do with an empty list!")
+    val nonTriviallyTrue = exprs.filterNot(_ == True())
+    if(nonTriviallyTrue.isEmpty) { True() } else { nonTriviallyTrue.reduce(apply) }
+  }
 }
 object BVOr {
   def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.Or, a, b)
-  def apply(exprs: Iterable[BVExpr]): BVExpr = exprs.reduce(apply)
+  def apply(exprs: Iterable[BVExpr]): BVExpr = {
+    assert(exprs.nonEmpty, "Don't know what to do with an empty list!")
+    val nonTriviallyFalse = exprs.filterNot(_ == False())
+    if(nonTriviallyFalse.isEmpty) { False() } else { nonTriviallyFalse.reduce(apply) }
+  }
 }
 
 object SMTEqual {
