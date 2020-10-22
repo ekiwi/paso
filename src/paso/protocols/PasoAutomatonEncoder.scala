@@ -4,8 +4,11 @@
 
 package paso.protocols
 
+import firrtl.passes.PassException
 import paso.verification.UntimedModel
 import maltese.smt
+import maltese.smt.solvers.Yices2
+
 import scala.collection.mutable
 
 /**
@@ -42,4 +45,35 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
   def run(): smt.TransitionSystem = ???
 
+  /** combines the transitions into one */
+  private def combineTransitions(transitions: Seq[Transition]): Transition = {
+
+  }
+
+  /** asserts that the ioPins used by the transitions are mutually exclusive */
+  private def checkCompatibility(transitions: Seq[Transition]): Map[String, List[GuardedAccess]] = {
+    lazy val transitionNames = transitions.map(_.name)
+    transitions.foldLeft(Map[String, List[GuardedAccess]]()) { case (prev, t) =>
+      // check that there are no conflicting accesses
+      t.ioAccess.foreach { access =>
+        val potentialConflicts = prev.getOrElse(access.pin, List()).filter(p => (p.bits & access.bits) != 0)
+        potentialConflicts.foreach { conflict =>
+          val mayConflict = isFeasible(smt.BVAnd(conflict.guard, access.guard))
+          if(mayConflict) {
+            val commonBits = access.bits & conflict.bits
+            val msg = f"There may be a conflicting access to ${access.pin} bits ${commonBits.toString(2)}" +
+            f"involving the following protocols: ${transitionNames.mkString(",")}"
+            throw new ProtocolConflictError(msg)
+          }
+        }
+      }
+      // merge accesses from this transition
+      t.ioAccess.foldLeft(prev) { case (m, a) => m + (a.pin -> (m.getOrElse(a.pin, List()) :+ a)) }
+    }
+  }
+
+  private val solver = Yices2()
+  private def isFeasible(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isSat
 }
+
+class ProtocolConflictError(s: String) extends PassException(s)
