@@ -5,6 +5,7 @@
 package paso.verification
 
 import maltese.smt
+import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 
 trait Assertion { def toExpr: smt.BVExpr }
@@ -34,7 +35,8 @@ object VerificationProblem {
     // check to see if the mappings contain quantifiers
     val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
 
-    val automaton = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols)
+    val solver = Yices2()
+    val automaton = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
@@ -47,7 +49,7 @@ object VerificationProblem {
     throw new NotImplementedError("TODO: implement BMC")
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph]): smt.TransitionSystem = {
-    new PasoAutomatonEncoder(untimed, protocols).run()
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): smt.TransitionSystem = {
+    new PasoAutomatonEncoder(untimed, protocols, solver).run()
   }
 }

@@ -7,7 +7,8 @@ package paso.protocols
 import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
 import maltese.smt
-import maltese.smt.solvers.Yices2
+import maltese.smt.solvers.Solver
+
 import scala.collection.mutable
 
 case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir.Info = ir.NoInfo)
@@ -35,7 +36,7 @@ private case class DataFlowInfo(prevSteps: List[String], prevMappings: Map[Strin
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
  */
-class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends ProtocolInterpreter(protocol) {
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, solver: Solver) extends ProtocolInterpreter(protocol) {
   import ProtocolInterpreter.Loc
 
   def run(): ProtocolPaths = {
@@ -202,6 +203,5 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState) extends Protoco
     val allBits = (BigInt(1) << args.asInstanceOf[smt.BVSymbol].width) - 1
     ctx.mappedArgs.get(arg.name).contains(allBits)
   }
-  private val solver = Yices2()
   private def isFeasible(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isSat
 }

@@ -17,6 +17,7 @@ import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, Spec, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
+import maltese.smt.solvers.Yices2
 import paso.protocols.{ControlFlowFSM, Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 
 case class Elaboration() {
@@ -88,7 +89,7 @@ case class Elaboration() {
       proto.generate(clock)
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
-    val paths = new SymbolicProtocolInterpreter(normalized).run()
+    val paths = new SymbolicProtocolInterpreter(normalized, Yices2()).run()
     ProtocolGraph.encode(paths)
   }
 

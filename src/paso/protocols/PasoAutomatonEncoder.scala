@@ -6,7 +6,7 @@ package paso.protocols
 
 import paso.verification.UntimedModel
 import maltese.smt
-import maltese.smt.solvers.Yices2
+import maltese.smt.solvers.Solver
 
 import scala.collection.mutable
 
@@ -14,7 +14,7 @@ import scala.collection.mutable
  * Combines the untimed module and all its protocols into a "Paso Automaton" transition system.
  *
  * */
-class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGraph]) {
+class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver) {
   /** Identifies a transition in a particular protocol as well as the copyId of the protocol in case it needed to be duplicated */
   private case class Loc(name: String, transition: Int, copyId: Int = 0) {
     override def toString: String = s"$name$$$copyId@$transition"
@@ -177,7 +177,5 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
-  private val solver = Yices2()
-  private def isSat(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isSat
   private def isUnSat(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isUnSat
 }
