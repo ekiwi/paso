@@ -7,7 +7,9 @@ package paso.protocols
 import maltese.smt
 
 /** the first cycle is always cycles.head */
-case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition])
+case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition]) {
+  def name: String = info.name
+}
 
 /** represents a transition of the protocol:
  * - all assertions over the outputs in this transition are encoded as boolean formulas with the input constraints as guards

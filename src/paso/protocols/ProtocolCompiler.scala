@@ -18,8 +18,8 @@ object ProtocolCompiler {
     Dependency(ProtocolPrefixingPass), Dependency[GotoProgramTransform], Dependency(StepOrderPass))
   private val compiler = new TransformManager(passes)
 
-  def run(state: CircuitState, ioPrefix: String = "io_", methodPrefix: String = ""): CircuitState = {
-    val annos = Set(ProtocolPrefixAnnotation(ioPrefix, methodPrefix))
+  def run(state: CircuitState, ioPrefix: String, specName: String, methodName: String): CircuitState = {
+    val annos = Set(ProtocolPrefixAndNameAnnotation(ioPrefix, methodPrefix))
     val st = state.copy(annotations = state.annotations ++ annos)
     compiler.runTransform(st)
   }
@@ -59,7 +59,8 @@ object InlineNodesPass extends Transform with DependencyAPIMigration {
   }
 }
 
-case class ProtocolPrefixAnnotation(ioPrefix: String, methodPrefix: String) extends NoTargetAnnotation {
+case class ProtocolPrefixAndNameAnnotation(ioPrefix: String, specName: String, methodName: String) extends NoTargetAnnotation {
+  val methodPrefix =  f"$specName.${methodName}_"
   assert(ioPrefix != methodPrefix, "Prefixes need to be distinguishable")
 }
 
@@ -78,7 +79,7 @@ object ProtocolPrefixingPass extends Transform with DependencyAPIMigration {
   override def optionalPrerequisites = Seq(Dependency(InlineNodesPass))
 
   override protected def execute(state: CircuitState): CircuitState = {
-    val anno = state.annotations.collectFirst{ case a : ProtocolPrefixAnnotation => a } match {
+    val anno = state.annotations.collectFirst{ case a : ProtocolPrefixAndNameAnnotation => a } match {
       case Some(a) => a
       case None => return state
     }

@@ -17,7 +17,7 @@ import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
+import paso.protocols.{ControlFlowFSM, Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 
 case class Elaboration() {
   private var chiselElaborationTime = 0L
@@ -80,7 +80,7 @@ case class Elaboration() {
     asserts
   }
 
-  private def elaborateProtocols(protos: Seq[Protocol], implName: String, specName: String): Seq[(String, StepNode)] = {
+  private def elaborateProtocols(protos: Seq[Protocol], implName: String, specName: String): Iterable[ProtocolGraph] = {
     protos.map{ p =>
       //println(s"Protocol for: ${p.methodName}")
       val (state, _) = elaborate(() => new MultiIOModule() {
@@ -88,13 +88,9 @@ case class Elaboration() {
         override def desiredName: String = circuitName
         p.generate(clock)
       })
-      val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", methodPrefix = f"$specName.${p.methodName}_")
+      val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = p.methodName)
       val paths = new SymbolicProtocolInterpreter(normalized).run()
-      val graph = ProtocolGraph.encode(paths)
-
-      // FIXME: correctly elaborate protocols!
-
-      (p.methodName, StepNode(List(), Set(), 0, false)) // FIXME: replace empty node with actual graph!
+      ProtocolGraph.encode(paths)
     }
   }
 
@@ -161,7 +157,13 @@ case class Elaboration() {
   private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]): Spec = {
     val ut = elaborateUntimed(spec, externalRefs)
     val pt = elaborateProtocols(ut.protocols, implName, ut.model.name)
-    Spec(ut.model, pt.toMap)
+
+    // combine protocols into FSM
+    val fsm = ControlFlowFSM.encode(pt)
+
+    // TODO: make combined transition system for spec!
+
+    Spec(ut.model, Map())
   }
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])

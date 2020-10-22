@@ -18,17 +18,16 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
 
   // The Protocol Compiler should make sure that the circuit is of a valid form!
   assert(protocol.circuit.modules.size == 1)
-  protected val name = protocol.circuit.main
   protected val module = protocol.circuit.modules.head.asInstanceOf[ir.Module]
   protected val blocks = module.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block]).toArray
-  val prefixAnno = protocol.annotations.collectFirst{ case a : ProtocolPrefixAnnotation => a }
-  val ioPrefix = prefixAnno.map(_.ioPrefix).getOrElse("io_")
+  val prefixAnno = protocol.annotations.collectFirst{ case a : ProtocolPrefixAndNameAnnotation => a }.get
+  val ioPrefix = prefixAnno.ioPrefix
   private val ioPorts = module.ports.filter(_.name.startsWith(ioPrefix))
   protected val io = ioPorts.map(p => p.name -> toWidth(p.tpe)).toMap
   // RTL implementation inputs are outputs to the protocol and vice versa!
   protected val inputs = ioPorts.filter(_.direction == ir.Output).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val outputs = ioPorts.filter(_.direction == ir.Input).map(p => p.name -> toWidth(p.tpe)).toMap
-  val methodPrefix = prefixAnno.map(_.methodPrefix).getOrElse("")
+  val methodPrefix = prefixAnno.methodPrefix
   protected val args = module.ports.filter(_.name.startsWith(methodPrefix + "arg")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
   protected val steps = protocol.annotations.collect { case a : StepAnnotation =>
@@ -37,6 +36,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     a.target.ref -> a
   }.toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps) => steps }.get
+  protected val name = s"${prefixAnno.specName}.${prefixAnno.methodName}"
   protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, ioPrefix, methodPrefix, steps)
 
   /** returns the instructions of the basic block */
