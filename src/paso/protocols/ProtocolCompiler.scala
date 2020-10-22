@@ -159,7 +159,7 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
     // replace body of module with our blocks
     val mGoto = m.copy(body = ir.Block(blockArray))
 
-    println(mGoto.serialize)
+    //println(mGoto.serialize)
 
     state.copy(circuit = state.circuit.copy(modules = List(mGoto)))
   }
