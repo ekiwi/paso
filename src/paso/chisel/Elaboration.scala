@@ -14,7 +14,7 @@ import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import paso.chisel.passes._
 import paso.untimed
-import paso.verification.{Assertion, BasicAssertion, Spec, StepNode, Subspec, UntimedModel, VerificationProblem}
+import paso.verification.{Assertion, BasicAssertion, Spec, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
 import paso.protocols.{ControlFlowFSM, Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
@@ -80,18 +80,16 @@ case class Elaboration() {
     asserts
   }
 
-  private def elaborateProtocols(protos: Seq[Protocol], implName: String, specName: String): Iterable[ProtocolGraph] = {
-    protos.map{ p =>
-      //println(s"Protocol for: ${p.methodName}")
-      val (state, _) = elaborate(() => new MultiIOModule() {
-        override def circuitName: String = p.methodName + "Protocol"
-        override def desiredName: String = circuitName
-        p.generate(clock)
-      })
-      val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = p.methodName)
-      val paths = new SymbolicProtocolInterpreter(normalized).run()
-      ProtocolGraph.encode(paths)
-    }
+  private def elaborateProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
+    //println(s"Protocol for: ${p.methodName}")
+    val (state, _) = elaborate(() => new MultiIOModule() {
+      override def circuitName: String = proto.methodName + "Protocol"
+      override def desiredName: String = circuitName
+      proto.generate(clock)
+    })
+    val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
+    val paths = new SymbolicProtocolInterpreter(normalized).run()
+    ProtocolGraph.encode(paths)
   }
 
   private def elaborateImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
@@ -156,14 +154,8 @@ case class Elaboration() {
 
   private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]): Spec = {
     val ut = elaborateUntimed(spec, externalRefs)
-    val pt = elaborateProtocols(ut.protocols, implName, ut.model.name)
-
-    // combine protocols into FSM
-    val fsm = ControlFlowFSM.encode(pt)
-
-    // TODO: make combined transition system for spec!
-
-    Spec(ut.model, Map())
+    val pt = ut.protocols.map(elaborateProtocol(_, implName, ut.model.name))
+    Spec(ut.model, pt)
   }
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
