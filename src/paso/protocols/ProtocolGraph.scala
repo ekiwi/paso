@@ -49,7 +49,7 @@ case class GuardedMapping(guard: smt.BVExpr, arg: smt.BVSymbol, bits: BigInt, up
  * @param commit  list of commit signals that need to be asserted in order to advance the state of the transactional model
  * @param cycleId index of the next cycle
  */
-case class Next(guard: smt.BVExpr, fork: Boolean, commit: Seq[smt.BVSymbol], cycleId: Int)
+case class Next(guard: smt.BVExpr, fork: Boolean, commit: Seq[smt.BVSymbol], isFinal: Boolean, cycleId: Int)
 
 object ProtocolGraph {
   def encode(proto: ProtocolPaths): ProtocolGraph = {
@@ -81,7 +81,7 @@ object ProtocolGraph {
       // we commit if it is the final node and the execution has not forked yet, or if it is a fork node
       val doCommit = (nextInfo.isFinal && !p.hasForked) || nextInfo.doFork
       val commit = if(doCommit) List(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else List()
-      Next(p.cond, nextInfo.doFork, commit, stepToId(nextName))
+      Next(p.cond, nextInfo.doFork, commit, nextInfo.isFinal, stepToId(nextName))
     }}
 
     // find all I/O pins that are accessed

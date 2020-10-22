@@ -11,13 +11,13 @@ case class ControlFlowFSM()
 
 
 object ControlFlowFSM {
-  case class Loc(name: String, transitions: Int, copy: Int = 0) {
-    def instance: String = s"$name$$$copy"
-    def tran: String = s"$name@$transitions"
-    override def toString: String = s"$name$$$copy@$transitions"
+  case class Loc(name: String, transition: Int, copyId: Int = 0) {
+    def instance: String = s"$name$$$copyId"
+    def tran: String = s"$name@$transition"
+    override def toString: String = s"$name$$$copyId@$transition"
   }
   case class State(id: Int, active: Iterable[Loc], fork: Boolean)
-  case class Next(guard: smt.BVExpr, )
+  case class Next(guard: smt.BVExpr, state: Int)
 
   def encode(protocols: Iterable[ProtocolGraph]): ControlFlowFSM = {
     val transitions = protocols.flatMap(p => p.transitions.zipWithIndex.map{ case (t,i) =>
@@ -34,13 +34,12 @@ object ControlFlowFSM {
     // new locations start executing in parallel with any active protocols
     val newLocs = if(st.fork) fork(st.active, protocols) else List()
 
-    // first we check to make sure that all current transitions are compatible with each other
-    // TODO: actually check
-
     // determine all new states
-    val nextStates = newLocs.zipWithIndex.flatMap { case (newLoc, forkId) =>
-
-
+    val nextStates = newLocs.flatMap { newLoc =>
+      product(st.active.map(getNonFinalNext(_, transitions)).toSeq).map { otherLocs =>
+        val active = otherLocs :+ newLoc
+        println(active)
+      }
     }
 
 
@@ -50,11 +49,21 @@ object ControlFlowFSM {
     // TODO
   }
 
+  private def getNonFinalNext(loc: Loc, transitions: Map[String, Transition]): Seq[Loc] =
+    transitions(loc.tran).next.filterNot(_.isFinal).map(n => loc.copy(transition = n.cycleId))
+
+  private def getNext(loc: Loc, transitions: Map[String, Transition]): Seq[Loc] =
+    transitions(loc.tran).next.map(n => loc.copy(transition = n.cycleId))
+
   private def fork(active: Iterable[Loc], protocols: Iterable[ProtocolGraph]): Iterable[Loc] =
     protocols.map { p => Loc(p.name, 0, getFreeCopy(p.name, active)) }
 
   private def getFreeCopy(name: String, active: Iterable[Loc]): Int = {
-    val activeIds = active.filter(_.name == name).map(_.copy).toSet
+    val activeIds = active.filter(_.name == name).map(_.copyId).toSet
     Iterator.from(0).find(ii => !activeIds.contains(ii)).get
   }
+
+  // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
+  private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
+    xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 }

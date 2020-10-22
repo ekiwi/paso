@@ -19,7 +19,7 @@ object ProtocolCompiler {
   private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState, ioPrefix: String, specName: String, methodName: String): CircuitState = {
-    val annos = Set(ProtocolPrefixAndNameAnnotation(ioPrefix, methodPrefix))
+    val annos = Set(ProtocolPrefixAndNameAnnotation(ioPrefix, specName, methodName))
     val st = state.copy(annotations = state.annotations ++ annos)
     compiler.runTransform(st)
   }
