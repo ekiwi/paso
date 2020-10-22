@@ -50,7 +50,7 @@ case class GuardedMapping(guard: smt.BVExpr, arg: smt.BVSymbol, bits: BigInt, up
  * @param commit  list of commit signals that need to be asserted in order to advance the state of the transactional model
  * @param cycleId index of the next cycle
  */
-case class Next(guard: smt.BVExpr, fork: Boolean, commit: Seq[smt.BVSymbol], isFinal: Boolean, cycleId: Int)
+case class Next(guard: smt.BVExpr, fork: Boolean, commit: Option[smt.BVSymbol], isFinal: Boolean, cycleId: Int)
 
 object ProtocolGraph {
   def encode(proto: ProtocolPaths): ProtocolGraph = {
@@ -81,7 +81,7 @@ object ProtocolGraph {
       val nextInfo = info.steps(nextName)
       // we commit if it is the final node and the execution has not forked yet, or if it is a fork node
       val doCommit = (nextInfo.isFinal && !p.hasForked) || nextInfo.doFork
-      val commit = if(doCommit) List(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else List()
+      val commit = if(doCommit) Some(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else None
       Next(p.cond, nextInfo.doFork, commit, nextInfo.isFinal, stepToId(nextName))
     }}
 
@@ -123,7 +123,7 @@ object ProtocolGraph {
 /** helper functions to work with transitions */
 object Transition {
   /** asserts that the ioPins used by the transitions are mutually exclusive */
-  def checkCompatibility(isSat: smt.BVExpr => Boolean, transitions: Seq[Transition]): Map[String, List[GuardedAccess]] = {
+  def checkCompatibility(isSat: smt.BVExpr => Boolean, transitions: Seq[Transition]): Seq[GuardedAccess] = {
     lazy val transitionNames = transitions.map(t => s"${t.protocolName}:${t.name}")
     transitions.foldLeft(Map[String, List[GuardedAccess]]()) { case (prev, t) =>
       // check that there are no conflicting accesses
@@ -141,14 +141,8 @@ object Transition {
       }
       // merge accesses from this transition
       t.ioAccess.foldLeft(prev) { case (m, a) => m + (a.pin -> (m.getOrElse(a.pin, List()) :+ a)) }
-    }
+    }.flatMap(_._2).toSeq
   }
-
-  /** combines the transitions into one, also verifies compatibility */
-  def combineTransitions(transitions: Seq[Transition]): Transition = {
-    ???
-  }
-
 }
 
 class ProtocolConflictError(s: String) extends PassException(s)
