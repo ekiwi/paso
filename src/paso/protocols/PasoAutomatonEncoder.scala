@@ -54,7 +54,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
   case class StateGuarded(stateId: Int, pred: Guarded)
   /** collects all assumptions over the inputs, depending on the state */
-  private val inputAssumptions = mutable.ArrayBuffer[StateGuarded]()
+  private val assumptions = mutable.ArrayBuffer[StateGuarded]()
 
   /** collects all assertions depending on the state */
   private val assertions = mutable.ArrayBuffer[StateGuarded]()
@@ -70,11 +70,11 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   /** symbols that describe which protocol is starting to execute this cycle,
    *  this relies on these conditions to be mutually exclusive
    */
-  private val newTransaction = protocols.map{ p => p.name -> smt.BVSymbol(p.name + ".active", 1) }
+  private val newTransaction = protocols.map{ p => p.name -> smt.BVSymbol(p.name + ".active", 1) }.toMap
 
   def run(): smt.TransitionSystem = {
     // check that all transactions are mutually exclusive in their first transition
-    val guards = untimed.methods.map(m => m.name -> smt.BVSymbol(m.ioName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
+    val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.ioName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
     val newTransactionPred = protocols
       .map{ p => p.transitions.head.assumptions.map(_.toExpr) :+ guards(p.name) }.map(smt.BVAnd(_)).toSeq
     ensureMutuallyExclusive(newTransactionPred, protocols.map(_.info))
@@ -88,38 +88,66 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
 
     // TODO: return a case class with all parts of our encoding
+    println()
     ???
   }
 
   private def encodeState(st: State): Unit = {
     // we can add all assertions, assumptions and mappings from active transitions as they are already properly guarded
     // (the only thing missing is the state which we now add)
-    val active = st.active.map(transition)
-    inputAssumptions ++= active.flatMap(_.assumptions).map(StateGuarded(st.id, _))
-    mappings ++= active.flatMap(_.mappings).map(StateGuardedMapping(st.id, _))
-    assertions ++= active.flatMap(_.assertions).map(StateGuarded(st.id, _))
-    commits ++= active.flatMap(_.next).collect{ case Next(guard, _, Some(commit), _, _) => GuardedCommit(st.id, guard, commit) }
-
-    // find all possible combinations of (non-final) next locations for the active protocols
-    val nextActive = product(st.active.map(getNonFinalNext))
+    st.active.map(transition).foreach(addTransition(st.id, None, _))
 
     if(!st.start) {
+      // find all possible combinations of (non-final) next locations for the active protocols
+      val nextActive = product(st.active.map(getNonFinalNext))
       // if we do not start any new transactions, we just encode the nextActive states
       nextActive.foreach { na =>
         val next = na.map(_._1)
         val nextId = getStateId(active = na.map(_._2), start = next.exists(_.fork))
+        // TODO: we also need to encode final transitions!
         stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard))
       }
     } else {
       // if we do need to start new transactions, we need to chose an unused copy of each transaction's protocol
+      val guardedNewLocs = protocols.map { p =>
+        newTransaction(p.name) -> getFreeCopy(p.name, st.active)
+      }
 
+      // We need to assume that one of the guards is true.
+      // Since they are all mutually exclusive (checked earlier) if at least one is true, exactly one is true.
+      val pickOne = smt.BVOr(guardedNewLocs.map(_._1))
+      assumptions += StateGuarded(st.id, Guarded(smt.True(), pickOne))
 
+      // we add all inputs, assumptions, mappings, assertions and commits, but guarded by whether we actually start the transaction
+      guardedNewLocs.foreach { case (guard, loc) => addTransition(st.id, Some(guard), transition(loc)) }
+
+      // now we need to combine all normal next locs with each one of the possibly started locations
+      guardedNewLocs.foreach { case (newGuard, newLoc) =>
+        // find all possible combinations of (non-final) next locations for the active protocols + one new protocol
+        val nextActive = product((st.active :+ newLoc).map(getNonFinalNext))
+        nextActive.foreach { na =>
+          val next = na.map(_._1)
+          val nextId = getStateId(active = na.map(_._2), start = next.exists(_.fork))
+          // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
+          stateEdges += StateEdge(from=st.id, to=nextId, guard = next.map(_.guard) :+ newGuard)
+        }
+      }
     }
+  }
 
+  /** add all assumptions, assertions, mappings and commit to the global data structure */
+  private def addTransition(stateId: Int, guard: Option[smt.BVExpr], tran: Transition): Unit = {
+    def addGuard(e: smt.BVExpr): smt.BVExpr = guard.map(smt.BVAnd(_, e)).getOrElse(e)
+    assumptions ++= tran.assumptions.map(g => StateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
+    mappings ++= tran.mappings.map(g => StateGuardedMapping(stateId, g.copy(guard = addGuard(g.guard))))
+    assertions ++= tran.assertions.map(g => StateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
+    commits ++= tran.next.collect{ case Next(g, _, Some(commit), _, _) => GuardedCommit(stateId, addGuard(g), commit) }
+  }
 
-
-
-
+  private def getFreeCopy(name: String, active: Iterable[Loc]): Loc = {
+    val activeIds = active.filter(_.name == name).map(_.copyId).toSet
+    val copyId = Iterator.from(0).find(ii => !activeIds.contains(ii)).get
+    Loc(name, 0, copyId)
   }
 
   private def getNonFinalNext(loc: Loc): Seq[(Next, Loc)] =
