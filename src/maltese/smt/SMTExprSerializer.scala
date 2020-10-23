@@ -31,6 +31,7 @@ object SMTExprSerializer {
     case BVConcat(a, b) => s"concat(${serialize(a)}, ${serialize(b)})"
     case ArrayRead(array, index) => s"${serialize(array)}[${serialize(index)}]"
     case ArrayEqual(a, b) => s"eq(${serialize(a)}, ${serialize(b)})"
+    case BVImplies(a, b) => s"implies(${serialize(a)}, ${serialize(b)})"
     // ternary
     case BVIte(cond, tru, fals) => s"ite(${serialize(cond)}, ${serialize(tru)}, ${serialize(fals)})"
     // n-ary

@@ -37,6 +37,7 @@ object VerificationProblem {
 
     val solver = Yices2()
     val automaton = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    println(automaton.serialize)
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")

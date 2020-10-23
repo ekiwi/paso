@@ -18,7 +18,7 @@ import paso.verification.{Assertion, BasicAssertion, Spec, Subspec, UntimedModel
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.smt
 import maltese.smt.solvers.Yices2
-import paso.protocols.{ControlFlowFSM, Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 
 case class Elaboration() {
   private var chiselElaborationTime = 0L
@@ -144,8 +144,9 @@ case class Elaboration() {
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
     assert(formal.model.name == info.name)
     val methods = info.methods.map { m =>
-      val args = formal.model.inputs.filter(_.name.startsWith(m.ioName + "_arg")).map(_.name)
-      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.ioName + "_ret")).map(_.name)
+      val args = formal.model.inputs.filter(_.name.startsWith(m.ioName + "_arg")).map(s => s.name -> s.width)
+      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.ioName + "_ret"))
+        .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       m.copy(args=args, ret=ret)
     }
     val model = UntimedModel(formal.model, methods)

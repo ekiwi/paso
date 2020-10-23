@@ -16,7 +16,7 @@ import treadle.TreadleTester
 import scala.collection.mutable
 
 
-case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[String], calls: Seq[CallInfo], args: Seq[String] = List(), ret: Seq[String] = List()) {
+case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[String], calls: Seq[CallInfo], args: Seq[(String, Int)] = List(), ret: Seq[(String, Int)] = List()) {
   def fullName: String = s"$parent.$name"
   def fullIoName: String = s"$parent.$ioName"
 }

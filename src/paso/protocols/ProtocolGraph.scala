@@ -101,7 +101,7 @@ object ProtocolGraph {
     }
 
     // if not the whole arg is update at once, we need to retain some of the previous state
-    val prev = arg.rename(arg.name + ".prev")
+    val prev = arg.rename(arg.name + "$prev")
     val leftPad = if(hi == arg.width - 1) { input }
     else { smt.BVConcat(smt.BVSlice(prev, arg.width-1, hi + 1), input) }
     val rightPad = if(lo == 0) { leftPad }
