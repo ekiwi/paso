@@ -11,7 +11,7 @@ import paso.untimed._
 
 import scala.collection.mutable
 
-class UntimedModule extends MultiIOModule with MethodParent with RequireAsyncReset {
+class UntimedModule extends MultiIOModule with MethodParent with RequireSyncReset {
   override private[paso] def addMethod(m: Method): Unit = _methods.append(m)
   override def isElaborated: Boolean = _isElaborated
   private var _isElaborated = false

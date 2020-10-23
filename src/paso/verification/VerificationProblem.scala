@@ -5,6 +5,7 @@
 package paso.verification
 
 import maltese.smt
+import maltese.smt.TransitionSystem
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 
@@ -35,8 +36,12 @@ object VerificationProblem {
     // check to see if the mappings contain quantifiers
     val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
 
+    // turn the protocol and untimed model into a paso automaton
     val solver = Yices2()
     val automaton = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+
+    // for the inductive check we remove all starting states
+
     println(automaton.serialize)
 
     // check all our simplifications

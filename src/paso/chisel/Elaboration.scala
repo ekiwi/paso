@@ -134,8 +134,7 @@ case class Elaboration() {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
     // make sure that all state is initialized to its reset value or zero
-    val reset = CircuitTarget(fixedCalls.circuit.main).module(fixedCalls.circuit.main).ref("reset")
-    val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)), PresetAnnotation(reset))
+    val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos)
     val formal = compileToFormal(withAnnos, externalRefs, ll = LogLevel.Error)
@@ -150,6 +149,8 @@ case class Elaboration() {
       m.copy(args=args, ret=ret)
     }
     val model = UntimedModel(formal.model, methods)
+
+    println(model.sys.serialize)
 
     Untimed(model, spec.protos)
   }

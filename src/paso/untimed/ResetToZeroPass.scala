@@ -36,7 +36,7 @@ object ResetToZeroPass extends Transform with DependencyAPIMigration {
     m.mapStmt(onStmt(_, c.module(m.name), mems))
   }
 
-  private val resetRef = ir.Reference("reset", ir.AsyncResetType, firrtl.PortKind, firrtl.SourceFlow)
+  private val resetRef = ir.Reference("reset", ir.UIntType(ir.IntWidth(1)), firrtl.PortKind, firrtl.SourceFlow)
 
   private def onStmt(s: ir.Statement, m: ModuleTarget, mems: mutable.ArrayBuffer[ReferenceTarget]): ir.Statement = s match {
     case r : ir.DefRegister =>

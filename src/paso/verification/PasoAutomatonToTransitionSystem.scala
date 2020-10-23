@@ -45,8 +45,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // combine untimed model and paso automaton into a single transition system
     val allSignals = stateSignals ++ startSignals ++ methodInputs ++ auto.untimed.sys.signals ++ assumptions ++ assertions
     val allStates = states ++ auto.untimed.sys.states
-    // while these should always be optimized away, we keep the RANDOM... inputs for now
-    val combinedInputs = auto.untimed.sys.inputs.filter(_.name.startsWith("RANDOM"))
+    // while these should always be optimized away, we keep the RANDOM... inputs for now + always keep the reset!
+    val combinedInputs = auto.untimed.sys.inputs.filter(i => i.name.startsWith("RANDOM") || i.name == "reset")
     val combined = smt.TransitionSystem(auto.untimed.sys.name, combinedInputs, allStates.toList, allSignals.toList)
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
