@@ -49,7 +49,7 @@ object VerificationProblem {
 
     // for the base case we combine everything together with a reset
     val baseCase = List(generateInitialReset(), impl, spec, invariants)
-    val baseCaseSys = combineSystems("BaseCase", baseCase)
+    val baseCaseSys = smt.TransitionSystem.combine("BaseCase", baseCase)
     println(baseCaseSys.serialize)
 
     // check all our simplifications
@@ -105,13 +105,5 @@ object VerificationProblem {
     // TODO: better names + debug info
     val bads = exprs.zipWithIndex.map { case (e, i) => smt.Signal(s"inv_$i", smt.BVNot(e), smt.IsBad)}.toList
     smt.TransitionSystem("Invariants", List(), List(), connectGuard +: bads)
-  }
-
-  private def combineSystems(name: String, sys: List[smt.TransitionSystem]): smt.TransitionSystem = {
-    smt.TransitionSystem(name,
-      inputs = sys.flatMap(_.inputs),
-      states = sys.flatMap(_.states),
-      signals = sys.flatMap(_.signals)
-    )
   }
 }

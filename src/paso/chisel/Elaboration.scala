@@ -127,7 +127,7 @@ case class Elaboration() {
     }.toMap
 
     // namespace the transition system
-    val namespaced = NamespaceTransitionSystem.run(transitionSystem)
+    val namespaced = smt.TransitionSystem.prefixSignals(transitionSystem)
 
     FormalSys(namespaced, submoduleNames, exposed)
   }
