@@ -35,19 +35,24 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val methodInputs = connectMethodEnabled(auto.commits, auto.untimed.methods) ++
       connectMethodArgs(auto.mappings, auto.untimed.methods)
 
+    // connect untimed model to global reset
+    val reset = smt.BVSymbol("reset", 1)
+    val sysReset = s"${auto.untimed.sys.name}.reset"
+    val connectReset = List(smt.Signal(sysReset, reset))
+
     // encode assertions and assumptions
     val assertions = compactEncodePredicates(auto.assertions, signalPrefix + "bad", smt.IsBad, invert=true)
     val assumptions = compactEncodePredicates(auto.assumptions, signalPrefix + "constraint", smt.IsConstraint, invert=false)
 
     // protocol states are the previous argument trackers and the FSM state
-    val states = Seq(encodeStateEdges(state, auto.edges)) ++ prevMethodArgs(auto.untimed.methods)
+    val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
 
     // combine untimed model and paso automaton into a single transition system
-    val allSignals = stateSignals ++ startSignals ++ methodInputs ++ auto.untimed.sys.signals ++ assumptions ++ assertions
+    val allSignals = stateSignals ++ startSignals ++ connectReset ++ methodInputs ++ auto.untimed.sys.signals ++ assumptions ++ assertions
     val allStates = states ++ auto.untimed.sys.states
-    // we filter out all methods inputs
-    val isMethodInput = methodInputs.map(_.name).toSet
-    val combinedInputs = auto.untimed.sys.inputs.filterNot(i => isMethodInput(i.name))
+    // we filter out all methods inputs + reset
+    val isMethodInputOrReset = methodInputs.map(_.name).toSet + sysReset
+    val combinedInputs = auto.untimed.sys.inputs.filterNot(i => isMethodInputOrReset(i.name))
     val combined = smt.TransitionSystem(auto.untimed.sys.name, combinedInputs, allStates.toList, allSignals.toList)
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
@@ -84,14 +89,15 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     }}
   }
 
-  private def encodeStateEdges(state: smt.BVSymbol, edges: Iterable[PasoStateEdge]): smt.State = {
+  private def encodeStateEdges(state: smt.BVSymbol, edges: Iterable[PasoStateEdge], reset: smt.BVExpr): smt.State = {
     // we want to compute the next state based on the current state and predicates
     val invalidState = smt.BVLiteral((BigInt(1) << stateBits) - 1, stateBits)
     val next = edges.groupBy(_.to).foldLeft[smt.BVExpr](invalidState) { case (other, (nextState, edges)) =>
       val guard = sumOfProduct(edges.map(e => inState(e.from) +: e.guard))
       smt.BVIte(guard, smt.BVLiteral(nextState, stateBits), other)
     }
-    smt.State(state, init = Some(smt.BVLiteral(0, stateBits)), next = Some(next))
+    val withReset = smt.BVIte(reset, smt.BVLiteral(0, stateBits), next)
+    smt.State(state, init = None, next = Some(withReset))
   }
 
   /** the idea here is to group predicates that just have different guards */

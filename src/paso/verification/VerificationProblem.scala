@@ -5,7 +5,6 @@
 package paso.verification
 
 import maltese.smt
-import maltese.smt.TransitionSystem
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 
