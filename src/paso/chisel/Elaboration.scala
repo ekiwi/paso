@@ -148,9 +148,7 @@ case class Elaboration() {
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       m.copy(args=args, ret=ret)
     }
-    val model = UntimedModel(formal.model, methods)
-
-    println(model.sys.serialize)
+    val model = UntimedModel(NamespaceTransitionSystem.run(formal.model), methods)
 
     Untimed(model, spec.protos)
   }
