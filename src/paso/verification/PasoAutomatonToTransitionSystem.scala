@@ -78,7 +78,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   private def connectMethodArgs(mappings: Seq[PasoStateGuardedMapping], methods: Iterable[MethodInfo]): Iterable[smt.Signal] = {
     val argsToMappings = mappings.groupBy(_.map.arg)
     methods.flatMap { m => m.args.map { case (a, width) =>
-      val arg = smt.BVSymbol(m.parent + "." + a, width)
+      val arg = smt.BVSymbol(a, width)
       val prev = arg.rename(arg.name + "$prev")
       val value = argsToMappings.getOrElse(arg, List()).foldLeft[smt.BVExpr](prev){(other, m) =>
         smt.BVIte(simplifiedProduct(inState(m.stateId) +: m.map.guard), m.map.update, other)
@@ -89,7 +89,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
   private def prevMethodArgs(methods: Iterable[MethodInfo]): Iterable[smt.State] = {
     methods.flatMap { m => m.args.map { case (a, width) =>
-      val arg = smt.BVSymbol(m.parent + "." + a, width)
+      val arg = smt.BVSymbol(a, width)
       val prev = arg.rename(arg.name + "$prev")
       smt.State(prev, init=None, next=Some(arg))
     }}

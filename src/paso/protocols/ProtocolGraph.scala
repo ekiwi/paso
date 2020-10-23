@@ -56,7 +56,6 @@ object ProtocolGraph {
   def encode(proto: ProtocolPaths): ProtocolGraph = {
     val stepToId = proto.steps.zipWithIndex.map{ case ((name, _), i) => name -> i }.toMap
     val transitions = proto.steps.map{ case (name, paths) => encodeTransition(name, paths, stepToId, proto.info) }
-    // TODO: encode argument state updates
     ProtocolGraph(proto.info, transitions.toArray)
   }
 
