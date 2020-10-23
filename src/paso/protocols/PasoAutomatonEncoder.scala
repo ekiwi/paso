@@ -13,7 +13,8 @@ import scala.collection.mutable
 case class PasoAutomaton(
   states: Array[PasoState], edges: Seq[PasoStateEdge], assumptions: Seq[PasoStateGuarded],
   assertions: Seq[PasoStateGuarded], mappings: Seq[PasoStateGuardedMapping],
-  commits: Seq[PasoGuardedCommit], untimed: UntimedModel
+  commits: Seq[PasoGuardedCommit], transactionStartSignals: Seq[(String, smt.BVExpr)],
+  untimed: UntimedModel
 )
 case class PasoState(id: Int, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
@@ -76,7 +77,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   /** symbols that describe which protocol is starting to execute this cycle,
    *  this relies on these conditions to be mutually exclusive
    */
-  private val newTransaction = protocols.map{ p => p.name -> smt.BVSymbol(p.name + ".active", 1) }.toMap
+  private val newTransaction = protocols.map{ p => p.name -> smt.BVSymbol(p.info.methodPrefix + "active", 1) }.toMap
 
   def run(): PasoAutomaton = {
     // check that all transactions are mutually exclusive in their first transition
@@ -94,7 +95,9 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     }
 
     PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.toString)).sortBy(_.id), stateEdges.toSeq,
-      assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq, untimed)
+      assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
+      newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
+      untimed)
   }
 
   private def encodeState(st: State): Unit = {

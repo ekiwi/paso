@@ -28,6 +28,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       smt.Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
     } :+ smt.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false))
 
+    // turn transaction start signals into signals
+    val startSignals = auto.transactionStartSignals.map{ case (name, e) => smt.Signal(name, e) }
 
     // connect method enabled inputs and arguments
     val methodInputs = connectMethodEnabled(auto.commits, auto.untimed.methods) ++
@@ -41,7 +43,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val states = Seq(encodeStateEdges(state, auto.edges)) ++ prevMethodArgs(auto.untimed.methods)
 
     // combine untimed model and paso automaton into a single transition system
-    val allSignals = stateSignals ++ methodInputs ++ auto.untimed.sys.signals ++ assumptions ++ assertions
+    val allSignals = stateSignals ++ startSignals ++ methodInputs ++ auto.untimed.sys.signals ++ assumptions ++ assertions
     val allStates = states ++ auto.untimed.sys.states
     // while these should always be optimized away, we keep the RANDOM... inputs for now
     val combinedInputs = auto.untimed.sys.inputs.filter(_.name.startsWith("RANDOM"))
