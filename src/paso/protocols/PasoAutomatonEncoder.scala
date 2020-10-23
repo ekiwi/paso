@@ -16,7 +16,7 @@ case class PasoAutomaton(
   commits: Seq[PasoGuardedCommit], transactionStartSignals: Seq[(String, smt.BVExpr)],
   untimed: UntimedModel
 )
-case class PasoState(id: Int, info: String)
+case class PasoState(id: Int, isStart: Boolean, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
 case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr])
 case class PasoStateGuarded(stateId: Int, pred: Guarded)
@@ -94,7 +94,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       encodeState(statesToBeEncoded.pop())
     }
 
-    PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.toString)).sortBy(_.id), stateEdges.toSeq,
+    PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
       assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
       newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
       untimed)

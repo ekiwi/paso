@@ -126,7 +126,10 @@ case class Elaboration() {
       s"$circuitName.$name" -> (portName, tpe)
     }.toMap
 
-    FormalSys(transitionSystem, submoduleNames, exposed)
+    // namespace the transition system
+    val namespaced = NamespaceTransitionSystem.run(transitionSystem)
+
+    FormalSys(namespaced, submoduleNames, exposed)
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol])
@@ -143,12 +146,12 @@ case class Elaboration() {
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
     assert(formal.model.name == info.name)
     val methods = info.methods.map { m =>
-      val args = formal.model.inputs.filter(_.name.startsWith(m.ioName + "_arg")).map(s => s.name -> s.width)
-      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.ioName + "_ret"))
+      val args = formal.model.inputs.filter(_.name.startsWith(m.fullIoName + "_arg")).map(s => s.name -> s.width)
+      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       m.copy(args=args, ret=ret)
     }
-    val model = UntimedModel(NamespaceTransitionSystem.run(formal.model), methods)
+    val model = UntimedModel(formal.model, methods)
 
     Untimed(model, spec.protos)
   }
