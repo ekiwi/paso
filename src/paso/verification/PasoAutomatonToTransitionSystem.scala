@@ -110,7 +110,40 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     case o => smt.BVNot(o)
   }
 
-  // TODO: actually optimize
-  private def simplifiedProduct(e: Iterable[smt.BVExpr]): smt.BVExpr = smt.BVAnd(e)
-  private def sumOfProduct(e: Iterable[Iterable[smt.BVExpr]]): smt.BVExpr = smt.BVOr(e.map(simplifiedProduct(_)))
+  /** automatically simplifies */
+  private def simplifiedProduct(e: Iterable[smt.BVExpr]): smt.BVExpr = {
+    val simplified = filterProductTerms(e)
+    if(simplified.isEmpty) smt.True() else smt.BVAnd(simplified)
+  }
+  private def filterProductTerms(e: Iterable[smt.BVExpr]): Iterable[smt.BVExpr] = {
+    val nonTriviallyTrue = e.filterNot(_ == smt.True())
+    val simplifiedTerms = nonTriviallyTrue.map(smt.SMTSimplifier.simplify).map(_.asInstanceOf[smt.BVExpr])
+    val uniqueTerms = simplifiedTerms.groupBy(_.toString).map(_._2.head)
+    uniqueTerms
+  }
+  private def sumOfProduct(e: Iterable[Iterable[smt.BVExpr]]): smt.BVExpr = {
+    val products = e.map(filterProductTerms).filterNot(_.isEmpty).toArray
+
+    // if terms are used more than once across products, we use distributivity to simplify
+    val usageCounts = countTerms(products)
+    val extractList = usageCounts.last._2
+    if(extractList.size > 1) {
+      val extractTerms = usageCounts.filter(_._2 == extractList).map(_._1)
+      val otherProducts = (products.indices.toSet -- extractList.toSet).map(products)
+      val remainingProducts = extractList.map(products).map(p => p.filterNot(extractTerms.contains(_)))
+
+      val subProduct = extractTerms :+ sumOfProduct(remainingProducts)
+      sumOfProduct(List(subProduct) ++ otherProducts)
+    } else {
+      smt.BVOr(products.map(smt.BVAnd(_)))
+    }
+  }
+  private def countTerms(e: Iterable[Iterable[smt.BVExpr]]): Seq[(smt.BVExpr, List[Int])] = {
+    val m = e.zipWithIndex.foldLeft(Map[smt.BVExpr, List[Int]]()){ case (map, (terms, i)) =>
+      map ++ terms.map { t =>
+        t -> (i +: map.getOrElse(t, List()))
+      }
+    }
+    m.toSeq.sortBy(_._2.length)
+  }
 }
