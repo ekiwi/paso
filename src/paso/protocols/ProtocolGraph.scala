@@ -110,8 +110,10 @@ object ProtocolGraph {
     GuardedMapping(e.guard, arg, BitMapping.toMask(hi, lo), rightPad)
   }
 
-  private def findIOGuardUses(ioPrefix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
-    findIOUses(ioPrefix, Guarded(List(), smt.BVOr(p.map(x => smt.BVAnd(x.cond)))))
+  private def findIOGuardUses(ioPrefix: String, ps: Iterable[PathCtx]): Iterable[GuardedAccess] = {
+    val allGuards = ps.flatMap(_.cond).map(Guarded(List(), _))
+    findIOUses(ioPrefix, allGuards)
+  }
   private def findIOUses(ioPrefix: String, g: Iterable[Guarded]): Iterable[GuardedAccess] =
     g.flatMap(findIOUses(ioPrefix, _))
   private def findIOUses(ioPrefix: String, g: Guarded): Iterable[GuardedAccess] =
