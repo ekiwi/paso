@@ -16,7 +16,10 @@ import treadle.TreadleTester
 import scala.collection.mutable
 
 
-case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[String], calls: Seq[CallInfo], args: Seq[String] = List(), ret: Seq[String] = List())
+case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[String], calls: Seq[CallInfo], args: Seq[String] = List(), ret: Seq[String] = List()) {
+  def fullName: String = s"$parent.$name"
+  def fullIoName: String = s"$parent.$ioName"
+}
 case class CallInfo(parent: String, method: String, ioName: String, info: ir.Info)
 case class UntimedModuleInfo(name: String, state: Seq[ir.Reference], methods: Seq[MethodInfo], submodules: Seq[UntimedModuleInfo]) {
   val hasState: Boolean = state.nonEmpty || (submodules.count(_.hasState) > 0)

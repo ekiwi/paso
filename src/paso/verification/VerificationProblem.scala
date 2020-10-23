@@ -51,6 +51,6 @@ object VerificationProblem {
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): smt.TransitionSystem = {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
-    PasoAutomatonToTransitionSystem(automaton)
+    new PasoAutomatonToTransitionSystem(automaton).run()
   }
 }
