@@ -58,7 +58,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     methods.map { m =>
       val signalName = m.fullIoName + "_enabled"
       val commits = methodToCommits.getOrElse(signalName, List())
-      val en = if(commits.isEmpty) smt.False() else smt.BVOr(commits.map(c => smt.BVAnd(inState(c.stateId), c.guard)))
+      val en = if(commits.isEmpty) smt.False() else smt.BVOr(commits.map(c => smt.BVAnd(inState(c.stateId) +: c.guard)))
       smt.Signal(signalName, en)
     }
   }
@@ -69,7 +69,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       val arg = smt.BVSymbol(m.parent + "." + a, width)
       val prev = arg.rename(arg.name + "$prev")
       val value = argsToMappings.getOrElse(arg, List()).foldLeft[smt.BVExpr](prev){(other, m) =>
-        smt.BVIte(smt.BVAnd(inState(m.stateId), m.map.guard), m.map.update, other)
+        smt.BVIte(smt.BVAnd(inState(m.stateId) +: m.map.guard), m.map.update, other)
       }
       smt.Signal(arg.name, value)
     }}
@@ -87,7 +87,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // we want to compute the next state based on the current state and predicates
     val invalidState = smt.BVLiteral((BigInt(1) << stateBits) - 1, stateBits)
     val next = edges.groupBy(_.to).foldLeft[smt.BVExpr](invalidState) { case (other, (nextState, edges)) =>
-      val guard = smt.BVOr(edges.map(e => smt.BVAnd(inState(e.from), e.guard)))
+      val guard = smt.BVOr(edges.map(e => smt.BVAnd(inState(e.from) +: e.guard)))
       smt.BVIte(guard, smt.BVLiteral(nextState, stateBits), other)
     }
     smt.State(state, init = Some(smt.BVLiteral(0, stateBits)), next = Some(next))
@@ -98,7 +98,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val notTriviallyTrue = preds.filterNot(_.pred.pred == smt.True())
     val groups = notTriviallyTrue.groupBy(_.pred.pred.toString)
     groups.zipWithIndex.map { case ((_, ps), i) =>
-      val guard = smt.BVOr(ps.map(p => smt.BVAnd(inState(p.stateId), p.pred.guard)))
+      val guard = smt.BVOr(ps.map(p => smt.BVAnd(inState(p.stateId) +: p.pred.guard)))
       val pred = ps.head.pred.pred
       val expr = smt.BVImplies(guard, pred)
       smt.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)

@@ -36,13 +36,13 @@ case class Transition(
   mappings: Seq[GuardedMapping], ioAccess: Seq[GuardedAccess], next: Seq[Next]
 )
 
-case class GuardedAccess(guard: smt.BVExpr, pin: String, bits: BigInt)
+case class GuardedAccess(guard: List[smt.BVExpr], pin: String, bits: BigInt)
 
-case class Guarded(guard: smt.BVExpr, pred: smt.BVExpr) {
-  def toExpr: smt.BVExpr = if(guard == smt.True()) { pred } else { smt.BVImplies(guard, pred) }
+case class Guarded(guard: List[smt.BVExpr], pred: smt.BVExpr) {
+  def toExpr: smt.BVExpr = if(guard.isEmpty) { pred } else { smt.BVImplies(smt.BVAnd(guard), pred) }
 }
 
-case class GuardedMapping(guard: smt.BVExpr, arg: smt.BVSymbol, bits: BigInt, update: smt.BVExpr)
+case class GuardedMapping(guard: List[smt.BVExpr], arg: smt.BVSymbol, bits: BigInt, update: smt.BVExpr)
 
 /**
  * @param guard   if true, we go to cycleId
@@ -50,7 +50,7 @@ case class GuardedMapping(guard: smt.BVExpr, arg: smt.BVSymbol, bits: BigInt, up
  * @param commit  list of commit signals that need to be asserted in order to advance the state of the transactional model
  * @param cycleId index of the next cycle
  */
-case class Next(guard: smt.BVExpr, fork: Boolean, commit: Option[smt.BVSymbol], isFinal: Boolean, cycleId: Int)
+case class Next(guard: List[smt.BVExpr], fork: Boolean, commit: Option[smt.BVSymbol], isFinal: Boolean, cycleId: Int)
 
 object ProtocolGraph {
   def encode(proto: ProtocolPaths): ProtocolGraph = {
@@ -111,7 +111,7 @@ object ProtocolGraph {
   }
 
   private def findIOGuardUses(ioPrefix: String, p: Iterable[PathCtx]): Iterable[GuardedAccess] =
-    findIOUses(ioPrefix, Guarded(smt.True(), smt.BVOr(p.map(_.cond))))
+    findIOUses(ioPrefix, Guarded(List(), smt.BVOr(p.map(x => smt.BVAnd(x.cond)))))
   private def findIOUses(ioPrefix: String, g: Iterable[Guarded]): Iterable[GuardedAccess] =
     g.flatMap(findIOUses(ioPrefix, _))
   private def findIOUses(ioPrefix: String, g: Guarded): Iterable[GuardedAccess] =
@@ -130,7 +130,7 @@ object Transition {
       t.ioAccess.foreach { access =>
         val potentialConflicts = prev.getOrElse(access.pin, List()).filter(p => (p.bits & access.bits) != 0)
         potentialConflicts.foreach { conflict =>
-          val mayConflict = isSat(smt.BVAnd(conflict.guard, access.guard))
+          val mayConflict = isSat(smt.BVAnd(conflict.guard ++ access.guard))
           if(mayConflict) {
             val commonBits = access.bits & conflict.bits
             val msg = f"There may be a conflicting access to ${access.pin} bits ${commonBits.toString(2)}" +

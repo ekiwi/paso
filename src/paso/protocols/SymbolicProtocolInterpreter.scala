@@ -15,7 +15,7 @@ case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir
 case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
 
 case class PathCtx(
-  cond: smt.BVExpr, prevMappings: Map[String, BigInt], hasForked: Boolean,
+  cond: List[smt.BVExpr], prevMappings: Map[String, BigInt], hasForked: Boolean,
   asserts: List[smt.BVExpr],
   inputValues: Map[String, InputValue], outputsRead: Map[String, OutputRead],
   next: Option[String]
@@ -51,7 +51,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, solver: Solver)
     val stepsToPaths = nonFinalSteps.map { case (stepName, blockId, stmtId) =>
       val map = incomingFlow(stepName).prevMappings
       val forked = incomingFlow(stepName).hasForked || steps.get(stepName).exists(_.doFork)
-      val ctx = PathCtx(smt.True(), map, forked, List(), Map(), Map(), None)
+      val ctx = PathCtx(List(), map, forked, List(), Map(), Map(), None)
       val paths = executeFrom(ctx, Loc(blockId, stmtId))
       // update mappings / forkInfo for all following paths
       paths.filter(p => p.next.isDefined && !p.next.contains("start")).foreach { p =>
@@ -157,14 +157,14 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, solver: Solver)
       //println(f"IF $cond GOTO ${g.conseq} ELSE ${g.alt}")
 
       // execute true path
-      val truPath = simplify(smt.BVAnd(c1.cond, cond))
-      val truCtxs = if(isFeasible(truPath)) {
+      val truPath = c1.cond :+ cond
+      val truCtxs = if(isFeasible(smt.BVAnd(truPath))) {
         executeFrom(c1.copy(cond = truPath), Loc(g.conseq, 0))
       } else { List() }
 
       // execute false path
-      val falsPath = simplify(smt.BVAnd(c1.cond, smt.BVNot(cond)))
-      val falsCtxs = if(isFeasible(falsPath)) {
+      val falsPath = c1.cond :+ smt.BVNot(cond)
+      val falsCtxs = if(isFeasible(smt.BVAnd(falsPath))) {
         executeFrom(c1.copy(cond = falsPath), Loc(g.alt, 0))
       } else { List() }
 

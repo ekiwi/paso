@@ -18,10 +18,10 @@ case class PasoAutomaton(
 )
 case class PasoState(id: Int, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
-case class PasoStateEdge(from: Int, to: Int, guard: smt.BVExpr)
+case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr])
 case class PasoStateGuarded(stateId: Int, pred: Guarded)
 case class PasoStateGuardedMapping(stateId: Int, map: GuardedMapping)
-case class PasoGuardedCommit(stateId: Int, guard: smt.BVExpr, commit: smt.BVSymbol)
+case class PasoGuardedCommit(stateId: Int, guard: List[smt.BVExpr], commit: smt.BVSymbol)
 
 /**
  * Combines the untimed module and all its protocols into a "Paso Automaton" transition system.
@@ -103,7 +103,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   private def encodeState(st: State): Unit = {
     // we can add all assertions, assumptions and mappings from active transitions as they are already properly guarded
     // (the only thing missing is the state which we now add)
-    st.active.map(transition).foreach(addTransition(st.id, None, _))
+    st.active.map(transition).foreach(addTransition(st.id, List(), _))
 
     if(!st.start) {
       // find all possible combinations of next locations for the active protocols
@@ -113,7 +113,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
         val next = na.map(_._1)
         val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
         val nextId = getStateId(active = active, start = next.exists(_.fork))
-        stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = smt.BVAnd(next.map(_.guard)))
+        stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = next.flatMap(_.guard).toList)
       }
     } else {
       // if we do need to start new transactions, we need to chose an unused copy of each transaction's protocol
@@ -124,10 +124,10 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       // We need to assume that one of the guards is true.
       // Since they are all mutually exclusive (checked earlier) if at least one is true, exactly one is true.
       val pickOne = smt.BVOr(guardedNewLocs.map(_._1))
-      assumptions += PasoStateGuarded(st.id, Guarded(smt.True(), pickOne))
+      assumptions += PasoStateGuarded(st.id, Guarded(List(), pickOne))
 
       // we add all inputs, assumptions, mappings, assertions and commits, but guarded by whether we actually start the transaction
-      guardedNewLocs.foreach { case (guard, loc) => addTransition(st.id, Some(guard), transition(loc)) }
+      guardedNewLocs.foreach { case (guard, loc) => addTransition(st.id, List(guard), transition(loc)) }
 
       // now we need to combine all normal next locs with each one of the possibly started locations
       guardedNewLocs.foreach { case (newGuard, newLoc) =>
@@ -138,15 +138,15 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
           val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
           val nextId = getStateId(active = active, start = next.exists(_.fork))
           // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
-          stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = smt.BVAnd(next.map(_.guard) :+ newGuard))
+          stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = (next.flatMap(_.guard) :+ newGuard).toList)
         }
       }
     }
   }
 
   /** add all assumptions, assertions, mappings and commit to the global data structure */
-  private def addTransition(stateId: Int, guard: Option[smt.BVExpr], tran: Transition): Unit = {
-    def addGuard(e: smt.BVExpr): smt.BVExpr = guard.map(smt.BVAnd(_, e)).getOrElse(e)
+  private def addTransition(stateId: Int, guard: List[smt.BVExpr], tran: Transition): Unit = {
+    def addGuard(e: List[smt.BVExpr]): List[smt.BVExpr] = e ++ guard
     assumptions ++= tran.assumptions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
     mappings ++= tran.mappings.map(g => PasoStateGuardedMapping(stateId, g.copy(guard = addGuard(g.guard))))
     assertions ++= tran.assertions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
