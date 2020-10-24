@@ -9,6 +9,7 @@ import maltese.mc.{IsBad, Signal, State, TransitionSystem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
+import paso.untimed
 
 trait Assertion { def toExpr: smt.BVExpr }
 case class BasicAssertion(guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
@@ -27,6 +28,10 @@ case class ForAllAssertion(variable: smt.BVSymbol, start: Int, end: Int, guard: 
   }
 }
 
+case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
+  def name: String = sys.name
+  def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
+}
 case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
 case class Subspec(instance: String, ioSymbols: Seq[smt.BVSymbol], spec: Spec, binding: Option[String])
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
