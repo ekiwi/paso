@@ -89,12 +89,14 @@ object VerificationProblem {
     val counterNext = smt.BVIte(smt.BVEqual(counter, counterMax), counter, smt.BVOp(smt.Op.Add, counter, smt.BVLiteral(1, counterBits)))
     val state = State(counter, init=Some(smt.BVLiteral(0, counterBits)), next=Some(counterNext))
     val reset = Signal("reset", smt.BVComparison(smt.Compare.GreaterEqual, counter, smt.BVLiteral(length, counterBits), signed = false))
-    mc.TransitionSystem("reset", List(), List(state), List(reset))
+    val notReset = Signal("notReset", smt.BVNot(smt.BVSymbol("reset", 1)))
+    mc.TransitionSystem("reset", List(), List(state), List(reset, notReset))
   }
 
   private def generateDisabledReset(): TransitionSystem = {
     val reset = mc.Signal("reset", smt.BVLiteral(0, 1))
-    mc.TransitionSystem("reset", List(), List(), List(reset))
+    val notReset = mc.Signal("notReset", smt.BVLiteral(1, 1))
+    mc.TransitionSystem("reset", List(), List(), List(reset, notReset))
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))

@@ -47,8 +47,9 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val connectReset = List(mc.Signal(sysReset, reset))
 
     // encode assertions and assumptions
-    val assertions = compactEncodePredicates(auto.assertions, signalPrefix + "bad", IsBad, invert=true)
-    val assumptions = compactEncodePredicates(auto.assumptions, signalPrefix + "constraint", IsConstraint, invert=false)
+    val notReset = smt.BVSymbol("notReset", 1)
+    val assertions = compactEncodePredicates(auto.assertions, notReset, signalPrefix + "bad", IsBad, invert=true)
+    val assumptions = compactEncodePredicates(auto.assumptions, notReset, signalPrefix + "constraint", IsConstraint, invert=false)
 
     // protocol states are the previous argument trackers and the FSM state
     val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
@@ -108,13 +109,13 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   }
 
   /** the idea here is to group predicates that just have different guards */
-  private def compactEncodePredicates(preds: Iterable[PasoStateGuarded], prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
+  private def compactEncodePredicates(preds: Iterable[PasoStateGuarded], notReset: smt.BVExpr, prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
     val notTriviallyTrue = preds.filterNot(_.pred.pred == smt.True())
     val groups = notTriviallyTrue.groupBy(_.pred.pred.toString)
     groups.zipWithIndex.map { case ((_, ps), i) =>
       val guard =  sumOfProduct(ps.map(p => inState(p.stateId) +: p.pred.guard))
       val pred = ps.head.pred.pred
-      val expr = smt.BVImplies(guard, pred)
+      val expr = smt.BVImplies(smt.BVAnd(notReset, guard), pred)
       mc.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)
     }
   }
