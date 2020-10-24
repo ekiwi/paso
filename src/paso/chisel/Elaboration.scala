@@ -53,7 +53,7 @@ case class Elaboration() {
   }
 
 
-  private def compileInvariant(inv: ChiselInvariants, exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
+  private def compileInvariant(inv: ChiselInvariants, exposedSignals: Map[String, (String, ir.Type)]): mc.TransitionSystem = {
     // convert refs to exposed signals
     val annos = inv.externalRefs.map{ r =>
       val (_, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
@@ -61,7 +61,7 @@ case class Elaboration() {
     } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)))
 
     // convert invariant module to SMT
-    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
+    val (transitionSystem, _) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
 
     // rename cross module references
     // e.g. RandomLatency_running -> RandomLatency.signals_running
@@ -69,12 +69,9 @@ case class Elaboration() {
       val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       r.signal.circuit -> s"${r.signal.circuit}.$portName"
     }.toSet.toList
-    // TODO: propagate prefix renames to namespacing....
+    // TODO: connect inputs using the external signal renames
 
-
-    println(transitionSystem.serialize)
-    throw new NotImplementedError("TODO: propagate invariants transition system")
-    Seq()
+    mc.TransitionSystem.prefixSignals(transitionSystem)
   }
 
   private def elaborateProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
@@ -183,7 +180,6 @@ case class Elaboration() {
       ()
     }
     val (state, externalRefs) = elaborateObserver(List(impl.instance, spec.untimed), "Invariants", genAll)
-    println(state.circuit.serialize)
     ChiselInvariants(state, externalRefs)
   }
 
@@ -223,11 +219,9 @@ case class Elaboration() {
 
     // elaborate the proof collateral
     val inv = compileInvariant(invChisel, implementation.exposedSignals)
-    val mappings = Seq()
-    val invariants = Seq()
     val endBinding = System.nanoTime()
 
-    if(true) {
+    if(false) { // TODO: these measurements are no longer accurate!
       val total = endBinding - start
       val dImpl = endImplementation - start
       val dSpec = endSpec - endImplementation
@@ -244,13 +238,7 @@ case class Elaboration() {
 
 
     // combine into verification problem
-    val prob = VerificationProblem(
-      impl = implementation.model,
-      spec = spec,
-      subspecs = subspecs,
-      invariances = invariants,
-      mapping = mappings
-    )
+    val prob = VerificationProblem(implementation.model, spec, subspecs, inv)
 
     prob
   }

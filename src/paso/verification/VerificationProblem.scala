@@ -34,14 +34,13 @@ case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInf
 }
 case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
 case class Subspec(instance: String, ioSymbols: Seq[smt.BVSymbol], spec: Spec, binding: Option[String])
-case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
-                               invariances: Seq[Assertion], mapping: Seq[Assertion])
+case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec], invariants: TransitionSystem)
 
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
     // check to see if the mappings contain quantifiers
-    val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
-    assert(quantifierFree, "TODO: expand quantifiers when needed (for btor2 and yices)")
+    //val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
+    //assert(quantifierFree, "TODO: expand quantifiers when needed (for btor2 and yices)")
     val checker =  new mc.BtormcModelChecker()
 
     // turn the protocol and untimed model into a paso automaton
@@ -53,7 +52,7 @@ object VerificationProblem {
 
     // encode invariants
     val startState = smt.BVSymbol(spec.name + ".automaton.startState", 1)
-    val invariants = encodeInvariants(startState, problem.invariances ++ problem.mapping)
+    val invariants = encodeInvariants(startState, problem.invariants)
 
     // for the base case we combine everything together with a reset
     val baseCase = List(generateInitialReset(), impl, spec, invariants)
@@ -68,9 +67,6 @@ object VerificationProblem {
   }
 
   def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
-    assert(problem.mapping.isEmpty)
-    assert(problem.invariances.isEmpty)
-
     throw new NotImplementedError("TODO: implement BMC")
   }
 
@@ -95,26 +91,25 @@ object VerificationProblem {
     mc.TransitionSystem("reset", List(), List(), List(reset))
   }
 
-  private def connectToReset(sys: TransitionSystem): TransitionSystem = {
-    val resetName = sys.name + ".reset"
-    assert(sys.inputs.exists(_.name == resetName), s"Failed to find the reset port of ${sys.name}")
-    val connectReset = mc.Signal(resetName, smt.BVSymbol("reset", 1))
-    // filter out reset input
-    val inputs = sys.inputs.filterNot(_.name == resetName)
-    val signals = connectReset +: sys.signals
-    sys.copy(inputs=inputs, signals=signals)
+  private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))
+
+  private def encodeInvariants(start: smt.BVExpr, invariants: TransitionSystem): TransitionSystem = {
+    val sys = connect(invariants, Map(
+      invariants.name + ".reset" -> reset,
+      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), start)
+    ))
+    assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
+    sys
   }
 
-  private def encodeInvariants(start: smt.BVExpr, invariants: Iterable[Assertion]): TransitionSystem = {
-    val guard = smt.BVSymbol("inv", 1)
-    val connectGuard = mc.Signal(guard.name, smt.BVAnd(smt.BVNot(smt.BVSymbol("reset", 1)), start))
-    val exprs = invariants.map {
-      case BasicAssertion(smt.True(), pred) => smt.BVImplies(guard, pred)
-      case BasicAssertion(local, pred) => smt.BVImplies(smt.BVAnd(guard, local), pred)
-      case f : ForAllAssertion => smt.BVImplies(guard, f.toExpr)
-    }
-    // TODO: better names + debug info
-    val bads = exprs.zipWithIndex.map { case (e, i) => mc.Signal(s"inv_$i", smt.BVNot(e), IsBad)}.toList
-    mc.TransitionSystem("Invariants", List(), List(), connectGuard +: bads)
+  private def connect(sys: TransitionSystem, cons: Map[String, smt.BVExpr]): TransitionSystem = {
+    // ensure that the ports exists
+    cons.foreach(i => assert(sys.inputs.exists(_.name == i._1), s"Cannot connect to non-existing port ${i._1}"))
+    // filter out inputs
+    val inputs = sys.inputs.filterNot(i => cons.contains(i.name))
+    val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
+    sys.copy(inputs = inputs, signals = connections ++ sys.signals)
   }
+
+  private val reset = smt.BVSymbol("reset", 1)
 }
