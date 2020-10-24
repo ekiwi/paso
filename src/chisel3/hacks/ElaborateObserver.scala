@@ -51,9 +51,7 @@ class FixNamings(val topLevelModules: Set[String]) {
     val new_ref: Arg = node.id.getRef match {
       case a: Slot => onArg(a)
       case a: Index => onArg(a)
-      case m: ModuleIO =>
-        println("WARN: treatment of module IO might be broken...")
-        Ref(s"${m.mod.getRef.name}.${m.name}")
+      case m: ModuleIO => m
       case r: Ref =>
         val path = node.id.pathName.split('.')
         val isCrossModuleRef = topLevelModules.contains(path.head)
