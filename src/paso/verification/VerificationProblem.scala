@@ -58,9 +58,12 @@ object VerificationProblem {
     val baseCase = List(generateInitialReset(), impl, spec, invariants)
     val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
 
+    // debug base case
+    val debugBaseCase = observe(baseCaseSys, List(smt.BVSymbol("reset", 1), smt.BVSymbol("notReset", 1)))
+
     // generate base case btor
-    println(baseCaseSys.serialize)
-    val res = checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
+    println(debugBaseCase.serialize)
+    val res = checker.check(debugBaseCase, kMax = 1, fileName = Some("basecase.btor2"))
     res match {
       case ModelCheckFail(witness) =>
         println("Base case fails!")
@@ -117,6 +120,12 @@ object VerificationProblem {
     val inputs = sys.inputs.filterNot(i => cons.contains(i.name))
     val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
     sys.copy(inputs = inputs, signals = connections ++ sys.signals)
+  }
+
+  private def observe(sys: TransitionSystem, signals: Iterable[smt.BVSymbol]): TransitionSystem = {
+    val oState = signals.map(s => mc.State(s.rename(s.name + "$o"), None, None))
+    val constraints = signals.map(s => mc.Signal(s.name + "$eq", smt.BVEqual(s, s.rename(s.name + "$o"))))
+    sys.copy(states = sys.states ++ oState, signals = sys.signals ++ constraints)
   }
 
   private val reset = smt.BVSymbol("reset", 1)
