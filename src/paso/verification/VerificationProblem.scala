@@ -51,6 +51,9 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCase = List(generateInitialReset(), impl, spec, invariants)
     val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
+
+    // generate base case btor
+
     println(baseCaseSys.serialize)
 
     // check all our simplifications

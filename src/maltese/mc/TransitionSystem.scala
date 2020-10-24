@@ -64,4 +64,9 @@ object TransitionSystem {
       signals = sys.flatMap(_.signals)
     )
   }
+
+  /** combines all properties into one */
+  def combineProperties(sys: TransitionSystem): TransitionSystem = {
+    ???
+  }
 }
