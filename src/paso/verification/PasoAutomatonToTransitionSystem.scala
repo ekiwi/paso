@@ -5,7 +5,8 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.smt
+import maltese.mc.{IsBad, IsConstraint, Signal, SignalLabel, State, TransitionSystem}
+import maltese.{mc, smt}
 import paso.protocols._
 import paso.untimed.MethodInfo
 
@@ -18,23 +19,23 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   private val inState = auto.states.map(s => smt.BVSymbol(signalPrefix + s"state_is_${s.id}", 1)).toArray
   private val invalidState = smt.BVSymbol(signalPrefix + "state_is_invalid", 1)
 
-  def run(): smt.TransitionSystem = {
+  def run(): TransitionSystem = {
     // TODO: deal with multiple copies of the same protocol/transaction
 
     // connect inState signals
     val state = smt.BVSymbol(signalPrefix + "state", stateBits)
     val maxState = smt.BVLiteral(auto.states.length - 1, stateBits)
     val stateSignals = inState.zip(auto.states).map { case (sym, st) =>
-      smt.Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
-    } :+ smt.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false))
+      Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
+    } :+ mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false))
 
     // turn transaction start signals into signals
-    val startSignals = auto.transactionStartSignals.map{ case (name, e) => smt.Signal(name, e) }
+    val startSignals = auto.transactionStartSignals.map{ case (name, e) => mc.Signal(name, e) }
 
     // since we assume that everytime a transactions _can_ be started, a transaction _will_ be started, we just need
     // to check which state we are in
     val startTransactionStates = auto.states.filter(_.isStart).map(_.id).map(inState)
-    val startAnyTransaction = List(smt.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates)))
+    val startAnyTransaction = List(mc.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates)))
 
     // connect method enabled inputs and arguments
     val methodInputs = connectMethodEnabled(auto.commits, auto.untimed.methods) ++
@@ -43,11 +44,11 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // connect untimed model to global reset
     val reset = smt.BVSymbol("reset", 1)
     val sysReset = s"${auto.untimed.sys.name}.reset"
-    val connectReset = List(smt.Signal(sysReset, reset))
+    val connectReset = List(mc.Signal(sysReset, reset))
 
     // encode assertions and assumptions
-    val assertions = compactEncodePredicates(auto.assertions, signalPrefix + "bad", smt.IsBad, invert=true)
-    val assumptions = compactEncodePredicates(auto.assumptions, signalPrefix + "constraint", smt.IsConstraint, invert=false)
+    val assertions = compactEncodePredicates(auto.assertions, signalPrefix + "bad", IsBad, invert=true)
+    val assumptions = compactEncodePredicates(auto.assumptions, signalPrefix + "constraint", IsConstraint, invert=false)
 
     // protocol states are the previous argument trackers and the FSM state
     val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
@@ -59,23 +60,23 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // we filter out all methods inputs + reset
     val isMethodInputOrReset = methodInputs.map(_.name).toSet + sysReset
     val combinedInputs = auto.untimed.sys.inputs.filterNot(i => isMethodInputOrReset(i.name))
-    val combined = smt.TransitionSystem(auto.untimed.sys.name, combinedInputs, allStates.toList, allSignals.toList)
+    val combined = mc.TransitionSystem(auto.untimed.sys.name, combinedInputs, allStates.toList, allSignals.toList)
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
     TopologicalSort.run(combined)
   }
 
-  private def connectMethodEnabled(commits: Seq[PasoGuardedCommit], methods: Iterable[MethodInfo]): Iterable[smt.Signal] = {
+  private def connectMethodEnabled(commits: Seq[PasoGuardedCommit], methods: Iterable[MethodInfo]): Iterable[Signal] = {
     val methodToCommits = commits.groupBy(_.commit.name)
     methods.map { m =>
       val signalName = m.fullIoName + "_enabled"
       val commits = methodToCommits.getOrElse(signalName, List())
       val en = if(commits.isEmpty) smt.False() else sumOfProduct(commits.map(c => inState(c.stateId) +: c.guard))
-      smt.Signal(signalName, en)
+      mc.Signal(signalName, en)
     }
   }
 
-  private def connectMethodArgs(mappings: Seq[PasoStateGuardedMapping], methods: Iterable[MethodInfo]): Iterable[smt.Signal] = {
+  private def connectMethodArgs(mappings: Seq[PasoStateGuardedMapping], methods: Iterable[MethodInfo]): Iterable[Signal] = {
     val argsToMappings = mappings.groupBy(_.map.arg)
     methods.flatMap { m => m.args.map { case (a, width) =>
       val arg = smt.BVSymbol(a, width)
@@ -83,19 +84,19 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       val value = argsToMappings.getOrElse(arg, List()).foldLeft[smt.BVExpr](prev){(other, m) =>
         smt.BVIte(simplifiedProduct(inState(m.stateId) +: m.map.guard), m.map.update, other)
       }
-      smt.Signal(arg.name, value)
+      mc.Signal(arg.name, value)
     }}
   }
 
-  private def prevMethodArgs(methods: Iterable[MethodInfo]): Iterable[smt.State] = {
+  private def prevMethodArgs(methods: Iterable[MethodInfo]): Iterable[State] = {
     methods.flatMap { m => m.args.map { case (a, width) =>
       val arg = smt.BVSymbol(a, width)
       val prev = arg.rename(arg.name + "$prev")
-      smt.State(prev, init=None, next=Some(arg))
+      mc.State(prev, init=None, next=Some(arg))
     }}
   }
 
-  private def encodeStateEdges(state: smt.BVSymbol, edges: Iterable[PasoStateEdge], reset: smt.BVExpr): smt.State = {
+  private def encodeStateEdges(state: smt.BVSymbol, edges: Iterable[PasoStateEdge], reset: smt.BVExpr): State = {
     // we want to compute the next state based on the current state and predicates
     val invalidState = smt.BVLiteral((BigInt(1) << stateBits) - 1, stateBits)
     val next = edges.groupBy(_.to).foldLeft[smt.BVExpr](invalidState) { case (other, (nextState, edges)) =>
@@ -103,18 +104,18 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       smt.BVIte(guard, smt.BVLiteral(nextState, stateBits), other)
     }
     val withReset = smt.BVIte(reset, smt.BVLiteral(0, stateBits), next)
-    smt.State(state, init = None, next = Some(withReset))
+    mc.State(state, init = None, next = Some(withReset))
   }
 
   /** the idea here is to group predicates that just have different guards */
-  private def compactEncodePredicates(preds: Iterable[PasoStateGuarded], prefix: String, lbl: smt.SignalLabel, invert: Boolean): Iterable[smt.Signal] = {
+  private def compactEncodePredicates(preds: Iterable[PasoStateGuarded], prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
     val notTriviallyTrue = preds.filterNot(_.pred.pred == smt.True())
     val groups = notTriviallyTrue.groupBy(_.pred.pred.toString)
     groups.zipWithIndex.map { case ((_, ps), i) =>
       val guard =  sumOfProduct(ps.map(p => inState(p.stateId) +: p.pred.guard))
       val pred = ps.head.pred.pred
       val expr = smt.BVImplies(guard, pred)
-      smt.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)
+      mc.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)
     }
   }
 

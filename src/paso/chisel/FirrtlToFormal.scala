@@ -13,9 +13,10 @@ import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation}
 import firrtl.transforms.NoCircuitDedupAnnotation
 import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
+import maltese.mc.TransitionSystem
 
 object FirrtlToFormal  {
-  def apply(c: ir.Circuit, annos: AnnotationSeq, ll: LogLevel.Value = LogLevel.Error): (smt.TransitionSystem, AnnotationSeq) = {
+  def apply(c: ir.Circuit, annos: AnnotationSeq, ll: LogLevel.Value = LogLevel.Error): (TransitionSystem, AnnotationSeq) = {
     val testDir = BackendCompilationUtilities.createTestDirectory(c.main + "_to_btor2")
     val combinedAnnos = Seq(
       LogLevelAnnotation(ll),

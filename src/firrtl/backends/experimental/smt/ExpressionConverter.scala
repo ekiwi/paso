@@ -7,6 +7,7 @@ package firrtl.backends.experimental.smt
 
 import firrtl.AnnotationSeq
 import firrtl.ir
+import maltese.mc
 import maltese.{smt => m}
 
 /** converts between firrtl's internal SMT expr library and the maltese expression library */
@@ -20,27 +21,27 @@ object ExpressionConverter {
     toMaltese(firSmt)
   }
 
-  def toMaltese(annos: AnnotationSeq): Option[m.TransitionSystem] =
+  def toMaltese(annos: AnnotationSeq): Option[mc.TransitionSystem] =
     annos.collectFirst { case TransitionSystemAnnotation(sys) => sys }.map(toMaltese)
 
-  def toMaltese(sys: TransitionSystem): m.TransitionSystem = {
+  def toMaltese(sys: TransitionSystem): mc.TransitionSystem = {
     val inputs = sys.inputs.map(toMaltese)
     val states = sys.states.map(toMaltese)
     val signals = sys.signals.map { s =>
-      val lbl = if(sys.outputs.contains(s.name)) { m.IsOutput
-      } else if(sys.assumes.contains(s.name)) {    m.IsConstraint
-      } else if(sys.assumes.contains(s.name)) {    m.IsBad
-      } else if(sys.fair.contains(s.name)) {       m.IsFair
-      } else { m.IsNode }
+      val lbl = if(sys.outputs.contains(s.name)) { mc.IsOutput
+      } else if(sys.assumes.contains(s.name)) {    mc.IsConstraint
+      } else if(sys.assumes.contains(s.name)) {    mc.IsBad
+      } else if(sys.fair.contains(s.name)) {       mc.IsFair
+      } else { mc.IsNode }
       val eMaltese = toMaltese(s.e)
-      val expr = if(lbl == m.IsBad) m.BVNot(eMaltese) else eMaltese
-      m.Signal(s.name, expr, lbl)
+      val expr = if(lbl == mc.IsBad) m.BVNot(eMaltese) else eMaltese
+      mc.Signal(s.name, expr, lbl)
     }
-    m.TransitionSystem(sys.name, inputs.toList, states.toList, signals.toList)
+    mc.TransitionSystem(sys.name, inputs.toList, states.toList, signals.toList)
   }
 
-  private def toMaltese(state: State): m.State = {
-    m.State(
+  private def toMaltese(state: State): mc.State = {
+    mc.State(
       sym = toMaltese(state.sym),
       init = state.init.map(toMaltese),
       next = state.next.map(toMaltese)

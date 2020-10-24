@@ -4,6 +4,8 @@
 
 package maltese.smt
 
+import maltese.mc.{SignalLabel, TransitionSystem}
+
 import scala.collection.mutable
 
 class Namespace private(names: mutable.HashSet[String]) {

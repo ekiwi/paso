@@ -8,6 +8,7 @@
 package paso.verification
 
 import firrtl.graph.MutableDiGraph
+import maltese.mc.TransitionSystem
 import maltese.smt
 
 import scala.collection.mutable
@@ -15,7 +16,7 @@ import scala.collection.mutable
 object TopologicalSort {
 
   /** Ensures that all signals in the resulting system are topologically sorted. */
-  def run(sys: smt.TransitionSystem): smt.TransitionSystem = {
+  def run(sys: TransitionSystem): TransitionSystem = {
     val inputsAndStates = sys.inputs.map(_.name) ++ sys.states.map(_.sym.name)
     val signalOrder = sort(sys.signals.map(s => s.name -> s.e), inputsAndStates)
     // TODO: maybe sort init expressions of states (this should not be needed most of the time)

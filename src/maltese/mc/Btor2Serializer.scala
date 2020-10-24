@@ -5,7 +5,9 @@
 // this file was originally written as part of the firrtl compiler and
 // then translated to work on the maltese.smt data structures
 
-package maltese.smt
+package maltese.mc
+
+import maltese.smt._
 
 import scala.collection.mutable
 

@@ -5,7 +5,8 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.smt
+import maltese.mc.{IsBad, Signal, State, TransitionSystem}
+import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 
@@ -28,7 +29,7 @@ case class ForAllAssertion(variable: smt.BVSymbol, start: Int, end: Int, guard: 
 
 case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
 case class Subspec(instance: String, ioSymbols: Seq[smt.BVSymbol], spec: Spec, binding: Option[String])
-case class VerificationProblem(impl: smt.TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
+case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec],
                                invariances: Seq[Assertion], mapping: Seq[Assertion])
 
 object VerificationProblem {
@@ -49,7 +50,7 @@ object VerificationProblem {
 
     // for the base case we combine everything together with a reset
     val baseCase = List(generateInitialReset(), impl, spec, invariants)
-    val baseCaseSys = smt.TransitionSystem.combine("BaseCase", baseCase)
+    val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
     println(baseCaseSys.serialize)
 
     // check all our simplifications
@@ -63,47 +64,47 @@ object VerificationProblem {
     throw new NotImplementedError("TODO: implement BMC")
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): smt.TransitionSystem = {
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): TransitionSystem = {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
     new PasoAutomatonToTransitionSystem(automaton).run()
   }
 
-  private def generateInitialReset(length: Int = 1): smt.TransitionSystem = {
+  private def generateInitialReset(length: Int = 1): TransitionSystem = {
     assert(length >= 1)
     val counterBits = List(log2Ceil(length), 1).max
     val counterMax = smt.BVLiteral((BigInt(1) << counterBits) - 1, counterBits)
     val counter = smt.BVSymbol("resetCounter", counterBits)
     val counterNext = smt.BVIte(smt.BVEqual(counter, counterMax), counter, smt.BVOp(smt.Op.Add, counter, smt.BVLiteral(1, counterBits)))
-    val state = smt.State(counter, init=Some(smt.BVLiteral(0, counterBits)), next=Some(counterNext))
-    val reset = smt.Signal("reset", smt.BVComparison(smt.Compare.GreaterEqual, counter, smt.BVLiteral(length, counterBits), signed = false))
-    smt.TransitionSystem("reset", List(), List(state), List(reset))
+    val state = State(counter, init=Some(smt.BVLiteral(0, counterBits)), next=Some(counterNext))
+    val reset = Signal("reset", smt.BVComparison(smt.Compare.GreaterEqual, counter, smt.BVLiteral(length, counterBits), signed = false))
+    mc.TransitionSystem("reset", List(), List(state), List(reset))
   }
 
-  private def generateDisabledReset(): smt.TransitionSystem = {
-    val reset = smt.Signal("reset", smt.BVLiteral(0, 1))
-    smt.TransitionSystem("reset", List(), List(), List(reset))
+  private def generateDisabledReset(): TransitionSystem = {
+    val reset = mc.Signal("reset", smt.BVLiteral(0, 1))
+    mc.TransitionSystem("reset", List(), List(), List(reset))
   }
 
-  private def connectToReset(sys: smt.TransitionSystem): smt.TransitionSystem = {
+  private def connectToReset(sys: TransitionSystem): TransitionSystem = {
     val resetName = sys.name + ".reset"
     assert(sys.inputs.exists(_.name == resetName), s"Failed to find the reset port of ${sys.name}")
-    val connectReset = smt.Signal(resetName, smt.BVSymbol("reset", 1))
+    val connectReset = mc.Signal(resetName, smt.BVSymbol("reset", 1))
     // filter out reset input
     val inputs = sys.inputs.filterNot(_.name == resetName)
     val signals = connectReset +: sys.signals
     sys.copy(inputs=inputs, signals=signals)
   }
 
-  private def encodeInvariants(start: smt.BVExpr, invariants: Iterable[Assertion]): smt.TransitionSystem = {
+  private def encodeInvariants(start: smt.BVExpr, invariants: Iterable[Assertion]): TransitionSystem = {
     val guard = smt.BVSymbol("inv", 1)
-    val connectGuard = smt.Signal(guard.name, smt.BVAnd(smt.BVNot(smt.BVSymbol("reset", 1)), start))
+    val connectGuard = mc.Signal(guard.name, smt.BVAnd(smt.BVNot(smt.BVSymbol("reset", 1)), start))
     val exprs = invariants.map {
       case BasicAssertion(smt.True(), pred) => smt.BVImplies(guard, pred)
       case BasicAssertion(local, pred) => smt.BVImplies(smt.BVAnd(guard, local), pred)
       case f : ForAllAssertion => smt.BVImplies(guard, f.toExpr)
     }
     // TODO: better names + debug info
-    val bads = exprs.zipWithIndex.map { case (e, i) => smt.Signal(s"inv_$i", smt.BVNot(e), smt.IsBad)}.toList
-    smt.TransitionSystem("Invariants", List(), List(), connectGuard +: bads)
+    val bads = exprs.zipWithIndex.map { case (e, i) => mc.Signal(s"inv_$i", smt.BVNot(e), IsBad)}.toList
+    mc.TransitionSystem("Invariants", List(), List(), connectGuard +: bads)
   }
 }

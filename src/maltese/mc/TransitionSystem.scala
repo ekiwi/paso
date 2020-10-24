@@ -2,7 +2,10 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package maltese.smt
+package maltese.mc
+
+import maltese.mc
+import maltese.smt.{BVSymbol, SMTExpr, SMTSymbol}
 
 case class State(sym: SMTSymbol, init: Option[SMTExpr], next: Option[SMTExpr])
 case class Signal(name: String, e: SMTExpr, lbl: SignalLabel = IsNode) {
@@ -44,7 +47,7 @@ object TransitionSystem {
     val renames = names.map(n => n -> (prefix + n)).toMap
     val inputs = sys.inputs.map(i => i.rename(renames.getOrElse(i.name, i.name)))
     def r(e: SMTExpr): SMTExpr = rename(renames)(e)
-    val states = sys.states.map(s => State(r(s.sym).asInstanceOf[SMTSymbol], s.init.map(r), s.next.map(r)))
+    val states = sys.states.map(s => mc.State(r(s.sym).asInstanceOf[SMTSymbol], s.init.map(r), s.next.map(r)))
     val signals = sys.signals.map(s => s.copy(name = renames(s.name), e = r(s.e)))
     TransitionSystem(sys.name, inputs, states, signals)
   }

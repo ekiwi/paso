@@ -12,11 +12,12 @@ import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
+import maltese.mc.{IsOutput, Signal, TransitionSystem}
 import paso.chisel.passes._
 import paso.untimed
 import paso.verification.{Assertion, BasicAssertion, Spec, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
-import maltese.smt
+import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 
@@ -101,7 +102,7 @@ case class Elaboration() {
   }
 
   /** used for both: RTL implementation and untimed module spec */
-  private case class FormalSys(model: smt.TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
+  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
   private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
@@ -127,7 +128,7 @@ case class Elaboration() {
     }.toMap
 
     // namespace the transition system
-    val namespaced = smt.TransitionSystem.prefixSignals(transitionSystem)
+    val namespaced = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     FormalSys(namespaced, submoduleNames, exposed)
   }
@@ -147,7 +148,7 @@ case class Elaboration() {
     assert(formal.model.name == info.name)
     val methods = info.methods.map { m =>
       val args = formal.model.inputs.filter(_.name.startsWith(m.fullIoName + "_arg")).map(s => s.name -> s.width)
-      val ret = formal.model.signals.filter(s => s.lbl == smt.IsOutput && s.name.startsWith(m.fullIoName + "_ret"))
+      val ret = formal.model.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(m.fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       m.copy(args=args, ret=ret)
     }
@@ -203,7 +204,7 @@ case class Elaboration() {
 
     // elaborate subspecs
     val implIo = implementation.model.inputs ++
-      implementation.model.signals.collect { case smt.Signal(name, e: smt.BVExpr, smt.IsOutput) => smt.BVSymbol(name, e.width) }
+      implementation.model.signals.collect { case Signal(name, e: smt.BVExpr, mc.IsOutput) => smt.BVSymbol(name, e.width) }
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)

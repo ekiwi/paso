@@ -2,9 +2,12 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package maltese.smt
+package maltese.mc
 
 import java.io.File
+
+import maltese.mc
+import maltese.smt._
 
 import scala.collection.mutable
 import scala.io.Source
@@ -208,7 +211,7 @@ private object Btor2Parser {
       new_expr match {
         case Some(expr) =>
           val n = name.getOrElse(namespace.newName("s" + id))
-          signals.put(id, Signal(n, expr, label))
+          signals.put(id, mc.Signal(n, expr, label))
         case _ =>
       }
     }
