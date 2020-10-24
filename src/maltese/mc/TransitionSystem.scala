@@ -69,4 +69,9 @@ object TransitionSystem {
   def combineProperties(sys: TransitionSystem): TransitionSystem = {
     ???
   }
+
+  /** inlines all nodes which could lead to an exponential blowup in size */
+  def inlineNodes(sys: TransitionSystem): TransitionSystem = {
+    ???
+  }
 }
