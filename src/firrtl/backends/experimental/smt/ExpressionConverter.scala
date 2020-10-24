@@ -30,7 +30,7 @@ object ExpressionConverter {
     val signals = sys.signals.map { s =>
       val lbl = if(sys.outputs.contains(s.name)) { mc.IsOutput
       } else if(sys.assumes.contains(s.name)) {    mc.IsConstraint
-      } else if(sys.assumes.contains(s.name)) {    mc.IsBad
+      } else if(sys.asserts.contains(s.name)) {    mc.IsBad
       } else if(sys.fair.contains(s.name)) {       mc.IsFair
       } else { mc.IsNode }
       val eMaltese = toMaltese(s.e)
