@@ -62,16 +62,27 @@ case class Elaboration() {
 
     // convert invariant module to SMT
     val (transitionSystem, _) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
+    val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
-    // rename cross module references
-    // e.g. RandomLatency_running -> RandomLatency.signals_running
-    val prefixRenames = inv.externalRefs.map{ r =>
-      val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
-      r.signal.circuit -> s"${r.signal.circuit}.$portName"
-    }.toSet.toList
-    // TODO: connect inputs using the external signal renames
-
-    mc.TransitionSystem.prefixSignals(transitionSystem)
+    // connect cross module reference inputs
+    val signalsAndInputs = sys.inputs.map { in =>
+      val ref = inv.externalRefs.find(r => in.name.startsWith(sys.name + "." + r.signal.circuit))
+      ref match {
+        case Some(r) =>
+          // connect to the external signal
+          val prefix = sys.name + "." + r.signal.circuit
+          val suffix = in.name.substring(prefix.length)
+          val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
+          val externalName = s"${r.signal.circuit}.$portName$suffix"
+          val con = mc.Signal(in.name, in.rename(externalName))
+          (Some(con), None)
+        case None =>
+          // if this is not an external signal, we leave the input untouched
+          (None, Some(in))
+      }
+    }
+    val connectedSys = sys.copy(inputs = signalsAndInputs.flatMap(_._2), signals = signalsAndInputs.flatMap(_._1) ++ sys.signals)
+    connectedSys
   }
 
   private def elaborateProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
