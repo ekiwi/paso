@@ -22,7 +22,7 @@ object CrossModuleReferencesToInputsPass extends Transform with DependencyAPIMig
   override protected def execute(state: CircuitState): CircuitState = {
     assert(state.circuit.modules.length == 1, "We expect the invariants to be declared inside a single module!")
     val main = state.circuit.modules.find(_.name == state.circuit.main).get.asInstanceOf[ir.Module]
-    assert(main.ports.length == 2, f"Invariance modules should not have any ports besides clock and reset!")
+    assert(main.ports.length == 3, f"Invariance modules should not have any ports besides clock, reset and enabled!")
 
     // find all cross module signals
     val signalsByPort = state.annotations.collect{ case a: CrossModuleInput => a }.groupBy(_.portName)
@@ -41,6 +41,8 @@ object CrossModuleReferencesToInputsPass extends Transform with DependencyAPIMig
 
     // add new portsto main
     val newMain = main.copy(ports=main.ports ++ newPorts)
+
+    println(newMain.serialize)
 
     state.copy(circuit = state.circuit.copy(modules = Seq(newMain)))
   }

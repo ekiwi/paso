@@ -53,33 +53,28 @@ case class Elaboration() {
   }
 
 
-  private def compileInvariant(state: CircuitState, refs: Seq[ExternalReference], exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
+  private def compileInvariant(inv: ChiselInvariants, exposedSignals: Map[String, (String, ir.Type)]): Seq[Assertion] = {
     // convert refs to exposed signals
-    val annos = refs.map{ r =>
+    val annos = inv.externalRefs.map{ r =>
       val (_, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
-    } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)),
-    RunFirrtlTransformAnnotation(Dependency[passes.AssertsToOutputs]))
+    } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)))
 
     // convert invariant module to SMT
-    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, state.annotations ++ annos, LogLevel.Error)
-
-    // extract the assertions from the transition system outputs
-    val asserts = resAnnos.collect{ case a : AssertEnable =>
-      val en = transitionSystem.signals.find(_.name == a.name + "_en").map(_.e.asInstanceOf[smt.BVExpr]).get
-      val pred = transitionSystem.signals.find(_.name == a.name + "_pred").map(_.e.asInstanceOf[smt.BVExpr]).get
-      BasicAssertion(en, pred)
-    }
+    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
 
     // rename cross module references
     // e.g. RandomLatency_running -> RandomLatency.signals_running
-    val prefixRenames = refs.map{ r =>
+    val prefixRenames = inv.externalRefs.map{ r =>
       val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       r.signal.circuit -> s"${r.signal.circuit}.$portName"
     }.toSet.toList
     // TODO: propagate prefix renames to namespacing....
 
-    asserts
+
+    println(transitionSystem.serialize)
+    throw new NotImplementedError("TODO: propagate invariants transition system")
+    Seq()
   }
 
   private def elaborateProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
@@ -175,7 +170,24 @@ case class Elaboration() {
     ChiselSpec(elaborated, ip.get.protos)
   }
 
-  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], inv: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
+  case class ChiselInvariants(state: firrtl.CircuitState, externalRefs: Seq[ExternalReference])
+  private def chiselElaborateInvariants[M <: RawModule, S <: UntimedModule]
+  (impl: ChiselImpl[M], spec: ChiselSpec[S], proofCollateral: (M, S) => ProofCollateral[M, S]): ChiselInvariants = {
+    val collateral = proofCollateral(impl.instance, spec.untimed)
+    val genAll = () => {
+      val enabled = chisel3.experimental.IO(chisel3.Input(chisel3.Bool())).suggestName("enabled")
+      chisel3.when(enabled) {
+        collateral.invs.foreach(i => i(impl.instance))
+        collateral.maps.foreach(m => m(impl.instance, spec.untimed))
+      }
+      ()
+    }
+    val (state, externalRefs) = elaborateObserver(List(impl.instance, spec.untimed), "Invariants", genAll)
+    println(state.circuit.serialize)
+    ChiselInvariants(state, externalRefs)
+  }
+
+  def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], proofCollateral: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
     firrtlCompilerTime = 0L
     chiselElaborationTime = 0L
     val start = System.nanoTime()
@@ -187,19 +199,12 @@ case class Elaboration() {
     assert(implChisel.instance.name != specChisel.untimed.name, "spec and impl must have different names")
 
     // elaborate invariants in order to collect all signals that need to be exposed from the implementation and spec
-    val collateral = inv(implChisel.instance, specChisel.untimed)
-    val elaboratedMaps = collateral.maps.map{ m =>
-      elaborateObserver(List(implChisel.instance, specChisel.untimed), "map", {() => m(implChisel.instance, specChisel.untimed)})
-    }
-    val elaboratedInvs = collateral.invs.map{ i =>
-      elaborateObserver(List(implChisel.instance), "inv", () => i(implChisel.instance))
-    }
-    val externalReferences = elaboratedMaps.flatMap(_._2) ++ elaboratedInvs.flatMap(_._2)
+    val invChisel = chiselElaborateInvariants(implChisel, specChisel, proofCollateral)
 
     // Firrtl Compilation
-    val implementation = elaborateImpl(implChisel, subspecList, externalReferences)
+    val implementation = elaborateImpl(implChisel, subspecList, invChisel.externalRefs)
     val endImplementation = System.nanoTime()
-    val spec = elaborateSpec(specChisel, implementation.model.name, externalReferences)
+    val spec = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
@@ -217,9 +222,9 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val exposedSignals = implementation.exposedSignals
-    val mappings = elaboratedMaps.flatMap(m => compileInvariant(m._1, m._2, exposedSignals))
-    val invariants = elaboratedInvs.flatMap(m => compileInvariant(m._1, m._2, exposedSignals))
+    val inv = compileInvariant(invChisel, implementation.exposedSignals)
+    val mappings = Seq()
+    val invariants = Seq()
     val endBinding = System.nanoTime()
 
     if(true) {
