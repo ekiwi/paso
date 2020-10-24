@@ -36,6 +36,8 @@ object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
     // check to see if the mappings contain quantifiers
     val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
+    assert(quantifierFree, "TODO: expand quantifiers when needed (for btor2 and yices)")
+    val checker =  new mc.BtormcModelChecker()
 
     // turn the protocol and untimed model into a paso automaton
     val solver = Yices2()
@@ -53,8 +55,8 @@ object VerificationProblem {
     val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
 
     // generate base case btor
-
     println(baseCaseSys.serialize)
+    checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")

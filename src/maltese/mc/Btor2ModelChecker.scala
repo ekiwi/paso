@@ -7,14 +7,13 @@ package maltese.mc
 import java.io.PrintWriter
 
 import scala.collection.mutable
-import maltese.smt
 import scala.sys.process._
 
 class BtormcModelChecker extends Btor2ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "btormc"
   override val supportsOutput: Boolean = false
-  override def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
+  override protected def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
     val prefix = if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
     inputFile match {
       case None => prefix
@@ -32,7 +31,7 @@ class Cosa2ModelChecker extends Btor2ModelChecker {
   override val name: String = "cosa2"
   override val supportsOutput: Boolean = true
   override val supportsMultipleProperties: Boolean = false
-  override def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
+  override protected def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
     val base = Seq("cosa2", "--engine bmc")
     val prefix = if(kMax > 0) base ++ Seq(s"--bound $kMax") else base
     inputFile match {
@@ -54,7 +53,7 @@ class Cosa2ModelChecker extends Btor2ModelChecker {
 
 abstract class Btor2ModelChecker extends IsModelChecker {
   override val name: String
-  def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
+  protected def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true
   override def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult = {
