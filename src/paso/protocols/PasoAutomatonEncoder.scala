@@ -81,7 +81,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
   def run(): PasoAutomaton = {
     // check that all transactions are mutually exclusive in their first transition
-    val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.ioName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
+    val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.fullIoName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
     val newTransactionPred = protocols
       .map{ p => p.transitions.head.assumptions.map(_.toExpr) :+ guards(p.name) }.map(smt.BVAnd(_)).toSeq
     ensureMutuallyExclusive(newTransactionPred, protocols.map(_.info))
