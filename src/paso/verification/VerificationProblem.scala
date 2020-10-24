@@ -5,7 +5,7 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.mc.{IsBad, Signal, State, TransitionSystem}
+import maltese.mc.{IsBad, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
@@ -60,7 +60,13 @@ object VerificationProblem {
 
     // generate base case btor
     println(baseCaseSys.serialize)
-    checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
+    val res = checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
+    res match {
+      case ModelCheckFail(witness) =>
+        println("Base case fails!")
+      case ModelCheckSuccess() =>
+        println("Base case works!")
+    }
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
