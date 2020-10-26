@@ -42,28 +42,14 @@ object VerificationProblem {
     //val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
     //assert(quantifierFree, "TODO: expand quantifiers when needed (for btor2 and yices)")
     val checker =  new mc.BtormcModelChecker()
-
-    // turn the protocol and untimed model into a paso automaton
     val solver = Yices2()
-    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
-
-    // connect the implementation to the global reset
-    val impl = connectToReset(problem.impl)
-
-    // encode invariants
-    val startState = smt.BVSymbol(spec.name + ".automaton.startState", 1)
-    val invariants = encodeInvariants(startState, problem.invariants)
 
     // for the base case we combine everything together with a reset
-    val baseCase = List(generateInitialReset(), impl, spec, invariants)
-    val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
-
-    // debug base case
-    //val debugBaseCase = observe(baseCaseSys, List(smt.BVSymbol("reset", 1), smt.BVSymbol("notReset", 1), smt.BVSymbol("resetCounter", 1)))
+    val baseCaseSys = makeBmcSystem("BaseCase", problem, solver)
 
     // generate base case btor
     println(baseCaseSys.serialize)
-    val res = checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
+    val res = checker.check(baseCaseSys, kMax = 5, fileName = Some("test.btor2"))
     res match {
       case ModelCheckFail(witness) =>
         println("Base case fails!")
@@ -76,7 +62,42 @@ object VerificationProblem {
   }
 
   def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
-    throw new NotImplementedError("TODO: implement BMC")
+    val yices = Yices2()
+    val sys = makeBmcSystem("BMC", problem, yices)
+
+    val checker = if(solver == paso.Btormc) {
+      new mc.BtormcModelChecker()
+    } else {
+      throw new NotImplementedError(s"TODO: $solver")
+    }
+
+    println(sys.serialize)
+    val res = checker.check(sys, kMax = 1, fileName = Some("bmc.btor2"))
+    res match {
+      case ModelCheckFail(witness) =>
+        println("BMC fails!")
+      case ModelCheckSuccess() =>
+        println("BMC works!")
+    }
+  }
+
+  private def makeBmcSystem(name: String, problem: VerificationProblem, solver: Solver, debug: Iterable[smt.BVSymbol] = List()): TransitionSystem = {
+    // reset for one cycle at the beginning
+    val reset = generateInitialReset(length = 1)
+
+    // connect the implementation to the global reset
+    val impl = connectToReset(problem.impl)
+
+    // turn spec into a monitoring automaton
+    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+
+    // encode invariants (if any)
+    val invariants = encodeInvariants(spec.name, problem.invariants)
+
+    // combine everything together into a single system
+    val sys = mc.TransitionSystem.combine(name, List(reset, impl, spec, invariants))
+
+    if(debug.isEmpty) { sys } else { observe(sys, debug) }
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): TransitionSystem = {
@@ -104,10 +125,11 @@ object VerificationProblem {
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))
 
-  private def encodeInvariants(start: smt.BVExpr, invariants: TransitionSystem): TransitionSystem = {
+  private def encodeInvariants(specName: String, invariants: TransitionSystem): TransitionSystem = {
+    val startState = smt.BVSymbol(specName + ".automaton.startState", 1)
     val sys = connect(invariants, Map(
       invariants.name + ".reset" -> reset,
-      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), start)
+      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState)
     ))
     assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
     sys
