@@ -59,11 +59,11 @@ object VerificationProblem {
     val baseCaseSys = mc.TransitionSystem.combine("BaseCase", baseCase)
 
     // debug base case
-    val debugBaseCase = observe(baseCaseSys, List(smt.BVSymbol("reset", 1), smt.BVSymbol("notReset", 1)))
+    //val debugBaseCase = observe(baseCaseSys, List(smt.BVSymbol("reset", 1), smt.BVSymbol("notReset", 1), smt.BVSymbol("resetCounter", 1)))
 
     // generate base case btor
-    println(debugBaseCase.serialize)
-    val res = checker.check(debugBaseCase, kMax = 1, fileName = Some("basecase.btor2"))
+    println(baseCaseSys.serialize)
+    val res = checker.check(baseCaseSys, kMax = 1, fileName = Some("basecase.btor2"))
     res match {
       case ModelCheckFail(witness) =>
         println("Base case fails!")
@@ -91,8 +91,8 @@ object VerificationProblem {
     val counter = smt.BVSymbol("resetCounter", counterBits)
     val counterNext = smt.BVIte(smt.BVEqual(counter, counterMax), counter, smt.BVOp(smt.Op.Add, counter, smt.BVLiteral(1, counterBits)))
     val state = State(counter, init=Some(smt.BVLiteral(0, counterBits)), next=Some(counterNext))
-    val reset = Signal("reset", smt.BVComparison(smt.Compare.GreaterEqual, counter, smt.BVLiteral(length, counterBits), signed = false))
-    val notReset = Signal("notReset", smt.BVNot(smt.BVSymbol("reset", 1)))
+    val reset = Signal("notReset", smt.BVComparison(smt.Compare.GreaterEqual, counter, smt.BVLiteral(length, counterBits), signed = false))
+    val notReset = Signal("reset", smt.BVNot(smt.BVSymbol("notReset", 1)))
     mc.TransitionSystem("reset", List(), List(state), List(reset, notReset))
   }
 
@@ -124,7 +124,7 @@ object VerificationProblem {
 
   private def observe(sys: TransitionSystem, signals: Iterable[smt.BVSymbol]): TransitionSystem = {
     val oState = signals.map(s => mc.State(s.rename(s.name + "$o"), None, None))
-    val constraints = signals.map(s => mc.Signal(s.name + "$eq", smt.BVEqual(s, s.rename(s.name + "$o"))))
+    val constraints = signals.map(s => mc.Signal(s.name + "$eq", smt.BVEqual(s, s.rename(s.name + "$o")), mc.IsConstraint))
     sys.copy(states = sys.states ++ oState, signals = sys.signals ++ constraints)
   }
 
