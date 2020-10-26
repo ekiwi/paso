@@ -7,9 +7,12 @@ package maltese.mc
 import maltese.mc
 import maltese.smt.{BVSymbol, SMTExpr, SMTSymbol}
 
-case class State(sym: SMTSymbol, init: Option[SMTExpr], next: Option[SMTExpr])
+case class State(sym: SMTSymbol, init: Option[SMTExpr], next: Option[SMTExpr]) {
+  def name: String = sym.name
+}
 case class Signal(name: String, e: SMTExpr, lbl: SignalLabel = IsNode) {
   def toSymbol: SMTSymbol = SMTSymbol.fromExpr(name, e)
+  def sym: SMTSymbol = toSymbol
 }
 case class TransitionSystem(name: String, inputs: List[BVSymbol], states: List[State], signals: List[Signal]) {
   def serialize: String = TransitionSystem.serialize(this)
