@@ -38,10 +38,7 @@ case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq
 
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
-    // check to see if the mappings contain quantifiers
-    //val quantifierFree = !(problem.mapping ++ problem.invariances).exists(_.isInstanceOf[ForAllAssertion])
-    //assert(quantifierFree, "TODO: expand quantifiers when needed (for btor2 and yices)")
-    val checker =  new mc.BtormcModelChecker()
+    val checker = makeChecker(opt.modelChecker)
     val solver = Yices2()
 
     // connect the implementation to the global reset
@@ -67,17 +64,33 @@ object VerificationProblem {
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
   }
 
-  def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
-    val yices = Yices2()
-    val sys = makeBmcSystem("test_bmc", problem, yices)
+  def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int): Unit = {
+    val checker = makeChecker(modelChecker)
+    val solver = Yices2()
 
-    val checker = if(solver == paso.Btormc) {
+    // connect the implementation to the global reset
+    val impl = connectToReset(problem.impl)
+
+    // turn spec into a monitoring automaton
+    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+
+    // encode invariants (if any)
+    val invariants = encodeInvariants(spec.name, problem.invariants)
+
+    // we do a reset in the beginning
+    val bmcSys = mc.TransitionSystem.combine("bmc",
+      List(generateBmcConditions(1), impl, spec, invariants))
+
+    // call checker
+    check(checker, bmcSys, kMax)
+  }
+
+  private def makeChecker(name: paso.SolverName): IsModelChecker = {
+    if(name == paso.Btormc) {
       new mc.BtormcModelChecker()
     } else {
-      throw new NotImplementedError(s"TODO: $solver")
+      throw new NotImplementedError(s"TODO: $name")
     }
-
-    check(checker, sys, kMax)
   }
 
   private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Unit = {
@@ -95,23 +108,6 @@ object VerificationProblem {
       case ModelCheckSuccess() =>
         println(s"${fullSys.name} works!")
     }
-  }
-
-  private def makeBmcSystem(name: String, problem: VerificationProblem, solver: Solver): TransitionSystem = {
-    // reset for one cycle at the beginning
-    val reset = generateBmcConditions()
-
-    // connect the implementation to the global reset
-    val impl = connectToReset(problem.impl)
-
-    // turn spec into a monitoring automaton
-    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
-
-    // encode invariants (if any)
-    val invariants = encodeInvariants(spec.name, problem.invariants)
-
-    // combine everything together into a single system
-    mc.TransitionSystem.combine(name, List(reset, impl, spec, invariants))
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): TransitionSystem = {
