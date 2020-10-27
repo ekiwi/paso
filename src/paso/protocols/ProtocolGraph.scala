@@ -78,8 +78,8 @@ object ProtocolGraph {
     // find the next states
     val next = paths.flatMap{ p => p.next.map{ nextName =>
       val nextInfo = info.steps(nextName)
-      // we commit if it is the final node and the execution has not forked yet, or if it is a fork node
-      val doCommit = (nextInfo.isFinal && !p.hasForked) || nextInfo.doFork
+      // we commit if the execution has not forked yet, and it is the final node or if it is a fork node
+      val doCommit = !p.hasForked && (nextInfo.isFinal || nextInfo.doFork)
       val commit = if(doCommit) Some(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else None
       Next(p.cond, nextInfo.doFork, commit, nextInfo.isFinal, stepToId(nextName))
     }}

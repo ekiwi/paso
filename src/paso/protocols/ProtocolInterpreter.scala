@@ -33,7 +33,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
   protected val rets = module.ports.filter(_.name.startsWith(methodPrefix + "ret")).map(p => p.name -> toWidth(p.tpe)).toMap
   // we treat the state at the beginning of the protocol as an implicit start step
   private val startStepAnnotation =
-    StepAnnotation(CircuitTarget(module.name).module(module.name).ref("start"), doFork = true, isFinal = false)
+    StepAnnotation(CircuitTarget(module.name).module(module.name).ref("start"), doFork = false, isFinal = false)
   protected val steps = (protocol.annotations.collect { case a : StepAnnotation =>
     assert(a.target.circuit == protocol.circuit.main)
     assert(a.target.module == module.name)
