@@ -225,7 +225,8 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
 
   private def findNextStep(blocks: Seq[Seq[ir.Statement]], isStep: String => Boolean)(block: Int, stmt: Int): List[String] = {
     assert(block >= 0)
-    blocks(block).drop(stmt).collectFirst {
+    val stmts = blocks(block).drop(1) // ignore block id
+    stmts.drop(stmt).collectFirst {
       case ir.DefWire(_, name, _) if isStep(name) => List(name)
       case Goto(_, _, a, b) if b >= 0 => findNextStep(blocks, isStep)(a, 0) ++ findNextStep(blocks, isStep)(b, 0)
       case Goto(_, _, a, _) => findNextStep(blocks, isStep)(a, 0)
@@ -234,7 +235,8 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
 
   private def findSteps(blocks: Seq[Seq[ir.Statement]], isStep: String => Boolean): Seq[(String, Int, Int)] = {
     blocks.zipWithIndex.flatMap { case (stmts, blockId) =>
-      stmts.zipWithIndex.collect { case (ir.DefWire(_, name, _), stmtId) if isStep(name) => (name, blockId, stmtId+1)}
+      // ignore block id (first statement)
+      stmts.drop(1).zipWithIndex.collect { case (ir.DefWire(_, name, _), stmtId) if isStep(name) => (name, blockId, stmtId+1)}
     }
   }
 }
