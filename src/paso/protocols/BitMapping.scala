@@ -19,7 +19,9 @@ object BitMapping {
       (List(res._1), List(res._2), mappedBits + (s.name -> res._3))
     case s : smt.BVSymbol =>
       val res = analyze(mappedBits(s.name), lhs, s, s.width - 1, 0)
-      (List(res._1), List(res._2), mappedBits + (s.name -> res._3))
+      val constraints = List(res._1).filterNot(_ == smt.True())
+      val mappings = List(res._2).filterNot(_ == smt.True())
+      (constraints, mappings, mappedBits + (s.name -> res._3))
     case l : smt.BVLiteral =>
       (List(smt.BVEqual(lhs, l)), List(), mappedBits)
   }
