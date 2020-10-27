@@ -18,6 +18,8 @@
 *.vcd
 
 # temporary files
-test.btor
-test.btor.out
-test.dot
+/*.btor
+/*.btor2
+/*.btor.out
+/*.btor2.out
+/*.vcd
