@@ -27,7 +27,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val maxState = smt.BVLiteral(auto.states.length - 1, stateBits)
     val stateSignals = inState.zip(auto.states).map { case (sym, st) =>
       Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
-    } :+ mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false))
+    } :+ mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false), mc.IsBad)
 
     // turn transaction start signals into signals
     val startSignals = auto.transactionStartSignals.map{ case (name, e) => mc.Signal(name, e) }
