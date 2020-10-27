@@ -60,7 +60,7 @@ object VerificationProblem {
 
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(spec.name), impl, spec, invariants))
+      List(generateInductionConditions(), impl, spec, invariants, startInStateZero(spec.name)))
     check(checker, inductionStep, kMax = 5)
 
     // check all our simplifications
@@ -138,7 +138,7 @@ object VerificationProblem {
     mc.TransitionSystem("reset", List(), List(state), List(reset, notReset))
   }
 
-  private def generateInductionConditions(specName: String): TransitionSystem = {
+  private def generateInductionConditions(): TransitionSystem = {
     // during induction, the reset is disabled
     val reset = mc.Signal("reset", smt.BVLiteral(0, 1))
     val notReset = mc.Signal("notReset", smt.BVLiteral(1, 1))
@@ -147,9 +147,14 @@ object VerificationProblem {
     val isInit = smt.BVSymbol("isInit", 1)
     val state = State(isInit, init = Some(smt.True()), next = Some(smt.False()))
     val invertAssert = mc.Signal("invertAssert", isInit)
-    val startAtZero = Signal("startAtZero", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.stateIsZero", 1)), mc.IsConstraint)
 
-    mc.TransitionSystem("InductionConditions", List(), List(state), List(reset, notReset, invertAssert, startAtZero))
+    mc.TransitionSystem("InductionConditions", List(), List(state), List(reset, notReset, invertAssert))
+  }
+
+  private def startInStateZero(specName: String): TransitionSystem = {
+    val isInit = smt.BVSymbol("isInit", 1)
+    val startAtZero = Signal("startAtZero", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.stateIsZero", 1)), mc.IsConstraint)
+    mc.TransitionSystem("StartInStateZero", List(), List(), List(startAtZero))
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))
