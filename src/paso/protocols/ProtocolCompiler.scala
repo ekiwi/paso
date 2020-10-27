@@ -4,9 +4,9 @@
 
 package paso.protocols
 
-import firrtl.annotations.{NoTargetAnnotation, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitTarget, NoTargetAnnotation, SingleTargetAnnotation}
 import firrtl.graph.DiGraph
-import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Transform, ir}
+import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Namespace, Transform, ir}
 import firrtl.options.Dependency
 import firrtl.passes.PassException
 import firrtl.stage.{Forms, TransformManager}
@@ -14,8 +14,13 @@ import firrtl.stage.{Forms, TransformManager}
 import scala.collection.mutable
 
 object ProtocolCompiler {
-  private val passes = Seq(Dependency(CheckStatementsPass), Dependency(InlineNodesPass),
-    Dependency(ProtocolPrefixingPass), Dependency[GotoProgramTransform], Dependency(StepOrderPass))
+  private val passes = Seq(
+    Dependency(CheckStatementsPass),
+    Dependency(InlineNodesPass),
+    Dependency(ProtocolPrefixingPass),
+    Dependency[GotoProgramTransform],
+    Dependency(EnsureFinalStepPass),
+    Dependency(StepOrderPass))
   private val compiler = new TransformManager(passes)
 
   def run(state: CircuitState, ioPrefix: String, specName: String, methodName: String): CircuitState = {
@@ -189,6 +194,48 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
     case ir.Block(stmts) => stmts.foreach(onStmt)
     case ir.EmptyStmt => // ignore empty statements
     case other => statements.append(other)
+  }
+}
+
+/** adds a final step if the protocol does not end in a step already */
+object EnsureFinalStepPass extends Transform with DependencyAPIMigration {
+  // we need to run on the goto program
+  override def prerequisites = Seq(Dependency[GotoProgramTransform])
+  override def optionalPrerequisiteOf = Seq(Dependency(StepOrderPass))
+  override def invalidates(a: Transform) = false
+
+  override protected def execute(state: CircuitState): CircuitState = {
+    val isStep = (state.annotations.collect { case s : StepAnnotation => s.target.ref } :+ "start").toSet
+    val m = state.circuit.modules.head.asInstanceOf[ir.Module]
+    val bbs = m.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block].stmts)
+    val finalBlock = findFinalBlock(bbs)(0)
+    val lastStmtIsStep = bbs(finalBlock).last match {
+      case ir.DefWire(_, name, _) if isStep(name) => true
+      case _ => false
+    }
+    // if the goto program already ends in a step, there is nothing to do here
+    if(lastStmtIsStep) { state } else {
+      val namespace = Namespace(isStep.toSeq)
+      val finalStep = ir.DefWire(ir.NoInfo, namespace.newName("step"), ir.UIntType(ir.IntWidth(1)))
+      val blocks = bbs.zipWithIndex.map { case (block, ii) =>
+        if(ii == finalBlock) block :+ finalStep else block
+      }
+      val body = ir.Block(blocks.map(ir.Block(_)).toArray)
+      val anno = StepAnnotation(CircuitTarget(state.circuit.main).module(m.name).ref(finalStep.name), doFork=false, artificial = true)
+      val circuit = state.circuit.copy(modules = List(m.copy(body = body)))
+      state.copy(circuit = circuit, annotations = state.annotations :+ anno)
+    }
+  }
+
+  private def findFinalBlock(blocks: Seq[Seq[ir.Statement]])(block: Int): Int = {
+    assert(block >= 0)
+    val stmts = blocks(block).drop(1) // ignore block id
+    stmts.collectFirst {
+      case Goto(_, _, a, b) if b >= 0 =>
+        val (x, y) = (findFinalBlock(blocks)(a), findFinalBlock(blocks)(b))
+        assert(x == y) ; x
+      case Goto(_, _, a, _) => findFinalBlock(blocks)(a)
+    }.getOrElse(block)
   }
 }
 
