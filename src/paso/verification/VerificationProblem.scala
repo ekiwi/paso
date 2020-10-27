@@ -53,12 +53,16 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
       List(generateBmcConditions(1), impl, spec, invariants))
-    check(checker, baseCaseSys, kMax = 1)
+    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1)
 
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), impl, spec, invariants, startInStateZero(spec.name)))
-    check(checker, inductionStep, kMax = 5)
+    val inductionSuccess = check(checker, inductionStep, kMax = 5)
+
+    // check results
+    assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
+    assert(inductionSuccess, s"Induction step failed! Please consult ${inductionStep.name}.vcd")
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
@@ -82,7 +86,8 @@ object VerificationProblem {
       List(generateBmcConditions(1), impl, spec, invariants))
 
     // call checker
-    check(checker, bmcSys, kMax)
+    val success = check(checker, bmcSys, kMax)
+    assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
   private def makeChecker(name: paso.SolverName): IsModelChecker = {
@@ -93,7 +98,7 @@ object VerificationProblem {
     }
   }
 
-  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Unit = {
+  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
     val btorFile = sys.name + ".btor2"
     val vcdFile = sys.name + ".vcd"
 
@@ -105,8 +110,10 @@ object VerificationProblem {
         val sim = new TransitionSystemSimulator(fullSys)
         sim.run(witness, vcdFileName = Some(vcdFile))
         println(s"${fullSys.name} fails!")
+        false
       case ModelCheckSuccess() =>
-        println(s"${fullSys.name} works!")
+        // println(s"${fullSys.name} works!")
+        true
     }
   }
 
