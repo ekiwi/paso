@@ -26,8 +26,9 @@ class RegisterProtocol(impl: Register) extends ProtocolSpec[IdentityNoIdle[UInt]
 
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.in.set(in)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -55,10 +56,11 @@ class PipelinedMulProtocol(impl: PipelinedMul) extends ProtocolSpec[Mul32Spec] {
   protocol(spec.mul)(impl.io) { (clock, dut, in, out) =>
     dut.a.set(in.a)
     dut.b.set(in.b)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.a.set(DontCare)
     dut.b.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -94,10 +96,11 @@ trait MacProto extends ProtocolSpec[UntimedModule] {
     dut.c.set(DontCare)
     dut.b.set(DontCare)
     dut.a.set(in.a)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
 
     dut.a.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -146,10 +149,11 @@ class PipelinedAdd2Protocol(impl: PipelinedAdd2) extends ProtocolSpec[Add2Spec] 
   protocol(spec.add)(impl.io) { (clock, dut, in, out) =>
     dut.a.set(in.a)
     dut.b.set(in.b)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.a.set(DontCare)
     dut.b.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -197,9 +201,10 @@ class PipelinedAdd3Protocol(impl: PipelinedAdd3) extends ProtocolSpec[Add3Spec] 
     dut.a.set(DontCare)
     dut.b.set(DontCare)
     dut.c.set(in.c)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.c.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -213,9 +218,10 @@ class PipelinedAdd3CompositionalProtocol(impl: PipelinedAdd3) extends ProtocolSp
     dut.a.set(DontCare)
     dut.b.set(DontCare)
     dut.c.set(in.c)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.c.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -243,10 +249,11 @@ class PipelinedAdd3Delay2Protocol(impl: PipelinedAdd3Delay2) extends ProtocolSpe
     dut.first.set(false.B)
     dut.a.set(DontCare)
     dut.b.set(in.c)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.first.set(DontCare)
     dut.b.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -261,10 +268,11 @@ class PipelinedAdd3Delay2ProtocolCompisitional(impl: PipelinedAdd3Delay2) extend
     dut.first.set(false.B)
     dut.a.set(DontCare)
     dut.b.set(in.c)
-    clock.step() // this is a short-hand for clock.stepAndFork() because we assert an output with no following step
+    clock.stepAndFork()
     dut.first.set(DontCare)
     dut.b.set(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
