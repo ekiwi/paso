@@ -14,6 +14,8 @@ import paso.untimed.MethodInfo
  *  for bounded model checking or inductive proofs.
  */
 class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
+  import PredicateEncoder._
+
   private val signalPrefix = auto.untimed.name + ".automaton."
   private val stateBits = log2Ceil(auto.states.length + 1)
   private val inState = auto.states.map(s => smt.BVSymbol(signalPrefix + s"state_is_${s.id}", 1)).toArray
@@ -112,7 +114,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   }
 
   /** the idea here is to group predicates that just have different guards */
-  private def compactEncodePredicates(preds: Iterable[PasoStateGuarded], notReset: smt.BVExpr, prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
+  def compactEncodePredicates(preds: Iterable[PasoStateGuarded], notReset: smt.BVExpr, prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
     val notTriviallyTrue = preds.filterNot(_.pred.pred == smt.True())
     val groups = notTriviallyTrue.groupBy(_.pred.pred.toString)
     groups.zipWithIndex.map { case ((_, ps), i) =>
@@ -122,14 +124,16 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       mc.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)
     }
   }
+}
 
-  private def not(e: smt.BVExpr): smt.BVExpr = e match {
+object PredicateEncoder {
+  def not(e: smt.BVExpr): smt.BVExpr = e match {
     case smt.BVNot(inner) => inner
     case o => smt.BVNot(o)
   }
 
   /** automatically simplifies */
-  private def simplifiedProduct(e: Iterable[smt.BVExpr]): smt.BVExpr = {
+  def simplifiedProduct(e: Iterable[smt.BVExpr]): smt.BVExpr = {
     val simplified = filterProductTerms(e)
     if(simplified.isEmpty) smt.True() else smt.BVAnd(simplified)
   }
@@ -139,7 +143,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val uniqueTerms = simplifiedTerms.groupBy(_.toString).map(_._2.head)
     uniqueTerms
   }
-  private def sumOfProduct(e: Iterable[Iterable[smt.BVExpr]]): smt.BVExpr = {
+  def sumOfProduct(e: Iterable[Iterable[smt.BVExpr]]): smt.BVExpr = {
     val products = e.map(filterProductTerms).filterNot(_.isEmpty).toArray
 
     // if terms are used more than once across products, we use distributivity to simplify
