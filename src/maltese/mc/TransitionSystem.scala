@@ -5,7 +5,7 @@
 package maltese.mc
 
 import maltese.mc
-import maltese.smt.{BVSymbol, SMTExpr, SMTSymbol}
+import maltese.smt.{BVExpr, BVSymbol, SMTExpr, SMTSymbol}
 
 case class State(sym: SMTSymbol, init: Option[SMTExpr], next: Option[SMTExpr]) {
   def name: String = sym.name
@@ -73,8 +73,12 @@ object TransitionSystem {
     ???
   }
 
-  /** inlines all nodes which could lead to an exponential blowup in size */
-  def inlineNodes(sys: TransitionSystem): TransitionSystem = {
-    ???
+  def connect(sys: TransitionSystem, cons: Map[String, BVExpr]): TransitionSystem = {
+    // ensure that the ports exists
+    cons.foreach(i => assert(sys.inputs.exists(_.name == i._1), s"Cannot connect to non-existing port ${i._1}"))
+    // filter out inputs
+    val inputs = sys.inputs.filterNot(i => cons.contains(i.name))
+    val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
+    sys.copy(inputs = inputs, signals = connections ++ sys.signals)
   }
 }

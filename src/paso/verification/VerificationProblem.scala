@@ -46,6 +46,7 @@ object VerificationProblem {
 
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    println(spec.serialize)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -162,27 +163,19 @@ object VerificationProblem {
     mc.TransitionSystem("StartInStateZero", List(), List(), List(startAtZero))
   }
 
-  private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))
+  private def connectToReset(sys: TransitionSystem): TransitionSystem =
+    TransitionSystem.connect(sys, Map(sys.name + ".reset" ->  reset))
 
   private def encodeInvariants(specName: String, invariants: TransitionSystem): TransitionSystem = {
     val startState = smt.BVSymbol(specName + ".automaton.startState", 1)
     val invertAssert = smt.BVSymbol("invertAssert", 1)
-    val sys = connect(invariants, Map(
+    val sys = TransitionSystem.connect(invariants, Map(
       invariants.name + ".reset" -> reset,
       invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState),
       invariants.name + ".invertAssert" -> invertAssert,
     ))
     assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
     sys
-  }
-
-  private def connect(sys: TransitionSystem, cons: Map[String, smt.BVExpr]): TransitionSystem = {
-    // ensure that the ports exists
-    cons.foreach(i => assert(sys.inputs.exists(_.name == i._1), s"Cannot connect to non-existing port ${i._1}"))
-    // filter out inputs
-    val inputs = sys.inputs.filterNot(i => cons.contains(i.name))
-    val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
-    sys.copy(inputs = inputs, signals = connections ++ sys.signals)
   }
 
   private def observe(sys: TransitionSystem, signals: Iterable[smt.BVSymbol]): TransitionSystem = {
