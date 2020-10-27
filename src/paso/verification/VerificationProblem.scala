@@ -80,23 +80,24 @@ object VerificationProblem {
     check(checker, sys, kMax)
   }
 
-  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int): Unit = {
+  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Unit = {
     val btorFile = sys.name + ".btor2"
     val vcdFile = sys.name + ".vcd"
 
-    println(sys.serialize)
-    val res = checker.check(sys, kMax = kMax, fileName = Some(btorFile))
+    val fullSys = if(debug.isEmpty) { sys } else { observe(sys, debug) }
+    if(printSys) { println(fullSys.serialize) }
+    val res = checker.check(fullSys, kMax = kMax, fileName = Some(btorFile))
     res match {
       case ModelCheckFail(witness) =>
-        val sim = new TransitionSystemSimulator(sys)
+        val sim = new TransitionSystemSimulator(fullSys)
         sim.run(witness, vcdFileName = Some(vcdFile))
-        println(s"${sys.name} fails!")
+        println(s"${fullSys.name} fails!")
       case ModelCheckSuccess() =>
-        println(s"${sys.name} works!")
+        println(s"${fullSys.name} works!")
     }
   }
 
-  private def makeBmcSystem(name: String, problem: VerificationProblem, solver: Solver, debug: Iterable[smt.BVSymbol] = List()): TransitionSystem = {
+  private def makeBmcSystem(name: String, problem: VerificationProblem, solver: Solver): TransitionSystem = {
     // reset for one cycle at the beginning
     val reset = generateBmcConditions()
 
@@ -110,9 +111,7 @@ object VerificationProblem {
     val invariants = encodeInvariants(spec.name, problem.invariants)
 
     // combine everything together into a single system
-    val sys = mc.TransitionSystem.combine(name, List(reset, impl, spec, invariants))
-
-    if(debug.isEmpty) { sys } else { observe(sys, debug) }
+    mc.TransitionSystem.combine(name, List(reset, impl, spec, invariants))
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): TransitionSystem = {
