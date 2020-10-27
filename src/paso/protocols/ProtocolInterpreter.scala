@@ -14,7 +14,7 @@ object ProtocolInterpreter {
 
 case class ProtocolInfo(name: String, args: Map[String, Int], ioPrefix: String, methodPrefix: String, steps: Map[String, StepAnnotation], longestPath: Int)
 
-abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
+abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean) {
   import ProtocolInterpreter.Loc
 
   // The Protocol Compiler should make sure that the circuit is of a valid form!
@@ -56,7 +56,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState) {
     case n : ir.DefNode => throw new RuntimeException(f"Found non-inlined node: ${n.serialize}")
     case ir.Connect(info, ir.Reference(loc, _, _, _), expr) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
-      DoSet(info, loc, false, expr)
+      DoSet(info, loc, isSticky = stickyInputs, expr)
     case ir.IsInvalid(info, ir.Reference(loc, _, _, _)) =>
       assert(inputs.contains(loc), f"$loc is not an input, can only assign values to RTL inputs")
       DoUnSet(info, loc)

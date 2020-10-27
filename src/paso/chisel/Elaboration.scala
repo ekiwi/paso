@@ -95,7 +95,7 @@ case class Elaboration() {
       proto.generate(clock)
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
-    val paths = new SymbolicProtocolInterpreter(normalized, Yices2()).run()
+    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
     ProtocolGraph.encode(paths)
   }
 

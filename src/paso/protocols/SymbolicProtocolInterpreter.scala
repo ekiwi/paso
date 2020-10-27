@@ -36,7 +36,8 @@ private case class DataFlowInfo(prevSteps: List[String], prevMappings: Map[Strin
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
  */
-class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, solver: Solver) extends ProtocolInterpreter(protocol) {
+class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean, solver: Solver)
+  extends ProtocolInterpreter(protocol, stickyInputs) {
   import ProtocolInterpreter.Loc
 
   def run(): ProtocolPaths = {
