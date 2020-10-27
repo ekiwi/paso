@@ -37,6 +37,9 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val startTransactionStates = auto.states.filter(_.isStart).map(_.id).map(inState)
     val startAnyTransaction = List(mc.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates)))
 
+    // signal that can be used to constrain the state to be zero
+    val stateIsZero = List(mc.Signal(signalPrefix + "stateIsZero", inState(0)))
+
     // connect method enabled inputs and arguments
     val methodInputs = connectMethodEnabled(auto.commits, auto.untimed.methods) ++
       connectMethodArgs(auto.mappings, auto.untimed.methods)
@@ -55,7 +58,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
 
     // combine untimed model and paso automaton into a single transition system
-    val allSignals = stateSignals ++ startSignals ++ connectReset ++ methodInputs ++ auto.untimed.sys.signals ++
+    val allSignals = stateSignals ++ startSignals ++ stateIsZero ++ connectReset ++ methodInputs ++ auto.untimed.sys.signals ++
       assumptions ++ assertions ++ startAnyTransaction
     val allStates = states ++ auto.untimed.sys.states
     // we filter out all methods inputs + reset

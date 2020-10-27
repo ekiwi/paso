@@ -5,7 +5,7 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.mc.{IsBad, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
+import maltese.mc.{IsBad, IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
@@ -44,20 +44,24 @@ object VerificationProblem {
     val checker =  new mc.BtormcModelChecker()
     val solver = Yices2()
 
-    // for the base case we combine everything together with a reset
-    val baseCaseSys = makeBmcSystem("BaseCase", problem, solver)
+    // connect the implementation to the global reset
+    val impl = connectToReset(problem.impl)
 
-    // generate base case btor
-    println(baseCaseSys.serialize)
-    val res = checker.check(baseCaseSys, kMax = 5, fileName = Some("test.btor2"))
-    res match {
-      case ModelCheckFail(witness) =>
-        val sim = new TransitionSystemSimulator(baseCaseSys, printUpdates=false)
-        sim.run(witness, vcdFileName = Some("test.vcd"))
-        println("Base case fails! See test.vcd")
-      case ModelCheckSuccess() =>
-        println("Base case works!")
-    }
+    // turn spec into a monitoring automaton
+    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+
+    // encode invariants (if any)
+    val invariants = encodeInvariants(spec.name, problem.invariants)
+
+    // for the base case we combine everything together with a reset
+    val baseCaseSys = mc.TransitionSystem.combine("base",
+      List(generateBmcConditions(1), impl, spec, invariants))
+    check(checker, baseCaseSys, kMax = 1)
+
+    // for the induction we start the automaton in its initial state and assume
+    val inductionStep = mc.TransitionSystem.combine("induction",
+      List(generateInductionConditions(spec.name), impl, spec, invariants))
+    check(checker, inductionStep, kMax = 5)
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
@@ -65,7 +69,7 @@ object VerificationProblem {
 
   def bmc(problem: VerificationProblem, solver: paso.SolverName, kMax: Int): Unit = {
     val yices = Yices2()
-    val sys = makeBmcSystem("BMC", problem, yices)
+    val sys = makeBmcSystem("test_bmc", problem, yices)
 
     val checker = if(solver == paso.Btormc) {
       new mc.BtormcModelChecker()
@@ -73,21 +77,28 @@ object VerificationProblem {
       throw new NotImplementedError(s"TODO: $solver")
     }
 
+    check(checker, sys, kMax)
+  }
+
+  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int): Unit = {
+    val btorFile = sys.name + ".btor2"
+    val vcdFile = sys.name + ".vcd"
+
     println(sys.serialize)
-    val res = checker.check(sys, kMax = 1, fileName = Some("test.btor2"))
+    val res = checker.check(sys, kMax = kMax, fileName = Some(btorFile))
     res match {
       case ModelCheckFail(witness) =>
         val sim = new TransitionSystemSimulator(sys)
-        sim.run(witness, vcdFileName = Some("test.vcd"))
-        println("BMC fails!")
+        sim.run(witness, vcdFileName = Some(vcdFile))
+        println(s"${sys.name} fails!")
       case ModelCheckSuccess() =>
-        println("BMC works!")
+        println(s"${sys.name} works!")
     }
   }
 
   private def makeBmcSystem(name: String, problem: VerificationProblem, solver: Solver, debug: Iterable[smt.BVSymbol] = List()): TransitionSystem = {
     // reset for one cycle at the beginning
-    val reset = generateInitialReset(length = 1)
+    val reset = generateBmcConditions()
 
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
@@ -109,6 +120,12 @@ object VerificationProblem {
     new PasoAutomatonToTransitionSystem(automaton).run()
   }
 
+  private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
+    val reset = generateInitialReset(resetLength)
+    val invertAssert = mc.Signal("invertAssert", smt.False())
+    reset.copy(name="BmcConditions", signals = reset.signals :+ invertAssert)
+  }
+
   private def generateInitialReset(length: Int = 1): TransitionSystem = {
     assert(length >= 1)
     val counterBits = List(log2Ceil(length), 1).max
@@ -121,20 +138,29 @@ object VerificationProblem {
     mc.TransitionSystem("reset", List(), List(state), List(reset, notReset))
   }
 
-  private def generateDisabledReset(): TransitionSystem = {
+  private def generateInductionConditions(specName: String): TransitionSystem = {
+    // during induction, the reset is disabled
     val reset = mc.Signal("reset", smt.BVLiteral(0, 1))
     val notReset = mc.Signal("notReset", smt.BVLiteral(1, 1))
-    mc.TransitionSystem("reset", List(), List(), List(reset, notReset))
+
+    // the initial state is constrained with the invariants + the automaton state is 0
+    val isInit = smt.BVSymbol("isInit", 1)
+    val state = State(isInit, init = Some(smt.True()), next = Some(smt.False()))
+    val invertAssert = mc.Signal("invertAssert", isInit)
+    val startAtZero = Signal("startAtZero", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.stateIsZero", 1)), mc.IsConstraint)
+
+    mc.TransitionSystem("InductionConditions", List(), List(state), List(reset, notReset, invertAssert, startAtZero))
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem = connect(sys, Map(sys.name + ".reset" ->  reset))
 
   private def encodeInvariants(specName: String, invariants: TransitionSystem): TransitionSystem = {
     val startState = smt.BVSymbol(specName + ".automaton.startState", 1)
+    val invertAssert = smt.BVSymbol("invertAssert", 1)
     val sys = connect(invariants, Map(
       invariants.name + ".reset" -> reset,
       invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState),
-      invariants.name + ".invertAssert" -> smt.False(),
+      invariants.name + ".invertAssert" -> invertAssert,
     ))
     assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
     sys
