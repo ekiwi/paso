@@ -34,9 +34,17 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   }
   private val transitionMap: Map[String, Transition] =
     protocols.flatMap { p => p.transitions.zipWithIndex.map { case (t, i) => s"${p.name}$$0@$i" -> t }}.toMap
+  private val transitionCopyMap = mutable.HashMap[String, Transition]()
   private def transition(loc: Loc): Transition = {
-    assert(loc.copyId == 0, "TODO: lazily copy transitions as copies occur!")
-    transitionMap(loc.toString)
+    // if the loc is of copy=0, i.e. the original copy, we just look it up
+    if(loc.copyId == 0) {
+      transitionMap(loc.toString)
+    } else {
+      if(!transitionCopyMap.contains(loc.toString)) {
+        copyProtocol(loc)
+      }
+      transitionCopyMap(loc.toString)
+    }
   }
 
   /** States are characterized by the active protocols and whether a new protocol is going to be started. */
@@ -105,6 +113,8 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     // we can add all assertions, assumptions and mappings from active transitions as they are already properly guarded
     // (the only thing missing is the state which we now add)
     st.active.map(transition).foreach(addTransition(st.id, List(), _))
+
+    // TODO: check that ioAccess is compatible!
 
     if(!st.start) {
       // find all possible combinations of next locations for the active protocols
@@ -183,9 +193,53 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     }
   }
 
+  // adds a copy of all transitions in the protocol to transitionCopyMap
+  private def copyProtocol(loc: Loc): Unit = {
+    val original = protocols.find(_.name == loc.name).getOrElse(throw new RuntimeException(s"Unknown protocol: ${loc.name}"))
+    val suffix = s"$$${loc.copyId}"
+    transitionCopyMap ++= ProtocolCopy(original, suffix)
+  }
+
   // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
   private def isUnSat(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isUnSat
+}
+
+object ProtocolCopy {
+  def apply(original: ProtocolGraph, suffix: String): Iterable[(String, Transition)] = {
+    // replace arguments, previous argument, return values as well as the enabled commit signal
+    val commitSignal = original.info.ioPrefix + "enabled"
+    val subs = original.info.args.flatMap { case(name, width) =>
+      List(name -> smt.BVSymbol(name + suffix, width), (name + "$prev") -> smt.BVSymbol(name + suffix + "$prev", width))
+    } ++ original.info.rets.map{ case (name, width) => name -> smt.BVSymbol(name + suffix, width) } ++
+      List(commitSignal -> smt.BVSymbol(commitSignal + suffix, 1))
+    original.transitions.zipWithIndex.map { case (t,i) =>
+      val copy = Transition(
+        name = t.name + suffix,
+        protocolName = t.protocolName,
+        assertions = t.assertions.map(replace(_, subs)),
+        assumptions = t.assumptions.map(replace(_, subs)),
+        mappings = t.mappings.map(replace(_, subs)),
+        ioAccess = t.ioAccess.map(replace(_, subs)),
+        next = t.next.map(replace(_, subs))
+      )
+      s"${original.name}${suffix}@$i" -> copy
+    }
+  }
+  private def replace(g: Next, subs: Map[String, smt.SMTExpr]): Next =
+    g.copy(guard = g.guard.map(replace(_, subs)), commit = g.commit.map(replace(_, subs).asInstanceOf[smt.BVSymbol]))
+  private def replace(g: GuardedAccess, subs: Map[String, smt.SMTExpr]): GuardedAccess =
+    g.copy(guard = g.guard.map(replace(_, subs)))
+  private def replace(g: GuardedMapping, subs: Map[String, smt.SMTExpr]): GuardedMapping =
+    GuardedMapping(g.guard.map(replace(_, subs)), replace(g.arg, subs).asInstanceOf[smt.BVSymbol], g.bits, replace(g.update, subs))
+  private def replace(g: Guarded, subs: Map[String, smt.SMTExpr]): Guarded =
+    Guarded(g.guard.map(replace(_, subs)), replace(g.pred, subs))
+  private def replace(e: smt.BVExpr, subs: Map[String, smt.SMTExpr]): smt.BVExpr =
+    replaceSMT(e, subs).asInstanceOf[smt.BVExpr]
+  private def replaceSMT(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
+    case s : smt.BVSymbol => subs.getOrElse(s.name, s)
+    case other => other.mapExpr(replaceSMT(_, subs))
+  }
 }
