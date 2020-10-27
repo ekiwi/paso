@@ -14,7 +14,7 @@ case class PasoAutomaton(
   states: Array[PasoState], edges: Seq[PasoStateEdge], assumptions: Seq[PasoStateGuarded],
   assertions: Seq[PasoStateGuarded], mappings: Seq[PasoStateGuardedMapping],
   commits: Seq[PasoGuardedCommit], transactionStartSignals: Seq[(String, smt.BVExpr)],
-  longestPath: Int, untimed: UntimedModel
+  longestPath: Int, untimed: UntimedModel, protocolCopies: Seq[(String, Int)]
 )
 case class PasoState(id: Int, isStart: Boolean, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
@@ -89,7 +89,8 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
   def run(): PasoAutomaton = {
     // check that all transactions are mutually exclusive in their first transition
-    val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.fullIoName + "_guard", 1)).toMap // TODO: extract complete guard expression over states from transition system
+    val guards = untimed.methods.map(m => untimed.name + "." + m.name -> smt.BVSymbol(m.fullIoName + "_guard", 1)).toMap
+    // TODO: extract complete guard expression over states from transition system, to allow for transactions with mutually exclusive guards
     val newTransactionPred = protocols
       .map{ p => p.transitions.head.assumptions.map(_.toExpr) :+ guards(p.name) }.map(smt.BVAnd(_)).toSeq
     ensureMutuallyExclusive(newTransactionPred, protocols.map(_.info))
@@ -106,7 +107,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
       assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
       newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
-      longestPath, untimed)
+      longestPath, untimed, protocolCopies.toSeq)
   }
 
   private def encodeState(st: State): Unit = {
@@ -129,6 +130,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     } else {
       // if we do need to start new transactions, we need to chose an unused copy of each transaction's protocol
       val guardedNewLocs = protocols.map { p =>
+        // TODO: choose start signal depending on actual copy ... (or remove any symbols from the start signal)
         newTransaction(p.name) -> getFreeCopy(p.name, st.active)
       }
 
@@ -196,9 +198,12 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   // adds a copy of all transitions in the protocol to transitionCopyMap
   private def copyProtocol(loc: Loc): Unit = {
     val original = protocols.find(_.name == loc.name).getOrElse(throw new RuntimeException(s"Unknown protocol: ${loc.name}"))
+    assert(loc.copyId == protocolCopies(original.name))
+    protocolCopies(original.name) = loc.copyId + 1
     val suffix = s"$$${loc.copyId}"
     transitionCopyMap ++= ProtocolCopy(original, suffix)
   }
+  private val protocolCopies = mutable.HashMap[String, Int]() ++ protocols.map(p => p.name -> 1)
 
   // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
