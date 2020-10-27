@@ -215,7 +215,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 object ProtocolCopy {
   def apply(original: ProtocolGraph, suffix: String): Iterable[(String, Transition)] = {
     // replace arguments, previous argument, return values as well as the enabled commit signal
-    val commitSignal = original.info.ioPrefix + "enabled"
+    val commitSignal = original.info.methodPrefix + "enabled"
     val subs = original.info.args.flatMap { case(name, width) =>
       List(name -> smt.BVSymbol(name + suffix, width), (name + "$prev") -> smt.BVSymbol(name + suffix + "$prev", width))
     } ++ original.info.rets.map{ case (name, width) => name -> smt.BVSymbol(name + suffix, width) } ++
