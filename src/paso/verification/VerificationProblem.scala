@@ -133,7 +133,8 @@ object VerificationProblem {
     val startState = smt.BVSymbol(specName + ".automaton.startState", 1)
     val sys = connect(invariants, Map(
       invariants.name + ".reset" -> reset,
-      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState)
+      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState),
+      invariants.name + ".invertAssert" -> smt.False(),
     ))
     assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
     sys

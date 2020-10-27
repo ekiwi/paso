@@ -58,7 +58,9 @@ case class Elaboration() {
     val annos = inv.externalRefs.map{ r =>
       val (_, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
       CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
-    } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass)))
+    } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass))) ++
+    // add an invertAsserts port that turns asserts into assumes when active
+    Seq(RunFirrtlTransformAnnotation(Dependency(passes.InvertAssertPass)))
 
     // convert invariant module to SMT
     val (transitionSystem, _) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
