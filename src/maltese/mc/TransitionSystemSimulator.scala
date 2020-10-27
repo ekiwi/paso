@@ -30,6 +30,9 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private val observedMemories =
     arrayStates.map(_.sym.asInstanceOf[smt.ArraySymbol]).filter(a => arrayDepth(a.indexWidth) <= maxMemVcdSize)
 
+  //
+  private val badNameToIndex: Map[String, Int] = sys.signals.filter(_.lbl == IsBad).map(_.name).zipWithIndex.toMap
+
 
   private case class Memory(data: Seq[BigInt]) {
     def depth: Int = data.size
@@ -61,6 +64,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       case smt.BVSlice(e, hi, lo) => smt.SMTExprEval.doBVSlice(eval(e), hi, lo)
       case smt.BVNot(e) => smt.SMTExprEval.doBVNot(eval(e), e.width)
       case smt.BVNegate(e) => smt.SMTExprEval.doBVNegate(eval(e), e.width)
+      case smt.BVImplies(a, b) => smt.SMTExprEval.doBVNot(eval(a), 1) | eval(b)
       case smt.BVEqual(a, b) => smt.SMTExprEval.doBVEqual(eval(a), eval(b))
       case smt.BVComparison(op, a, b, signed) => smt.SMTExprEval.doBVCompare(op, eval(a), eval(b), a.width, signed)
       case smt.BVOp(op, a, b) => smt.SMTExprEval.doBVOp(op, eval(a), eval(b), a.width)
@@ -72,6 +76,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         if(c == 1) { eval(tru) } else { eval(fals) }
       case smt.BVSelect(_) => throw new NotImplementedError("BVSelect")
       case smt.ArrayEqual(a, b) => if(evalArray(a).data == evalArray(b).data) BigInt(1) else BigInt(0)
+      case _ : smt.BVForall => throw new NotImplementedError("forall")
     }
     value
   }
@@ -199,9 +204,8 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
 
     // make sure constraints are not violated
     def simpl(e: smt.SMTExpr): smt.SMTExpr = smt.SMTSimplifier.simplify(e)
-    val constraints = sys.signals.filter(_.lbl == IsConstraint)
-    constraints.foreach { signal =>
-      val holds = eval(signal.e.asInstanceOf[smt.BVExpr])
+    sys.signals.filter(_.lbl == IsConstraint).foreach { signal =>
+      val holds = data(bvNameToIndex(signal.name))
       assert(holds == 0 || holds == 1, s"Constraint ${signal.name} returned invalid value when evaluated: $holds")
       if(holds == 0) {
         println(s"ERROR: Constraint #${signal.name} was violated!")
@@ -211,22 +215,21 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       }
     }
 
-    // evaluate safety properties
-    val failed = sys.bad.zipWithIndex.map { case (expr, ii) =>
-      val value = eval(expr)
-      vcdWriter.foreach(_.wireChanged(s"BadStates.b$ii", value))
-      (ii, value)
+    // check to see if any safety properties failed
+    val failed = sys.signals.filter(_.lbl == IsBad).map { signal =>
+      (signal.name, data(bvNameToIndex(signal.name)))
     }.filter(_._2 != 0).map(_._1)
-    def failedMsg(p: Int) = {
-      val expr = simpl(sys.bad(p))
-      val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
-      s"b$p: $expr with $syms"
+    def failedMsg(name: String): String = {
+      val expr = simpl(sys.signals.find(_.name == name).get.e)
+      //val syms = symbolsToString(Context.findSymbols(expr)).mkString(", ")
+      s"$name: $expr"
     }
     def failedPropertiesMsg: String = s"Failed (${failed.size}) properties in step #$index:\n${failed.map(failedMsg).mkString("\n")}"
     expectedBad match {
-      case None => assert(failed.isEmpty, failedPropertiesMsg)
+      case None => assert(failed.isEmpty,  "Unexpected failure!! " + failedPropertiesMsg)
       case Some(props) =>
-        if(!props.subsetOf(failed.toSet)) {
+        val failedSet = failed.map(badNameToIndex(_)).toSet
+        if(!props.subsetOf(failedSet)) {
           println(s"In step #$index: Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed");
         }
         //assert(props.subsetOf(failed.toSet), s"In step #$index: Expected properties ${props.map("b"+_).mkString(", ")} to fail, instead ${failed.map("b"+_).mkString(", ")} failed")

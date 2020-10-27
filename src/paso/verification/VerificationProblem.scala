@@ -5,7 +5,7 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.mc.{IsBad, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem}
+import maltese.mc.{IsBad, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
@@ -52,7 +52,9 @@ object VerificationProblem {
     val res = checker.check(baseCaseSys, kMax = 5, fileName = Some("test.btor2"))
     res match {
       case ModelCheckFail(witness) =>
-        println("Base case fails!")
+        val sim = new TransitionSystemSimulator(baseCaseSys, printUpdates=false)
+        sim.run(witness, vcdFileName = Some("test.vcd"))
+        println("Base case fails! See test.vcd")
       case ModelCheckSuccess() =>
         println("Base case works!")
     }
@@ -72,9 +74,11 @@ object VerificationProblem {
     }
 
     println(sys.serialize)
-    val res = checker.check(sys, kMax = 1, fileName = Some("bmc.btor2"))
+    val res = checker.check(sys, kMax = 1, fileName = Some("test.btor2"))
     res match {
       case ModelCheckFail(witness) =>
+        val sim = new TransitionSystemSimulator(sys)
+        sim.run(witness, vcdFileName = Some("test.vcd"))
         println("BMC fails!")
       case ModelCheckSuccess() =>
         println("BMC works!")
