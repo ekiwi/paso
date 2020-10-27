@@ -197,7 +197,7 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
   }
 }
 
-/** adds a final step if the protocol does not end in a step already */
+/** checks to make sure that the protocol ends in a step */
 object EnsureFinalStepPass extends Transform with DependencyAPIMigration {
   // we need to run on the goto program
   override def prerequisites = Seq(Dependency[GotoProgramTransform])
@@ -214,17 +214,12 @@ object EnsureFinalStepPass extends Transform with DependencyAPIMigration {
       case _ => false
     }
     // if the goto program already ends in a step, there is nothing to do here
-    if(lastStmtIsStep) { state } else {
-      val namespace = Namespace(isStep.toSeq)
-      val finalStep = ir.DefWire(ir.NoInfo, namespace.newName("step"), ir.UIntType(ir.IntWidth(1)))
-      val blocks = bbs.zipWithIndex.map { case (block, ii) =>
-        if(ii == finalBlock) block :+ finalStep else block
-      }
-      val body = ir.Block(blocks.map(ir.Block(_)).toArray)
-      val anno = StepAnnotation(CircuitTarget(state.circuit.main).module(m.name).ref(finalStep.name), doFork=false, artificial = true)
-      val circuit = state.circuit.copy(modules = List(m.copy(body = body)))
-      state.copy(circuit = circuit, annotations = state.annotations :+ anno)
+    if(!lastStmtIsStep) {
+      val msg = "Protocols need to end in a clock step!\n" + m.serialize
+      throw new ProtocolError(msg)
     }
+
+    state
   }
 
   private def findFinalBlock(blocks: Seq[Seq[ir.Statement]])(block: Int): Int = {
