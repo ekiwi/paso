@@ -168,44 +168,44 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       if(printUpdates) println(s"I: ${input.name} <- $value")
     }
 
-    // evaluate outputs
-    val newOutputs = sys.outputs.zipWithIndex.map { case ((name, expr), ii) =>
-      val value = eval(expr)
-      if(printUpdates) println(s"O: $name -> $value")
-      (ii, value)
-    }
-    // update outputs (constraints, bad states and next state functions could depend on the new value)
-    newOutputs.foreach{ case (ii, value) =>
-      data(ii + signalOffset) = value
-      vcdWriter.foreach(_.wireChanged(dataIndexToName(ii + signalOffset), value))
+    // evaluate signals
+    sys.signals.foreach {
+      case Signal(name, e: smt.BVExpr, _) =>
+        val value = eval(e)
+        if(printUpdates) println(s"S: $name -> $value")
+        data(bvNameToIndex(name)) = value
+        vcdWriter.foreach(_.wireChanged(name, value))
+      case Signal(name, e: smt.ArrayExpr, _) =>
+        val value = evalArray(e)
+        memories(bvNameToIndex(name)) = value
     }
 
     // calculate next states
-    val newRegValues = regStates.map { case (state, ii) =>
+    val newBVState = bvStates.map { state =>
       val value = state.next match {
-        case Some(next) => eval(next)
+        case Some(next) => eval(next.asInstanceOf[smt.BVExpr])
         case None => throw new NotImplementedError(s"State $state without a next function is not supported")
       }
-      (ii, value)
+      (state.name, value)
     }.toVector
 
-    val newMemValues = memStates.map { case (state, ii) =>
+    val newArrayState = arrayStates.map { state =>
       val value = state.next match {
-        case Some(next) => evalArray(next)
+        case Some(next) => evalArray(next.asInstanceOf[smt.ArrayExpr])
         case None => throw new NotImplementedError(s"State $state without a next function is not supported")
       }
-      (ii, value)
+      (state.name, value)
     }.toVector
 
     // make sure constraints are not violated
-    def simpl(e: Expr): Expr = SMTSimplifier.simplify(e) // TODO: this uses code outside of uclid...
-    sys.constraints.zipWithIndex.foreach { case (expr, i) =>
-      val holds = eval(expr)
-      assert(holds == 0 || holds == 1, s"Constraint $expr returned invalid value when evaluated: $holds")
-      vcdWriter.foreach(_.wireChanged(s"Constraints.c$i", holds))
-      if(eval(expr) == 0) {
-        println(s"ERROR: Constraint #$i ${simpl(expr)} was violated!")
-        symbolsToString(Context.findSymbols(expr)).foreach(println)
+    def simpl(e: smt.SMTExpr): smt.SMTExpr = smt.SMTSimplifier.simplify(e)
+    val constraints = sys.signals.filter(_.lbl == IsConstraint)
+    constraints.foreach { signal =>
+      val holds = eval(signal.e.asInstanceOf[smt.BVExpr])
+      assert(holds == 0 || holds == 1, s"Constraint ${signal.name} returned invalid value when evaluated: $holds")
+      if(holds == 0) {
+        println(s"ERROR: Constraint #${signal.name} was violated!")
+        //symbolsToString(Context.findSymbols(expr)).foreach(println)
         //printData()
         //throw new RuntimeException("Violated constraint!")
       }
@@ -237,11 +237,11 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     vcdWriter.foreach(_.incrementTime())
 
     // update state
-    newRegValues.foreach{ case (ii, value) =>
-      if(printUpdates) println(s"R: ${dataIndexToName(ii + stateOffset)} <- $value")
-      data(ii + stateOffset) = value
+    newBVState.foreach{ case (name, value) =>
+      if(printUpdates) println(s"R: $name <- $value")
+      data(bvNameToIndex(name)) = value
     }
-    newMemValues.foreach{ case (ii, value) => memories(memStateIdToArrayIndex(ii)) = value }
+    newArrayState.foreach{ case (name, value) => memories(arrayNameToIndex(name)) = value }
   }
 
   def run(witness: Witness, vcdFileName: Option[String] = None): Unit = {
@@ -261,7 +261,5 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       vv.incrementTime()
       vv.write(ff)
     }
-    functionResults.foreach { case (id, res) => println(s"$id --> $res") }
-    // functionResults.foreach { case (id, res) => println(s"$id --> $res") }
   }
 }
