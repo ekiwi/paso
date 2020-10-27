@@ -31,7 +31,7 @@ case class PathCtx(
 case class ProtocolPaths(info: ProtocolInfo, steps: Seq[(String, List[PathCtx])])
 
 private case class Mapping(prevSteps: List[String], map: Map[String, BigInt])
-private case class DataFlowInfo(prevSteps: List[String], prevMappings: Map[String, BigInt], hasForked: Boolean)
+private case class DataFlowInfo(prevSteps: List[String], prevMappings: Map[String, BigInt], hasForked: Boolean, stickyInputs: Map[String, InputValue])
 
 /** Encodes imperative protocol into a more declarative graph.
  *  - currently assumes that there are no cycles in the CFG!
@@ -44,7 +44,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     // TODO: also track sticky inputs, sticky inputs may not refer to outputs!
     val incomingFlow = mutable.HashMap[String, DataFlowInfo]()
     // for the "start" step, all args are un-mapped and the execution has not forked!
-    incomingFlow("start") = DataFlowInfo(List(), args.map{ case (name, _) => name -> BigInt(0) }, false)
+    incomingFlow("start") = DataFlowInfo(List(), args.map{ case (name, _) => name -> BigInt(0) }, false, Map())
 
     // we ignore final steps as they are equivalent with the first, the "start", step
     val nonFinalSteps = stepOrder.filterNot(s => steps(s._1).isFinal)
@@ -52,32 +52,62 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     val stepsToPaths = nonFinalSteps.map { case (stepName, blockId, stmtId) =>
       val map = incomingFlow(stepName).prevMappings
       val forked = incomingFlow(stepName).hasForked || steps.get(stepName).exists(_.doFork)
-      val ctx = PathCtx(List(), map, forked, List(), Map(), Map(), None)
+      val inputs = incomingFlow(stepName).stickyInputs
+      val ctx = PathCtx(List(), map, forked, List(), inputs, Map(), None)
       val paths = executeFrom(ctx, Loc(blockId, stmtId))
       // update mappings / forkInfo for all following paths
-      paths.filter(p => p.next.isDefined && !p.next.contains("start")).foreach { p =>
-        val next = p.next.get
-        val map = p.mappedArgs
-        if(incomingFlow.contains(next)) {
-          val cur = incomingFlow(next)
-          cur.prevMappings.foreach { case (arg, bits) =>
-            val newBits = map(arg)
-            if(newBits != bits) {
-              throw new RuntimeException(s"Inconsistent mapping for $arg, coming into $next. ${cur.prevSteps} vs $stepName")
-            }
-          }
-          if(cur.hasForked != p.hasForked) {
-            throw new RuntimeException(s"Inconsistent forking, coming into $next. ${cur.prevSteps} vs $stepName")
-          }
-          incomingFlow(next) = cur.copy(cur.prevSteps :+ stepName)
-        } else {
-          incomingFlow(next) = DataFlowInfo(List(stepName), map, p.hasForked)
-        }
-      }
+      trackFlowInfo(incomingFlow, stepName, paths.filter(p => p.next.isDefined && !p.next.contains("start")))
       stepName -> paths
     }
 
     ProtocolPaths(getInfo, stepsToPaths)
+  }
+
+  private def trackFlowInfo(incomingFlow: mutable.HashMap[String, DataFlowInfo], stepName: String, newPaths: Iterable[PathCtx]): Unit = {
+    // update mappings / forkInfo for all following paths
+    newPaths.foreach { p =>
+      val next = p.next.get
+      val map = p.mappedArgs
+      val stickyInputs = p.inputValues.filter(_._2.sticky)
+      if(incomingFlow.contains(next)) {
+        val cur = incomingFlow(next)
+        lazy val loc = s"coming into $next. ${cur.prevSteps} vs $stepName"
+        // ensure that mappings are the same
+        assert(cur.prevMappings.keySet == map.keySet, s"Inconsistent mapped args, $loc")
+        cur.prevMappings.foreach { case (arg, bits) =>
+          val newBits = map(arg)
+          if(newBits != bits) {
+            throw new RuntimeException(s"Inconsistent mapping for $arg, $loc")
+          }
+        }
+
+        // ensure that forking state is the same
+        if(cur.hasForked != p.hasForked) {
+          throw new RuntimeException(s"Inconsistent forking, $loc")
+        }
+
+        // ensure that sticky inputs are the same
+        assert(cur.stickyInputs.keySet == stickyInputs.keySet, f"Inconsistent input mappings $loc")
+        cur.stickyInputs.foreach { case (input, value) =>
+          if(value.value != stickyInputs(input).value) {
+            val (a,b) = (value.value.toString, stickyInputs(input).value.toString)
+            throw new RuntimeException(s"Inconsistent values for $input, $a vs $b, $loc")
+          }
+        }
+
+        // just add the step name for debug reasons
+        incomingFlow(next) = cur.copy(cur.prevSteps :+ stepName)
+      } else {
+        // ensure that the any new sticky inputs do not depend on any outputs
+        stickyInputs.foreach { case (input, value) =>
+          val syms = findSymbols(value.value)
+          val outputs = filterOutputs(syms).map(_.toString)
+          assert(outputs.isEmpty, s"Input $input depends on outputs $outputs and is also sticky. The output will have a different value in the next step and thus this is not allowed!")
+        }
+
+        incomingFlow(next) = DataFlowInfo(List(stepName), map, p.hasForked, stickyInputs)
+      }
+    }
   }
 
   private def executeFrom(startCtx: PathCtx, loc: Loc): List[PathCtx] = {
@@ -131,7 +161,6 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
   private def onSet(ctx: PathCtx, set: DoSet): PathCtx = {
     val (c1, value) = analyzeRValue(ctx, toSMT(set.expr, inputs(set.loc), allowNarrow = true), set.info, isSet=true)
     //println(f"SET ${set.loc} <= $value ${set.info.serialize}")
-    assert(!set.isSticky, "TODO: implement sticky inputs!")
     val inp = InputValue(set.loc, value, set.isSticky, set.info)
     c1.copy(inputValues = c1.inputValues + (set.loc -> inp))
   }
