@@ -45,7 +45,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn spec into a monitoring automaton
-    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -58,7 +58,8 @@ object VerificationProblem {
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), impl, spec, invariants, startInStateZero(spec.name)))
-    val inductionSuccess = check(checker, inductionStep, kMax = 5)
+    val inductionLength = longestPath
+    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
 
     // check results
     assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
@@ -76,7 +77,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn spec into a monitoring automaton
-    val spec = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -117,9 +118,11 @@ object VerificationProblem {
     }
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): TransitionSystem = {
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): (TransitionSystem, Int) = {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
-    new PasoAutomatonToTransitionSystem(automaton).run()
+    val sys = new PasoAutomatonToTransitionSystem(automaton).run()
+    val longestPath = automaton.longestPath
+    (sys, longestPath)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {

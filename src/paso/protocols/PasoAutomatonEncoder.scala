@@ -14,7 +14,7 @@ case class PasoAutomaton(
   states: Array[PasoState], edges: Seq[PasoStateEdge], assumptions: Seq[PasoStateGuarded],
   assertions: Seq[PasoStateGuarded], mappings: Seq[PasoStateGuardedMapping],
   commits: Seq[PasoGuardedCommit], transactionStartSignals: Seq[(String, smt.BVExpr)],
-  untimed: UntimedModel
+  longestPath: Int, untimed: UntimedModel
 )
 case class PasoState(id: Int, isStart: Boolean, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
@@ -94,10 +94,11 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       encodeState(statesToBeEncoded.pop())
     }
 
+    val longestPath = protocols.map(_.info.longestPath).max
     PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
       assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
       newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
-      untimed)
+      longestPath, untimed)
   }
 
   private def encodeState(st: State): Unit = {

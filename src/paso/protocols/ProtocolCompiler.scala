@@ -193,7 +193,7 @@ class GotoProgramTransform extends Transform with DependencyAPIMigration {
 }
 
 // contains the names of all steps in topological order
-case class StepOrderAnnotation(steps: Seq[(String, Int, Int)]) extends NoTargetAnnotation
+case class StepOrderAnnotation(steps: Seq[(String, Int, Int)], longestPath: Int) extends NoTargetAnnotation
 
 /** adds a topological order for steps */
 object StepOrderPass extends Transform with DependencyAPIMigration {
@@ -209,9 +209,12 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
     val stepEdges = steps.map { case (name, blockId, stmtId) =>
       name -> findNextStep(bbs, isStep)(blockId, stmtId).toSet
     }
-    val stepOrder = DiGraph[String](stepEdges.toMap).linearize
+    val stepEdgeMap = stepEdges.toMap
+    val stepGraph = DiGraph[String](stepEdgeMap)
+    val stepOrder = stepGraph.linearize
     val stepMap = steps.map(s => s._1 -> s).toMap
-    val anno = StepOrderAnnotation(stepOrder.map(stepMap))
+    val longestPath = findLongestPath(stepEdgeMap)("start")
+    val anno = StepOrderAnnotation(stepOrder.map(stepMap), longestPath)
     // final steps have no next step
     val finalSteps = stepEdges.filter(_._2.isEmpty).map(_._1).toSet
     // change annotation for final steps
@@ -238,6 +241,11 @@ object StepOrderPass extends Transform with DependencyAPIMigration {
       // ignore block id (first statement)
       stmts.drop(1).zipWithIndex.collect { case (ir.DefWire(_, name, _), stmtId) if isStep(name) => (name, blockId, stmtId+1)}
     }
+  }
+
+  private def findLongestPath(stepEdgeMap: Map[String, Set[String]])(step: String): Int = {
+    val next = stepEdgeMap(step)
+    if(next.isEmpty) 0 else next.toList.map(findLongestPath(stepEdgeMap)).max + 1
   }
 }
 
