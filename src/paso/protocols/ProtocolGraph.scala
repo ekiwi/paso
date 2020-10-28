@@ -63,7 +63,8 @@ object ProtocolGraph {
     // find the assumptions and mappings for all paths
     val am = paths.map { p =>
       var mappings = paths.head.prevMappings
-      val am = p.inputValues.map { case (input, v) =>
+      // need to convert toSeq because else the result is treated as a map and that could lead to data loss
+      val am = p.inputValues.toSeq.map { case (input, v) =>
         val r = BitMapping.analyze(mappings, smt.BVSymbol(input, v.value.width), v.value)
         mappings = r._3
         (r._1, r._2)
