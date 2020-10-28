@@ -44,8 +44,9 @@ object VerificationProblem {
     val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = false)
 
     // for the induction we start the automaton in its initial state and assume
+    val startStates = startInInitState(spec.name, subspecs.map(_.name))
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants, startInInitState(spec.name)))
+      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants, startStates))
     val inductionLength = longestPath
     val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
 
@@ -145,10 +146,20 @@ object VerificationProblem {
     mc.TransitionSystem("InductionConditions", List(), List(state), List(reset, notReset, invertAssert))
   }
 
-  private def startInInitState(specName: String): TransitionSystem = {
+  private def startInInitState(specName: String, subspecNames: Iterable[String]): TransitionSystem = {
     val isInit = smt.BVSymbol("isInit", 1)
-    val startAtInit = Signal("initState", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.initState", 1)), mc.IsConstraint)
-    mc.TransitionSystem("StartInInitState", List(), List(), List(startAtInit))
+    // we start all automatons in their initial state
+    val assumptions = (List(specName) ++ subspecNames).zipWithIndex.map { case (name, ii) =>
+      Signal(s"initState$ii", smt.BVImplies(isInit, smt.BVSymbol(name + ".automaton.initState", 1)), mc.IsConstraint)
+    }
+    // if the main spec is in a start state, we require all subspecs to also be in a start state
+    val mainStartState = smt.BVSymbol(specName + ".automaton.startState", 1)
+    val assertions = subspecNames.zipWithIndex.map { case (subName, ii) =>
+      val subStartState = smt.BVSymbol(subName + ".automaton.startState", 1)
+      val assertion = smt.BVImplies(smt.BVAnd(notReset, mainStartState), subStartState)
+      Signal(s"startState$ii", smt.BVNot(assertion), mc.IsBad)
+    }
+    mc.TransitionSystem("StartInInitState", List(), List(), assumptions ++ assertions)
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem =
@@ -159,7 +170,7 @@ object VerificationProblem {
     val invertAssert = smt.BVSymbol("invertAssert", 1)
     val sys = TransitionSystem.connect(invariants, Map(
       invariants.name + ".reset" -> reset,
-      invariants.name + ".enabled" -> smt.BVAnd(smt.BVNot(reset), startState),
+      invariants.name + ".enabled" -> smt.BVAnd(notReset, startState),
       invariants.name + ".invertAssert" -> invertAssert,
     ))
     assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
@@ -173,4 +184,5 @@ object VerificationProblem {
   }
 
   private val reset = smt.BVSymbol("reset", 1)
+  private val notReset = smt.BVSymbol("notReset", 1)
 }
