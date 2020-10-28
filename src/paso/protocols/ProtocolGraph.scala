@@ -131,11 +131,12 @@ object Transition {
       t.ioAccess.foreach { access =>
         val potentialConflicts = prev.getOrElse(access.pin, List()).filter(p => (p.bits & access.bits) != 0)
         potentialConflicts.foreach { conflict =>
-          val mayConflict = isSat(smt.BVAnd(conflict.guard ++ access.guard))
+          val conflictTerms = conflict.guard ++ access.guard
+          val mayConflict = if(conflictTerms.isEmpty) true else isSat(smt.BVAnd(conflictTerms))
           if(mayConflict) {
             val commonBits = access.bits & conflict.bits
-            val msg = f"There may be a conflicting access to ${access.pin} bits ${commonBits.toString(2)}" +
-              f"involving the following protocols: ${transitionNames.mkString(",")}"
+            val msg = f"There may be a conflicting access to ${access.pin} bits ${commonBits.toString(2)} " +
+              f"involving the following protocol (copies) and steps: ${transitionNames.mkString(",")}"
             throw new ProtocolConflictError(msg)
           }
         }

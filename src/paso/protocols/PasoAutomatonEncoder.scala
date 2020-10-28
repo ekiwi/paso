@@ -118,8 +118,14 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     // TODO: check that ioAccess is compatible!
 
     if(!st.start) {
+      // check that active transitions are compatible:
+      if(st.active.length > 1) {
+        Transition.checkCompatibility(isSat, st.active.map(transition))
+      }
+
       // find all possible combinations of next locations for the active protocols
       val nextActive = product(st.active.map(getNext))
+
       // if we do not start any new transactions, we just encode the nextActive states
       nextActive.foreach { na =>
         val next = na.map(_._1)
@@ -132,6 +138,14 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       val guardedNewLocs = protocols.map { p =>
         // TODO: choose start signal depending on actual copy ... (or remove any symbols from the start signal)
         newTransaction(p.name) -> getFreeCopy(p.name, st.active)
+      }
+
+      // check that active transitions are compatible:
+      if(st.active.nonEmpty) {
+        val activeTransitions = st.active.map(transition)
+        guardedNewLocs.map(_._2).map(transition).foreach { newTransition =>
+          Transition.checkCompatibility(isSat, activeTransitions :+ newTransition)
+        }
       }
 
       // We need to assume that one of the guards is true.
@@ -206,6 +220,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     xs.foldLeft(Seq(Seq.empty[N])){ (x, y) => for (a <- x.view; b <- y) yield a :+ b }
 
   private def isUnSat(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isUnSat
+  private def isSat(cond: smt.BVExpr): Boolean = solver.check(cond, produceModel = false).isSat
 }
 
 object ProtocolCopy {
