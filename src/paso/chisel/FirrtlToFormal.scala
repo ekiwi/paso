@@ -7,9 +7,9 @@ package paso.chisel
 import maltese.smt
 import firrtl.annotations.DeletedAnnotation
 import firrtl.backends.experimental.smt.ExpressionConverter
-import firrtl.options.TargetDirAnnotation
+import firrtl.options.{Dependency, TargetDirAnnotation}
 import firrtl.{AnnotationSeq, ir}
-import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation}
+import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, OutputFileAnnotation, RunFirrtlTransformAnnotation}
 import firrtl.transforms.NoCircuitDedupAnnotation
 import firrtl.util.BackendCompilationUtilities
 import logger.{LogLevel, LogLevelAnnotation}
@@ -25,6 +25,7 @@ object FirrtlToFormal  {
       FirrtlCircuitAnnotation(c),
       TargetDirAnnotation(testDir.getAbsolutePath),
       NoCircuitDedupAnnotation, // since we flatten everything anyways, there is no need to dedup.
+      RunFirrtlTransformAnnotation(Dependency(passes.UniqueVerificationMessagesPass)), // work around firrtl SMT backend bug
     ) ++ annos
     val res = (new FirrtlStage).execute(Array("-E", "experimental-btor2"), combinedAnnos)
     val name = res.collectFirst { case OutputFileAnnotation(file) => file }
