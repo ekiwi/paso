@@ -173,6 +173,7 @@ class TinyAESRoundProtocol(impl: HasRoundIO) extends ProtocolSpec[IsRoundSpec] {
     clock.step()
     dut.key.poke(DontCare)
     dut.stateNext.expect(out)
+    clock.step()
   }
 }
 
@@ -186,6 +187,7 @@ class TinyAESExpandKeyProtocol(impl: ExpandKey128) extends ProtocolSpec[AESKeyEx
     dut.out.expect(out)
     clock.step()
     dut.outDelayed.expect(out)
+    clock.step()
   }
 }
 
@@ -230,6 +232,7 @@ class TinyAESProtocol(impl: TinyAES128) extends ProtocolSpec[AES128Spec] {
     // wait 20 cycles (for a total of 21 = 10 rounds with delay 2 + 1 initial round)
     (0 until 20).foreach(_ => clock.step())
     dut.out.expect(out)
+    clock.step()
   }
 }
 
