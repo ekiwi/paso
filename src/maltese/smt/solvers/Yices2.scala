@@ -152,6 +152,8 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
       if(a.width == 1) { toBool(r) } else { r }
     case BVConcat(a, b) =>
       assertNoError(lib.yices_bvconcat2(convertToBV(a), convertToBV(b)))
+    case BVImplies(a, b) =>
+      assertNoError(lib.yices_implies(convert(a), convert(b)))
     case ArrayRead(a, b) =>
       throw new NotImplementedError("TODO: support array expressions")
     // ternary
