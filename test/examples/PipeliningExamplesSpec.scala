@@ -326,7 +326,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit add3 with delay=2" should "refine its spec" in {
@@ -355,7 +355,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd3Delay2(withBug = true))(new PipelinedAdd3Delay2Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify add3 on Add3Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 }
 
@@ -369,14 +369,14 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify mul on Mul32Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit multiplier with bug" should "fail bmc" in {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).bmc(1)
     }
-    assert(fail.getMessage.contains("Failed to verify PipelinedMul against Mul32Spec"))
+    assert(fail.getMessage.contains("Found a disagreement between implementation and spec."))
   }
 
   "A pipelined 32-bit mac" should "refine its spec" in {
@@ -387,7 +387,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit mac with abstract adder" should "refine its spec" in {
@@ -402,7 +402,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
         replace(impl.mul)(new PipelinedMulProtocol(_))
       }).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify mac on Mac32Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
