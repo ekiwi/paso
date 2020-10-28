@@ -183,6 +183,8 @@ case class Elaboration() {
     val subspecList = findSubspecs(implChisel.instance, specChisel.untimed).subspecs
     assert(implChisel.instance.name != specChisel.untimed.name, "spec and impl must have different names")
 
+    // TODO: we might have to evaluate subspecs here in order to make them available to the invariants
+
     // elaborate invariants in order to collect all signals that need to be exposed from the implementation and spec
     val invChisel = chiselElaborateInvariants(implChisel, specChisel, proofCollateral)
 
@@ -190,17 +192,13 @@ case class Elaboration() {
     val implementation = elaborateImpl(implChisel, subspecList, invChisel.externalRefs)
     val (spec, specExposedSignals) = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
 
-    // elaborate subspecs
-    val implIo = implementation.model.inputs ++
-      implementation.model.signals.collect { case Signal(name, e: smt.BVExpr, mc.IsOutput) => smt.BVSymbol(name, e.width) }
+    // elaborate + compile subspecs
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
       val (spec, _) = elaborateSpec(elaborated, implementation.model.name + "." + instance, List())
-      val prefixLength = instance.length + 1
-      val io = implIo.filter(_.name.startsWith(instance + ".")).map(s => s.rename(s.name.substring(prefixLength)))
       val binding = s.getBinding.map(_.instance)
-      Subspec(instance, io, spec, binding)
+      Subspec(spec, binding)
     }
 
     // elaborate the proof collateral

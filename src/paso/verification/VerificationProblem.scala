@@ -16,7 +16,7 @@ case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInf
   def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
 }
 case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
-case class Subspec(instance: String, ioSymbols: Seq[smt.BVSymbol], spec: Spec, binding: Option[String])
+case class Subspec(spec: Spec, binding: Option[String])
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec], invariants: TransitionSystem)
 
 object VerificationProblem {
