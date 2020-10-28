@@ -79,10 +79,15 @@ object ProtocolGraph {
     // find the next states
     val next = paths.flatMap{ p => p.next.map{ nextName =>
       val nextInfo = info.steps(nextName)
+      assert(!nextInfo.isFinal, s"All final steps should have been replace with the start step ($stepName -> $nextName)!")
+      val nextIsFinal = nextName == "start"
+      if(p.hasForked) {
+        assert(!nextInfo.doFork, s"We have already forked, there should not be another fork ($stepName -> $nextName)!")
+      }
       // we commit if the execution has not forked yet, and it is the final node or if it is a fork node
-      val doCommit = !p.hasForked && (nextInfo.isFinal || nextInfo.doFork)
+      val doCommit = (!p.hasForked && nextIsFinal) || nextInfo.doFork
       val commit = if(doCommit) Some(smt.BVSymbol(info.methodPrefix + "enabled", 1)) else None
-      Next(p.cond, nextInfo.doFork, commit, nextInfo.isFinal, stepToId(nextName))
+      Next(p.cond, doCommit, commit, nextIsFinal, stepToId(nextName))
     }}
 
     // find all I/O pins that are accessed
