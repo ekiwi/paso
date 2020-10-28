@@ -34,7 +34,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   private val notReset = smt.BVSymbol("notReset", 1)
 
 
-  def run(): TransitionSystem = {
+  def run(invert: Boolean): TransitionSystem = {
     // copy untimed model method semantics if necessary
     val (untimedSys, untimedInputs) = UntimedModelCopy.run(auto.untimed, auto.protocolCopies)
 
@@ -49,14 +49,14 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val finalUntimedSys = connectedUntimedSys.copy(states = connectedUntimedSys.states ++ prevMethodArgs(untimedInputs.args))
 
     // turn the whole Paso FSM + assumptions + assertions into a transition system
-    val pasoAutomaton = makePasoAutomaton()
+    val pasoAutomaton = makePasoAutomaton(invert)
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
     val combined = mc.TransitionSystem.combine(finalUntimedSys.name, List(finalUntimedSys, pasoAutomaton))
     TopologicalSort.run(combined)
   }
 
-  private def makePasoAutomaton(): mc.TransitionSystem = {
+  private def makePasoAutomaton(invert: Boolean): mc.TransitionSystem = {
     // define inState signals
     val state = smt.BVSymbol(signalPrefix + "state", stateBits)
     val maxState = smt.BVLiteral(auto.states.length - 1, stateBits)
@@ -79,8 +79,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val stateIsZero = List(mc.Signal(signalPrefix + "initState", inState(0), mc.IsOutput))
 
     // encode assertions and assumptions
-    val assertions = compactEncodePredicates(auto.assertions, notReset, signalPrefix + "bad", IsBad, invert=true)
-    val assumptions = compactEncodePredicates(auto.assumptions, notReset, signalPrefix + "constraint", IsConstraint, invert=false)
+    val assertions = compactEncodePredicates(auto.assertions, notReset, signalPrefix + "bad", assumeDontAssert = invert)
+    val assumptions = compactEncodePredicates(auto.assumptions, notReset, signalPrefix + "constraint", assumeDontAssert = !invert)
 
     // encode paso FSM state transitions
     val stateState = encodeStateEdges(state, auto.edges, reset)
@@ -128,14 +128,16 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   }
 
   /** the idea here is to group predicates that just have different guards */
-  def compactEncodePredicates(preds: Iterable[PasoStateGuarded], notReset: smt.BVExpr, prefix: String, lbl: SignalLabel, invert: Boolean): Iterable[Signal] = {
+  def compactEncodePredicates(preds: Iterable[PasoStateGuarded], notReset: smt.BVExpr, prefix: String, assumeDontAssert: Boolean): Iterable[Signal] = {
+    val negate = !assumeDontAssert
+    val lbl = if(assumeDontAssert) mc.IsConstraint else mc.IsBad
     val notTriviallyTrue = preds.filterNot(_.pred.pred == smt.True())
     val groups = notTriviallyTrue.groupBy(_.pred.pred.toString)
     groups.zipWithIndex.map { case ((_, ps), i) =>
       val guard =  sumOfProduct(ps.map(p => inState(p.stateId) +: p.pred.guard))
       val pred = ps.head.pred.pred
       val expr = smt.BVImplies(smt.BVAnd(notReset, guard), pred)
-      mc.Signal(s"${prefix}_$i", if(invert) not(expr) else expr, lbl)
+      mc.Signal(s"${prefix}_$i", if(negate) not(expr) else expr, lbl)
     }
   }
 }

@@ -27,20 +27,25 @@ object VerificationProblem {
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
 
+    // turn subspecs into monitoring automatons
+    val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.spec.untimed, s.spec.protocols, solver, true)._1)
+    problem.subspecs.foreach(s => assert(s.binding.isEmpty, "TODO: support bindings"))
+    // TODO: assert that when the spec is in a start state, all subspecs are in a start state
+
     // turn spec into a monitoring automaton
-    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
 
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
-      List(generateBmcConditions(1), impl, spec, invariants))
-    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1)
+      List(generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
+    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = true)
 
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(), impl, spec, invariants, startInInitState(spec.name)))
+      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants, startInInitState(spec.name)))
     val inductionLength = longestPath
     val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
 
@@ -61,7 +66,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn spec into a monitoring automaton
-    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
+    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -102,9 +107,9 @@ object VerificationProblem {
     }
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver): (TransitionSystem, Int) = {
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver, invert: Boolean): (TransitionSystem, Int) = {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
-    val sys = new PasoAutomatonToTransitionSystem(automaton).run()
+    val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
     val longestPath = automaton.longestPath
     (sys, longestPath)
   }
