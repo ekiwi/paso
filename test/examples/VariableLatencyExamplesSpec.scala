@@ -275,8 +275,6 @@ class VariableLatencyExamplesSpec extends AnyFlatSpec {
     })
   }
 
-  // the following tests are disabled because they seem to trigger a new bug in Chisel 3.4.0-RC1
-  // see: https://github.com/freechipsproject/chisel3/issues/1569
   "VariableLatencyToConst with full RTL" should "refine its spec" in {
     Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariances { dut =>
