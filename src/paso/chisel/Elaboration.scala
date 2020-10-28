@@ -66,7 +66,7 @@ case class Elaboration() {
     connectedSys
   }
 
-  private def elaborateProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
+  private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new MultiIOModule() {
       override def circuitName: String = proto.methodName + "Protocol"
@@ -118,7 +118,7 @@ case class Elaboration() {
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Map[String, (String, ir.Type)])
-  private def elaborateUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference]): Untimed = {
+  private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference]): Untimed = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
     // make sure that all state is initialized to its reset value or zero
@@ -127,7 +127,7 @@ case class Elaboration() {
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos)
     val formal = compileToFormal(withAnnos, externalRefs, ll = LogLevel.Error)
 
-    // now we need to convert the transition system into the (more or less "legacy") UntimedModel format
+    // Extract information about all methods
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
     assert(formal.model.name == info.name)
     val methods = info.methods.map { m =>
@@ -143,8 +143,8 @@ case class Elaboration() {
 
   private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]):
   (Spec, Map[String, (String, ir.Type)]) = {
-    val ut = elaborateUntimed(spec, externalRefs)
-    val pt = ut.protocols.map(elaborateProtocol(_, implName, ut.model.name))
+    val ut = compileUntimed(spec, externalRefs)
+    val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
     (Spec(ut.model, pt), ut.exposedSignals)
   }
 
