@@ -6,7 +6,7 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
-import firrtl.annotations.{Annotation}
+import firrtl.annotations.Annotation
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
@@ -22,19 +22,13 @@ import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 
 case class Elaboration() {
-  private var chiselElaborationTime = 0L
-  private var firrtlCompilerTime = 0L
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
-    val start = System.nanoTime()
     val res = ChiselCompiler.elaborate(gen)
-    chiselElaborationTime += System.nanoTime() - start
     res
   }
 
   private def elaborateObserver(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
-    val start = System.nanoTime()
     val r = ElaborateObserver(observing, name, gen)
-    chiselElaborationTime += System.nanoTime() - start
     r
   }
 
@@ -183,10 +177,6 @@ case class Elaboration() {
   }
 
   def apply[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], findSubspecs: (I,S) => SubSpecs[I,S], proofCollateral: (I, S) => ProofCollateral[I, S]): VerificationProblem = {
-    firrtlCompilerTime = 0L
-    chiselElaborationTime = 0L
-    val start = System.nanoTime()
-
     // Chisel elaboration for implementation and spec
     val implChisel = chiselElaborationImpl(impl)
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
@@ -198,9 +188,7 @@ case class Elaboration() {
 
     // Firrtl Compilation
     val implementation = elaborateImpl(implChisel, subspecList, invChisel.externalRefs)
-    val endImplementation = System.nanoTime()
     val (spec, specExposedSignals) = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
-    val endSpec= System.nanoTime()
 
     // elaborate subspecs
     val implIo = implementation.model.inputs ++
@@ -214,28 +202,10 @@ case class Elaboration() {
       val binding = s.getBinding.map(_.instance)
       Subspec(instance, io, spec, binding)
     }
-    val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
     val exposed = implementation.exposedSignals ++ specExposedSignals
     val inv = compileInvariant(invChisel, exposed)
-    val endBinding = System.nanoTime()
-
-    if(false) { // TODO: these measurements are no longer accurate!
-      val total = endBinding - start
-      val dImpl = endImplementation - start
-      val dSpec = endSpec - endImplementation
-      val dSubspec = endSubSpec - endSpec
-      val dBinding = endBinding - endSubSpec
-      def p(i: Long): Long = i * 100 / total
-      def ms(i: Long): Long = i / 1000 / 1000
-      println(s"Total Elaboration Time: ${ms(total)}ms")
-      println(s"${p(dImpl)}% RTL, ${p(dSpec)}% Spec (Untimed + Protocol), ${p(dSubspec)}% Subspecs, ${p(dBinding)}% Invariances + Mapping")
-      val other = total - firrtlCompilerTime - chiselElaborationTime
-      println(s"${p(chiselElaborationTime)}% Chisel Elaboration, ${p(firrtlCompilerTime)}% Firrtl Compiler, ${p(other)}% Rest")
-      println(s"TODO: correctly account for the time spent in FirrtlToFormal running the firrtl compiler and yosys and btor parser")
-    }
-
 
     // combine into verification problem
     val prob = VerificationProblem(implementation.model, spec, subspecs, inv)
