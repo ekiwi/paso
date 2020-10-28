@@ -40,7 +40,7 @@ object VerificationProblem {
 
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(), impl, spec, invariants, startInStateZero(spec.name)))
+      List(generateInductionConditions(), impl, spec, invariants, startInInitState(spec.name)))
     val inductionLength = longestPath
     val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
 
@@ -140,10 +140,10 @@ object VerificationProblem {
     mc.TransitionSystem("InductionConditions", List(), List(state), List(reset, notReset, invertAssert))
   }
 
-  private def startInStateZero(specName: String): TransitionSystem = {
+  private def startInInitState(specName: String): TransitionSystem = {
     val isInit = smt.BVSymbol("isInit", 1)
-    val startAtZero = Signal("startAtZero", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.stateIsZero", 1)), mc.IsConstraint)
-    mc.TransitionSystem("StartInStateZero", List(), List(), List(startAtZero))
+    val startAtInit = Signal("initState", smt.BVImplies(isInit, smt.BVSymbol(specName + ".automaton.initState", 1)), mc.IsConstraint)
+    mc.TransitionSystem("StartInInitState", List(), List(), List(startAtInit))
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem =

@@ -13,14 +13,21 @@ import scala.collection.mutable
 
 /** Turns the PasoAutomaton into a TransitionSystem which can then be combined with the Design Under Verification
  *  for bounded model checking or inductive proofs.
+ *
+ *  - inputs: the paso automaton directly refers to the following signals:
+ *    - inputs/outputs of the implementation
+ *    - global reset and notReset signals
+ *  - outputs:
+ *    - startState: indicates that the automaton is in a state where a new transaction is started
+ *    - initState: used to constrain the automaton to start in its initial state
  */
 class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   import PredicateEncoder._
 
   private val signalPrefix = auto.untimed.name + ".automaton."
   private val stateBits = log2Ceil(auto.states.length + 1)
-  private val inState = auto.states.map(s => smt.BVSymbol(signalPrefix + s"state_is_${s.id}", 1)).toArray
-  private val invalidState = smt.BVSymbol(signalPrefix + "state_is_invalid", 1)
+  private val inState = auto.states.map(s => smt.BVSymbol(signalPrefix + s"stateIs${s.id}", 1)).toArray
+  private val invalidState = smt.BVSymbol(signalPrefix + "stateIsInvalid", 1)
 
   // global signals
   private val reset = smt.BVSymbol("reset", 1)
@@ -56,8 +63,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val stateSignals = inState.zip(auto.states).map { case (sym, st) =>
       Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
     } ++ Seq(
-      mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false), mc.IsNode),
-      mc.Signal(invalidState.name+"_check", not(smt.BVImplies(notReset, not(invalidState))), mc.IsBad)
+      mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false)),
+      mc.Signal(invalidState.name+"Check", not(smt.BVImplies(notReset, not(invalidState))), mc.IsBad)
     )
 
     // turn transaction start signals into signals
@@ -66,10 +73,10 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // since we assume that everytime a transactions _can_ be started, a transaction _will_ be started, we just need
     // to check which state we are in
     val startTransactionStates = auto.states.filter(_.isStart).map(_.id).map(inState)
-    val startAnyTransaction = List(mc.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates)))
+    val startAnyTransaction = List(mc.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates), mc.IsOutput))
 
     // signal that can be used to constrain the state to be zero
-    val stateIsZero = List(mc.Signal(signalPrefix + "stateIsZero", inState(0)))
+    val stateIsZero = List(mc.Signal(signalPrefix + "initState", inState(0), mc.IsOutput))
 
     // encode assertions and assumptions
     val assertions = compactEncodePredicates(auto.assertions, notReset, signalPrefix + "bad", IsBad, invert=true)
