@@ -27,6 +27,7 @@ class RegisterProtocol(impl: Register) extends ProtocolSpec[IdentityNoIdle[UInt]
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.in.set(in)
     clock.stepAndFork()
+    dut.in.set(DontCare)
     dut.out.expect(out)
     clock.step()
   }
