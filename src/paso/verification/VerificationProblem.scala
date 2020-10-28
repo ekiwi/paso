@@ -41,7 +41,7 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
       List(generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
-    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = true)
+    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = false)
 
     // for the induction we start the automaton in its initial state and assume
     val inductionStep = mc.TransitionSystem.combine("induction",

@@ -134,10 +134,12 @@ case class Elaboration() {
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
     assert(formal.model.name == prefix + info.name)
     val methods = info.methods.map { m =>
-      val args = formal.model.inputs.filter(_.name.startsWith(m.fullIoName + "_arg")).map(s => s.name -> s.width)
-      val ret = formal.model.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(m.fullIoName + "_ret"))
+      val mWithPrefix = m.copy(parent = formal.model.name)
+      val fullIoName = mWithPrefix.fullIoName
+      val args = formal.model.inputs.filter(_.name.startsWith(fullIoName + "_arg")).map(s => s.name -> s.width)
+      val ret = formal.model.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
-      m.copy(parent=formal.model.name, args=args, ret=ret)
+      mWithPrefix.copy(args=args, ret=ret)
     }
     val model = UntimedModel(formal.model, methods)
 
