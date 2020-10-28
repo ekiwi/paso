@@ -5,28 +5,11 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.mc.{IsBad, IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
+import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 import paso.untimed
-
-trait Assertion { def toExpr: smt.BVExpr }
-case class BasicAssertion(guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
-  override def toExpr: smt.BVExpr = smt.BVImplies(guard, pred)
-}
-case class ForAllAssertion(variable: smt.BVSymbol, start: Int, end: Int, guard: smt.BVExpr, pred: smt.BVExpr) extends Assertion {
-  override def toExpr: smt.BVExpr = {
-    val max = 1 << variable.width
-    val isFullRange = start == 0 && end == max
-    val g = if(isFullRange) { guard } else {
-      val lower = smt.BVComparison(smt.Compare.GreaterEqual, variable, smt.BVLiteral(start, variable.width), signed=false)
-      val upper = smt.BVNot(smt.BVComparison(smt.Compare.Greater, variable, smt.BVLiteral(end-1, variable.width), signed=false))
-      smt.BVAnd(guard, smt.BVAnd(lower, upper))
-    }
-    smt.BVForall(variable, smt.BVImplies(g, pred))
-  }
-}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
