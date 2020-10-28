@@ -85,7 +85,14 @@ private class LocalSymbolTable extends firrtl.analyses.SymbolTable {
   def declareInstance(name: String, module: String): Unit = declare(name, ir.UnknownType, firrtl.InstanceKind)
   override def declare(d: ir.DefInstance): Unit = declare(d.name, d.tpe, firrtl.InstanceKind)
   override def declare(name: String, tpe: ir.Type, kind: firrtl.Kind): Unit = {
-    nameToType(name) = tpe
+    if(kind == firrtl.MemKind) {
+      val port = tpe.asInstanceOf[ir.BundleType].fields.head.tpe.asInstanceOf[ir.BundleType]
+      val dataType = port.fields.find(_.name.endsWith("data")).map(_.tpe).get
+      val addrType = port.fields.find(_.name.endsWith("addr")).map(_.tpe).get.asInstanceOf[ir.UIntType]
+      throw new NotImplementedError(s"TODO: deal with memory kind! $name : ${addrType.serialize} -> ${dataType.serialize}")
+    } else {
+      nameToType(name) = tpe
+    }
   }
   val nameToType = scala.collection.mutable.HashMap[String, ir.Type]()
 }
