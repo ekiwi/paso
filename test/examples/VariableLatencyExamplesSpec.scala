@@ -11,9 +11,9 @@ class Identity[D <: Data](dataType: D) extends UntimedModule {
   val idle = fun("idle") {}
 }
 
-class IdentityAndKeepOut[D <: Data](dataType: D)  extends Bundle {
-  val valid = Bool()
-  val data = dataType
+class IdentityAndKeepOut[D <: Data](val dataType: D)  extends Bundle {
+  val valid = Output(Bool())
+  val data = Output(dataType)
 }
 class IdentityAndKeep[D <: Data](dataType: D) extends UntimedModule {
   // FIXME: convert to manual valid signal instead of implicit valid signal
@@ -24,12 +24,9 @@ class IdentityAndKeep[D <: Data](dataType: D) extends UntimedModule {
     valid := true.B
     value := in
   }
-  val idle = fun("idle").out(UInt(32.W)) { out =>
-    when(valid) {
-      out := value
-    }.otherwise {
-      out := DontCare
-    }
+  val idle = fun("idle").out(new IdentityAndKeepOut(dataType)) { out =>
+    out.data := value
+    out.valid := valid
   }
 }
 
@@ -131,7 +128,10 @@ class VariableLatencyKeepProtocols(impl: VariableLatencyModule) extends Protocol
   protocol(spec.idle)(impl.io) { (clock, dut, out) =>
     dut.start.set(false.B)
     dut.done.expect(false.B)
-    dut.dataOut.expect(out)
+    // we only expect to see real data if the output is valid
+    when(out.valid) { // this is an example where a path condition depends on a `ret` instead of just a DUV `output`
+      dut.dataOut.expect(out.data)
+    }
     clock.step()
   }
 }
