@@ -9,6 +9,7 @@ import maltese.mc.{IsBad, IsConstraint, Signal, SignalLabel, State, TransitionSy
 import maltese.{mc, smt}
 import paso.protocols._
 import paso.untimed.MethodInfo
+import scala.collection.mutable
 
 /** Turns the PasoAutomaton into a TransitionSystem which can then be combined with the Design Under Verification
  *  for bounded model checking or inductive proofs.
@@ -58,6 +59,9 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
     // protocol states are the previous argument trackers and the FSM state
     val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
+
+    // copy untimed model method semantics if necessary
+    val untimedSys = UntimedModelCopy.run(auto.untimed, auto.protocolCopies)
 
     // combine untimed model and paso automaton into a single transition system
     val allSignals = stateSignals ++ startSignals ++ stateIsZero ++ connectReset ++ methodInputs ++ auto.untimed.sys.signals ++
@@ -167,5 +171,85 @@ object PredicateEncoder {
       }
     }
     m.toSeq.sortBy(_._2.length)
+  }
+}
+
+/** In order to support multiple copies of a single protocol, we also need to duplicate the combinatorial
+ *  parts of the untimed module transaction that belongs to it. However, we leave all state shared.
+ *  State will never be updated by two copies of the same protocol in the same cycle since a protocol
+ *  always commits before forking, thus only a single protocol can commit every cycle.
+ */
+object UntimedModelCopy {
+  def run(untimedModel: UntimedModel, protocolCopies: Seq[(String, Int)]): mc.TransitionSystem = {
+    // shortcut if there are no copies
+    if(protocolCopies.forall(_._2 <= 1)) return untimedModel.sys
+
+    val methods = untimedModel.methods.map(m => (untimedModel.name + "." + m.name) -> m).toMap
+    val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
+      val outputs = methods(methodName).ret.map(_._1) // we do not need to copy the guard because it depends on the state only
+      (1 until copyCount).flatMap(i => outputs.map(o => (o, s"$$$i")))
+    }
+    val sysWithCopiedOutputs = duplicateOutputs(untimedModel.sys, copyOutputs)
+
+    val existingInputs = sysWithCopiedOutputs.inputs.map(_.name).toSet
+    val inputCopies = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
+      val method = methods(methodName)
+      val inputs = method.args.map(a => smt.BVSymbol(a._1, a._2)) :+ (smt.BVSymbol(method.fullIoName + "_enabled", 1))
+      (1 until copyCount).flatMap(i => inputs.map(sym => sym.rename(sym.name + s"$$$i")))
+    }.filterNot(i => existingInputs.contains(i.name))
+    val sysWithAllInputAndOutputCopies = sysWithCopiedOutputs.copy(inputs = sysWithCopiedOutputs.inputs ++ inputCopies)
+
+    // TODO
+    assert(sysWithAllInputAndOutputCopies.states.isEmpty, "TODO: deal with states")
+
+    println(sysWithAllInputAndOutputCopies.serialize)
+
+    sysWithAllInputAndOutputCopies
+  }
+
+  private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String)]): mc.TransitionSystem = {
+    if(copies.isEmpty) return sys
+    // lookup table for dependencies
+    val state = sys.states.map(_.name).toSet
+    val deps = sys.signals.map(s => s.name -> (findSymbols(s.e).map(_.name).toSet -- state)).toMap
+    val nameToSymbol = (sys.inputs ++ sys.signals.map(_.sym)).map(s => s.name -> s).toMap
+
+    // for each copy, find all signals that it depends on and copy them in the order that they appear in the original
+    val inputsAndSignals = copies.map { case(signal, suffix) =>
+      val signalsToCopy = transitiveDeps(signal, deps) + signal
+      val subs = signalsToCopy.map(n => n -> nameToSymbol(n).rename(n + suffix)).toMap
+      val inputs = sys.inputs.filter(i => signalsToCopy(i.name)).map(i => i.rename(i.name + suffix))
+      val signals = sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
+        mc.Signal(s.name + suffix, replace(s.e, subs), s.lbl)
+      }
+      (inputs, signals)
+    }
+
+    val newInputs = inputsAndSignals.flatMap(_._1)
+    val newSignals = inputsAndSignals.flatMap(_._2)
+
+    sys.copy(inputs = sys.inputs ++ newInputs, signals = sys.signals ++ newSignals)
+  }
+
+  private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
+    val seen = mutable.HashSet[String]()
+    val todo = mutable.ArrayStack[String]()
+    todo.push(start)
+    while(todo.nonEmpty) {
+      val dependsOn = deps.getOrElse(todo.pop(), Set())
+      dependsOn.diff(seen).foreach{d => todo.push(d) ; seen.add(d) }
+    }
+    seen.toSet
+  }
+
+  private def findSymbols(e: smt.SMTExpr): List[smt.SMTSymbol] = e match {
+    case s: smt.BVSymbol => List(s)
+    case s: smt.ArraySymbol => List(s)
+    case other => other.children.flatMap(findSymbols)
+  }
+
+  private def replace(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
+    case s : smt.SMTSymbol => subs.getOrElse(s.name, s)
+    case other => other.mapExpr(replace(_, subs))
   }
 }

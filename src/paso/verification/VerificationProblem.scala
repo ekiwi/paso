@@ -46,7 +46,6 @@ object VerificationProblem {
 
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver)
-    println(spec.serialize)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
