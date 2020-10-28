@@ -6,7 +6,7 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
-import firrtl.annotations.{Annotation, CircuitTarget, PresetAnnotation}
+import firrtl.annotations.{Annotation}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
@@ -15,7 +15,7 @@ import logger.LogLevel
 import maltese.mc.{IsOutput, Signal, TransitionSystem}
 import paso.chisel.passes._
 import paso.untimed
-import paso.verification.{Assertion, BasicAssertion, Spec, Subspec, UntimedModel, VerificationProblem}
+import paso.verification.{Spec, Subspec, UntimedModel, VerificationProblem}
 import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
@@ -30,20 +30,6 @@ case class Elaboration() {
     chiselElaborationTime += System.nanoTime() - start
     res
   }
-  private def lowerTypes(tup: (ir.Circuit, Seq[Annotation])): (ir.Circuit, Seq[Annotation]) = {
-    val st = CircuitState(tup._1, tup._2)
-    // TODO: we would like to lower bundles but not vecs ....
-    val start = System.nanoTime()
-    val st_no_bundles = firrtl.passes.LowerTypes.runTransform(st)
-    firrtlCompilerTime += System.nanoTime() - start
-    (st_no_bundles.circuit, st_no_bundles.annotations)
-  }
-  private def toHighFirrtl(c: ir.Circuit, annos: Seq[Annotation] = Seq()): (ir.Circuit, Seq[Annotation]) = {
-    val start = System.nanoTime()
-    val st = FirrtlCompiler.toHighFirrtl(CircuitState(c, annos))
-    firrtlCompilerTime += System.nanoTime() - start
-    (st.circuit, st.annotations)
-  }
 
   private def elaborateObserver(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
     val start = System.nanoTime()
@@ -51,7 +37,6 @@ case class Elaboration() {
     chiselElaborationTime += System.nanoTime() - start
     r
   }
-
 
   private def compileInvariant(inv: ChiselInvariants, exposedSignals: Map[String, (String, ir.Type)]): mc.TransitionSystem = {
     // convert refs to exposed signals
