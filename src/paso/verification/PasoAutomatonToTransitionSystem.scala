@@ -22,15 +22,43 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
   private val inState = auto.states.map(s => smt.BVSymbol(signalPrefix + s"state_is_${s.id}", 1)).toArray
   private val invalidState = smt.BVSymbol(signalPrefix + "state_is_invalid", 1)
 
-  def run(): TransitionSystem = {
-    // TODO: deal with multiple copies of the same protocol/transaction
+  // global signals
+  private val reset = smt.BVSymbol("reset", 1)
+  private val notReset = smt.BVSymbol("notReset", 1)
 
-    // connect inState signals
+
+  def run(): TransitionSystem = {
+    // copy untimed model method semantics if necessary
+    val (untimedSys, untimedInputs) = UntimedModelCopy.run(auto.untimed, auto.protocolCopies)
+
+    // connect untimed system inputs (reset, method enabled and method args)
+    val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys, Map(
+      s"${untimedSys.name}.reset" -> reset,
+    ) ++ connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
+      connectMethodArgs(auto.mappings, untimedInputs.args)
+    )
+
+    // add the previous method arg states to the untimed sys
+    val finalUntimedSys = connectedUntimedSys.copy(states = connectedUntimedSys.states ++ prevMethodArgs(untimedInputs.args))
+
+    // turn the whole Paso FSM + assumptions + assertions into a transition system
+    val pasoAutomaton = makePasoAutomaton()
+
+    // we need to do a topological sort on the combined systems since not all signals might be in the correct order
+    val combined = mc.TransitionSystem.combine(finalUntimedSys.name, List(finalUntimedSys, pasoAutomaton))
+    TopologicalSort.run(combined)
+  }
+
+  private def makePasoAutomaton(): mc.TransitionSystem = {
+    // define inState signals
     val state = smt.BVSymbol(signalPrefix + "state", stateBits)
     val maxState = smt.BVLiteral(auto.states.length - 1, stateBits)
     val stateSignals = inState.zip(auto.states).map { case (sym, st) =>
       Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(st.id, stateBits)))
-    } :+ mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false), mc.IsBad)
+    } ++ Seq(
+      mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false), mc.IsNode),
+      mc.Signal(invalidState.name+"_check", not(smt.BVImplies(notReset, not(invalidState))), mc.IsBad)
+    )
 
     // turn transaction start signals into signals
     val startSignals = auto.transactionStartSignals.map{ case (name, e) => mc.Signal(name, e) }
@@ -43,67 +71,42 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // signal that can be used to constrain the state to be zero
     val stateIsZero = List(mc.Signal(signalPrefix + "stateIsZero", inState(0)))
 
-    // connect method enabled inputs and arguments
-    val methodInputs = connectMethodEnabled(auto.commits, auto.untimed.methods) ++
-      connectMethodArgs(auto.mappings, auto.untimed.methods)
-
-    // connect untimed model to global reset
-    val reset = smt.BVSymbol("reset", 1)
-    val sysReset = s"${auto.untimed.sys.name}.reset"
-    val connectReset = List(mc.Signal(sysReset, reset))
-
     // encode assertions and assumptions
-    val notReset = smt.BVSymbol("notReset", 1)
     val assertions = compactEncodePredicates(auto.assertions, notReset, signalPrefix + "bad", IsBad, invert=true)
     val assumptions = compactEncodePredicates(auto.assumptions, notReset, signalPrefix + "constraint", IsConstraint, invert=false)
 
-    // protocol states are the previous argument trackers and the FSM state
-    val states = Seq(encodeStateEdges(state, auto.edges, reset)) ++ prevMethodArgs(auto.untimed.methods)
+    // encode paso FSM state transitions
+    val stateState = encodeStateEdges(state, auto.edges, reset)
 
-    // copy untimed model method semantics if necessary
-    val untimedSys = UntimedModelCopy.run(auto.untimed, auto.protocolCopies)
-
-    // combine untimed model and paso automaton into a single transition system
-    val allSignals = stateSignals ++ startSignals ++ stateIsZero ++ connectReset ++ methodInputs ++ auto.untimed.sys.signals ++
-      assumptions ++ assertions ++ startAnyTransaction
-    val allStates = states ++ auto.untimed.sys.states
-    // we filter out all methods inputs + reset
-    val isMethodInputOrReset = methodInputs.map(_.name).toSet + sysReset
-    val combinedInputs = auto.untimed.sys.inputs.filterNot(i => isMethodInputOrReset(i.name))
-    val combined = mc.TransitionSystem(auto.untimed.sys.name, combinedInputs, allStates.toList, allSignals.toList)
-
-    // we need to do a topological sort on the combined systems since not all signals might be in the correct order
-    TopologicalSort.run(combined)
+    val signals = stateSignals ++ startSignals ++ stateIsZero ++ assumptions ++ assertions ++ startAnyTransaction
+    mc.TransitionSystem("PasoAutomaton", List(), List(stateState), signals.toList)
   }
 
-  private def connectMethodEnabled(commits: Seq[PasoGuardedCommit], methods: Iterable[MethodInfo]): Iterable[Signal] = {
+  private def connectMethodEnabled(commits: Seq[PasoGuardedCommit], enabled: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
     val methodToCommits = commits.groupBy(_.commit.name)
-    methods.map { m =>
-      val signalName = m.fullIoName + "_enabled"
-      val commits = methodToCommits.getOrElse(signalName, List())
+    enabled.map { enabled =>
+      val commits = methodToCommits.getOrElse(enabled.name, List())
       val en = if(commits.isEmpty) smt.False() else sumOfProduct(commits.map(c => inState(c.stateId) +: c.guard))
-      mc.Signal(signalName, en)
+      enabled.name -> en
     }
   }
 
-  private def connectMethodArgs(mappings: Seq[PasoStateGuardedMapping], methods: Iterable[MethodInfo]): Iterable[Signal] = {
+  private def connectMethodArgs(mappings: Seq[PasoStateGuardedMapping], args: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
     val argsToMappings = mappings.groupBy(_.map.arg)
-    methods.flatMap { m => m.args.map { case (a, width) =>
-      val arg = smt.BVSymbol(a, width)
+    args.map { arg =>
       val prev = arg.rename(arg.name + "$prev")
       val value = argsToMappings.getOrElse(arg, List()).foldLeft[smt.BVExpr](prev){(other, m) =>
         smt.BVIte(simplifiedProduct(inState(m.stateId) +: m.map.guard), m.map.update, other)
       }
-      mc.Signal(arg.name, value)
-    }}
+      arg.name -> value
+    }
   }
 
-  private def prevMethodArgs(methods: Iterable[MethodInfo]): Iterable[State] = {
-    methods.flatMap { m => m.args.map { case (a, width) =>
-      val arg = smt.BVSymbol(a, width)
+  private def prevMethodArgs(args: Iterable[smt.BVSymbol]): Iterable[State] = {
+   args.map { arg =>
       val prev = arg.rename(arg.name + "$prev")
       mc.State(prev, init=None, next=Some(arg))
-    }}
+    }
   }
 
   private def encodeStateEdges(state: smt.BVSymbol, edges: Iterable[PasoStateEdge], reset: smt.BVExpr): State = {
@@ -174,17 +177,34 @@ object PredicateEncoder {
   }
 }
 
+case class UntimedInputInfo(enabled: Iterable[smt.BVSymbol], args: Iterable[smt.BVSymbol])
+
 /** In order to support multiple copies of a single protocol, we also need to duplicate the combinatorial
  *  parts of the untimed module transaction that belongs to it. However, we leave all state shared.
  *  State will never be updated by two copies of the same protocol in the same cycle since a protocol
  *  always commits before forking, thus only a single protocol can commit every cycle.
  */
 object UntimedModelCopy {
-  def run(untimedModel: UntimedModel, protocolCopies: Seq[(String, Int)]): mc.TransitionSystem = {
-    // shortcut if there are no copies
-    if(protocolCopies.forall(_._2 <= 1)) return untimedModel.sys
-
+  def run(untimedModel: UntimedModel, protocolCopies: Seq[(String, Int)]): (mc.TransitionSystem, UntimedInputInfo) = {
     val methods = untimedModel.methods.map(m => (untimedModel.name + "." + m.name) -> m).toMap
+
+    // calculate method inputs
+    val infos = protocolCopies.map { case (methodName, copyCount) =>
+      val suffixes = List("") ++ (1 until copyCount).map(i => s"$$$i")
+      val method = methods(methodName)
+      UntimedInputInfo(
+        suffixes.map(s => method.fullIoName + "_enabled" + s).map(n => smt.BVSymbol(n, 1)),
+        suffixes.flatMap(s => method.args.map{ case (name, w) => smt.BVSymbol(name + s, w) })
+      )
+    }
+    val info = UntimedInputInfo(infos.flatMap(_.enabled), infos.flatMap(_.args))
+
+    // shortcut if there are no copies
+    if(protocolCopies.forall(_._2 <= 1)) {
+      return (untimedModel.sys, info)
+    }
+
+    // do the actual copying:
     val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
       val outputs = methods(methodName).ret.map(_._1) // we do not need to copy the guard because it depends on the state only
       (1 until copyCount).flatMap(i => outputs.map(o => (o, s"$$$i")))
@@ -202,9 +222,7 @@ object UntimedModelCopy {
     // TODO
     assert(sysWithAllInputAndOutputCopies.states.isEmpty, "TODO: deal with states")
 
-    println(sysWithAllInputAndOutputCopies.serialize)
-
-    sysWithAllInputAndOutputCopies
+    (sysWithAllInputAndOutputCopies, info)
   }
 
   private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String)]): mc.TransitionSystem = {
