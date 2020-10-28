@@ -70,6 +70,7 @@ object VerificationProblem {
   }
 
   def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int): Unit = {
+    val resetLength = 1
     val checker = makeChecker(modelChecker)
     val solver = Yices2()
 
@@ -84,10 +85,10 @@ object VerificationProblem {
 
     // we do a reset in the beginning
     val bmcSys = mc.TransitionSystem.combine("bmc",
-      List(generateBmcConditions(1), impl, spec, invariants))
+      List(generateBmcConditions(resetLength), impl, spec, invariants))
 
     // call checker
-    val success = check(checker, bmcSys, kMax)
+    val success = check(checker, bmcSys, kMax + resetLength)
     assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
