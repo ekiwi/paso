@@ -174,10 +174,6 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
 
   /** returns all transitions */
   private def getNext(loc: Loc): Seq[(Next, Loc)] = {
-    // for now, let's not try to merge as it may not be needed
-    //val sameBody = transition(loc).next.groupBy(n => (n.cycleId, n.fork))
-    // merge all next that have the same next property and fork
-    //val merged = sameBody.map{ case (_, ns) => ns.head.copy(guard = smt.BVOr(ns.map(_.guard))) }
     transition(loc).next.map(n => (n, loc.copy(transition = n.cycleId)))
   }
 
