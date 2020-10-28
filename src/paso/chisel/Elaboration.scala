@@ -138,7 +138,7 @@ case class Elaboration() {
     FormalSys(namespaced, submoduleNames, exposed)
   }
 
-  private case class Untimed(model: UntimedModel, protocols: Seq[Protocol])
+  private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Map[String, (String, ir.Type)])
   private def elaborateUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference]): Untimed = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
@@ -159,13 +159,14 @@ case class Elaboration() {
     }
     val model = UntimedModel(formal.model, methods)
 
-    Untimed(model, spec.protos)
+    Untimed(model, spec.protos, formal.exposedSignals)
   }
 
-  private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]): Spec = {
+  private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]):
+  (Spec, Map[String, (String, ir.Type)]) = {
     val ut = elaborateUntimed(spec, externalRefs)
     val pt = ut.protocols.map(elaborateProtocol(_, implName, ut.model.name))
-    Spec(ut.model, pt)
+    (Spec(ut.model, pt), ut.exposedSignals)
   }
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
@@ -213,7 +214,7 @@ case class Elaboration() {
     // Firrtl Compilation
     val implementation = elaborateImpl(implChisel, subspecList, invChisel.externalRefs)
     val endImplementation = System.nanoTime()
-    val spec = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
+    val (spec, specExposedSignals) = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
     val endSpec= System.nanoTime()
 
     // elaborate subspecs
@@ -222,7 +223,7 @@ case class Elaboration() {
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
-      val spec = elaborateSpec(elaborated, implementation.model.name + "." + instance, List())
+      val (spec, _) = elaborateSpec(elaborated, implementation.model.name + "." + instance, List())
       val prefixLength = instance.length + 1
       val io = implIo.filter(_.name.startsWith(instance + ".")).map(s => s.rename(s.name.substring(prefixLength)))
       val binding = s.getBinding.map(_.instance)
@@ -231,7 +232,8 @@ case class Elaboration() {
     val endSubSpec= System.nanoTime()
 
     // elaborate the proof collateral
-    val inv = compileInvariant(invChisel, implementation.exposedSignals)
+    val exposed = implementation.exposedSignals ++ specExposedSignals
+    val inv = compileInvariant(invChisel, exposed)
     val endBinding = System.nanoTime()
 
     if(false) { // TODO: these measurements are no longer accurate!
