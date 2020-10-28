@@ -82,12 +82,12 @@ case class Elaboration() {
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the rest.
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val state = CircuitState(impl.circuit, impl.annos ++ doNotInlineAnnos)
-    compileToFormal(state, externalRefs)
+    compileToFormal(state, externalRefs, prefix = "")
   }
 
   /** used for both: RTL implementation and untimed module spec */
   private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
-  private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], ll: LogLevel.Value = LogLevel.Error): FormalSys = {
+  private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], prefix: String, ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
     val exposeSignalsAnnos = externalRefs.filter(_.signal.circuit == circuitName)
@@ -111,39 +111,42 @@ case class Elaboration() {
       s"$circuitName.$name" -> (portName, tpe)
     }.toMap
 
+    // add prefix to transition system before namespacing
+    val withPrefix = transitionSystem.copy(name = prefix + transitionSystem.name)
+
     // namespace the transition system
-    val namespaced = mc.TransitionSystem.prefixSignals(transitionSystem)
+    val namespaced = mc.TransitionSystem.prefixSignals(withPrefix)
 
     FormalSys(namespaced, submoduleNames, exposed)
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Map[String, (String, ir.Type)])
-  private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference]): Untimed = {
+  private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = ""): Untimed = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
     // make sure that all state is initialized to its reset value or zero
     val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos)
-    val formal = compileToFormal(withAnnos, externalRefs, ll = LogLevel.Error)
+    val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
 
     // Extract information about all methods
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
-    assert(formal.model.name == info.name)
+    assert(formal.model.name == prefix + info.name)
     val methods = info.methods.map { m =>
       val args = formal.model.inputs.filter(_.name.startsWith(m.fullIoName + "_arg")).map(s => s.name -> s.width)
       val ret = formal.model.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(m.fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
-      m.copy(args=args, ret=ret)
+      m.copy(parent=formal.model.name, args=args, ret=ret)
     }
     val model = UntimedModel(formal.model, methods)
 
     Untimed(model, spec.protos, formal.exposedSignals)
   }
 
-  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]):
+  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference], prefix: String = ""):
   (Spec, Map[String, (String, ir.Type)]) = {
-    val ut = compileUntimed(spec, externalRefs)
+    val ut = compileUntimed(spec, externalRefs, prefix = prefix)
     val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
     (Spec(ut.model, pt), ut.exposedSignals)
   }
@@ -196,7 +199,8 @@ case class Elaboration() {
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
-      val (spec, _) = compileSpec(elaborated, implementation.model.name + "." + instance, List())
+      val prefix = implementation.model.name + "." + instance
+      val (spec, _) = compileSpec(elaborated, prefix, List(), prefix = prefix + ".")
       val binding = s.getBinding.map(_.instance)
       Subspec(spec, binding)
     }
