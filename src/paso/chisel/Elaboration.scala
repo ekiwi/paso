@@ -78,7 +78,7 @@ case class Elaboration() {
     ProtocolGraph.encode(paths)
   }
 
-  private def elaborateImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
+  private def compileImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the rest.
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val state = CircuitState(impl.circuit, impl.annos ++ doNotInlineAnnos)
@@ -141,7 +141,7 @@ case class Elaboration() {
     Untimed(model, spec.protos, formal.exposedSignals)
   }
 
-  private def elaborateSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]):
+  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference]):
   (Spec, Map[String, (String, ir.Type)]) = {
     val ut = elaborateUntimed(spec, externalRefs)
     val pt = ut.protocols.map(elaborateProtocol(_, implName, ut.model.name))
@@ -189,14 +189,14 @@ case class Elaboration() {
     val invChisel = chiselElaborateInvariants(implChisel, specChisel, proofCollateral)
 
     // Firrtl Compilation
-    val implementation = elaborateImpl(implChisel, subspecList, invChisel.externalRefs)
-    val (spec, specExposedSignals) = elaborateSpec(specChisel, implementation.model.name, invChisel.externalRefs)
+    val implementation = compileImpl(implChisel, subspecList, invChisel.externalRefs)
+    val (spec, specExposedSignals) = compileSpec(specChisel, implementation.model.name, invChisel.externalRefs)
 
     // elaborate + compile subspecs
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
-      val (spec, _) = elaborateSpec(elaborated, implementation.model.name + "." + instance, List())
+      val (spec, _) = compileSpec(elaborated, implementation.model.name + "." + instance, List())
       val binding = s.getBinding.map(_.instance)
       Subspec(spec, binding)
     }
