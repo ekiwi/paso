@@ -103,11 +103,21 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
       encodeState(statesToBeEncoded.pop())
     }
 
+    // printAutomaton()
+
     val longestPath = protocols.map(_.info.longestPath).max
     PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
       assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
       newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
       longestPath, untimed, protocolCopies.toSeq)
+  }
+
+  // for debugging
+  private def printAutomaton(): Unit = {
+    println(s"${untimed.sys.name} Paso Automaton:")
+    states.values.toSeq.sortBy(_.id).foreach(println)
+    stateEdges.foreach(println)
+    println()
   }
 
   private def encodeState(st: State): Unit = {
