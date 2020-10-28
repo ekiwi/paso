@@ -286,7 +286,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new Register(withBug = true))(new RegisterProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify id on IdentityNoIdle"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit adder" should "refine its spec" in {
@@ -297,7 +297,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(new PipelinedAdd2(withBug = true))(new PipelinedAdd2Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Failed to verify add on Add2Spec"))
+    assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit add3" should "refine its spec" in {
