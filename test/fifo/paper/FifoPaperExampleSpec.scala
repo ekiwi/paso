@@ -28,10 +28,16 @@ class Fifo(val depth: Int) extends Module {
 
   val mem = SyncReadMem(depth, UInt(32.W))
   val memAddr = Mux(memWrite, wrPtr, rdPtr)
-  val memPort = mem(memAddr)
   io.dataOut := DontCare
-  when(memWrite) { memPort := io.dataIn }
-    .elsewhen(memRead) { io.dataOut := memPort }
+
+  if(false) {
+    val memPort = mem(memAddr)
+    when(memWrite) { memPort := io.dataIn }
+   .elsewhen(memRead) { io.dataOut := memPort }
+  } else {
+    when(memWrite) { mem.write(memAddr, io.dataIn) }
+    .elsewhen(memRead) { io.dataOut := mem.read(memAddr) }
+  }
 }
 
 
