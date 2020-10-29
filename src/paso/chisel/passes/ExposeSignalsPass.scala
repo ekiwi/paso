@@ -5,6 +5,7 @@
 package paso.chisel.passes
 
 import firrtl.annotations.{CircuitTarget, NoTargetAnnotation, ReferenceTarget, SingleTargetAnnotation}
+import firrtl.ir.DefMemory
 import firrtl.options.Dependency
 import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation}
 import firrtl.stage.Forms
@@ -16,7 +17,9 @@ case class SignalToExposeAnnotation(target: ReferenceTarget, name: String) exten
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 /** used to return the port name and the signal type */
-case class ExposedSignalAnnotation(name: String, portName: String, tpe: ir.Type) extends NoTargetAnnotation
+case class ExposedSignalAnnotation(target: ReferenceTarget, name: String, portName: String, isMemory: Boolean, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
+  override def duplicate(n: ReferenceTarget) = copy(target = n)
+}
 
 /** Exposes internal signals of the circuit as toplevel outputs. */
 object ExposeSignalsPass extends Transform with DependencyAPIMigration {
@@ -44,16 +47,23 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
 
       val signalPortRef = CircuitTarget(main.name).module(main.name).ref(signalPortName)
       val signalFieldsAndAnnos = annos.collect { case SignalToExposeAnnotation(signal, name) =>
-        val tpe = findTpe(modules, signal)
-        assert(tpe.isInstanceOf[ir.GroundType], f"Currently, only ground type references are supported. Not: ${tpe.serialize} of ${signal.serialize}")
-        val field = ir.Field(name = name, flip = ir.Default, tpe = tpe)
-        val src = SourceAnnotation(signal.toNamed, name)
-        val sink = SinkAnnotation(signalPortRef.field(name).toNamed, name)
-        val exposed = ExposedSignalAnnotation(name, signalPortName, tpe)
-        (field, List(src, sink, exposed))
+        val info = findSignal(modules, signal)
+        // we need to special case memories since we cannot expose them as outputs!
+        if(info.isMemory) {
+          // we cannot expose memories as ports, instead we track the state directly
+          val exposed = ExposedSignalAnnotation(signal, name, signalPortName, true, info.tpe)
+          (None, List(exposed))
+        } else {
+          val field = ir.Field(name = name, flip = ir.Default, tpe = info.tpe)
+          val src = SourceAnnotation(signal.toNamed, name)
+          val sinkRef = signalPortRef.field(name)
+          val sink = SinkAnnotation(sinkRef.toNamed, name)
+          val exposed = ExposedSignalAnnotation(sinkRef, name, signalPortName, false, info.tpe)
+          (Some(field), List(src, sink, exposed))
+        }
       }
 
-      val signalPortTpe = ir.BundleType(signalFieldsAndAnnos.map(_._1))
+      val signalPortTpe = ir.BundleType(signalFieldsAndAnnos.flatMap(_._1))
       val signalPort = ir.Port(ir.NoInfo, name = signalPortName, direction = ir.Output, tpe = signalPortTpe)
 
       val wiringAnnos = signalFieldsAndAnnos.flatMap(_._2)
@@ -72,7 +82,7 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
 
   private val symbolTables = scala.collection.mutable.HashMap[String, LocalSymbolTable]()
 
-  private def findTpe(modules: Map[String, ir.DefModule], target: ReferenceTarget): ir.Type = {
+  private def findSignal(modules: Map[String, ir.DefModule], target: ReferenceTarget): SignalInfo = {
     val symbols = symbolTables.getOrElseUpdate(target.module, {
       firrtl.analyses.SymbolTable.scanModule(modules(target.module), new LocalSymbolTable)
     })
@@ -81,18 +91,17 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
   }
 }
 
+private case class SignalInfo(isMemory: Boolean, tpe: ir.Type)
 private class LocalSymbolTable extends firrtl.analyses.SymbolTable {
   def declareInstance(name: String, module: String): Unit = declare(name, ir.UnknownType, firrtl.InstanceKind)
   override def declare(d: ir.DefInstance): Unit = declare(d.name, d.tpe, firrtl.InstanceKind)
-  override def declare(name: String, tpe: ir.Type, kind: firrtl.Kind): Unit = {
-    if(kind == firrtl.MemKind) {
-      val port = tpe.asInstanceOf[ir.BundleType].fields.head.tpe.asInstanceOf[ir.BundleType]
-      val dataType = port.fields.find(_.name.endsWith("data")).map(_.tpe).get
-      val addrType = port.fields.find(_.name.endsWith("addr")).map(_.tpe).get.asInstanceOf[ir.UIntType]
-      throw new NotImplementedError(s"TODO: deal with memory kind! $name : ${addrType.serialize} -> ${dataType.serialize}")
-    } else {
-      nameToType(name) = tpe
-    }
+  override def declare(d: DefMemory): Unit = {
+    val vecType = ir.VectorType(d.dataType, d.depth.toInt)
+    nameToType(d.name) = SignalInfo(true, vecType)
   }
-  val nameToType = scala.collection.mutable.HashMap[String, ir.Type]()
+  override def declare(name: String, tpe: ir.Type, kind: firrtl.Kind): Unit = {
+    assert(kind != firrtl.MemKind, "Memories should be handled by a different function!")
+    nameToType(name) = SignalInfo(false, tpe)
+  }
+  val nameToType = scala.collection.mutable.HashMap[String, SignalInfo]()
 }

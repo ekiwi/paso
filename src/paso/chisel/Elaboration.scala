@@ -107,7 +107,7 @@ case class Elaboration() {
     }.toMap
 
     // update external references with the type derived from the exposed signal
-    val exposed = resAnnos.collect { case ExposedSignalAnnotation(name, portName, tpe) =>
+    val exposed = resAnnos.collect { case ExposedSignalAnnotation(_, name, portName, _, tpe) =>
       s"$circuitName.$name" -> (portName, tpe)
     }.toMap
 
