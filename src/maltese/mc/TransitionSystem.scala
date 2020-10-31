@@ -81,4 +81,14 @@ object TransitionSystem {
     val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
     sys.copy(inputs = inputs, signals = connections ++ sys.signals)
   }
+
+  // replaces states with connections to a signal
+  def connectStates(sys: TransitionSystem, cons: Map[String, SMTExpr]): TransitionSystem = {
+    // ensure that the ports exists
+    cons.foreach(i => assert(sys.states.exists(_.name == i._1), s"Cannot connect to non-existing state ${i._1}"))
+    // filter out inputs
+    val states = sys.states.filterNot(s => cons.contains(s.name))
+    val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
+    sys.copy(states = states, signals = connections ++ sys.signals)
+  }
 }

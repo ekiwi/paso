@@ -49,30 +49,32 @@ case class Elaboration() {
     val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     // connect cross module reference inputs
-    // TODO
-    /*
-    val signalsAndInputs = sys.inputs.map { in =>
-      val ref = inv.externalRefs.find(r => in.name.startsWith(sys.name + "." + r.signal.circuit))
-      ref match {
-        case Some(r) =>
-          // connect to the external signal
-          val prefix = sys.name + "." + r.signal.circuit
-          val suffix = in.name.substring(prefix.length)
-          val (portName, _) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
-          val externalName = s"${r.signal.circuit}.$portName$suffix"
-          val con = mc.Signal(in.name, in.rename(externalName))
-          (Some(con), None)
-        case None =>
-          // if this is not an external signal, we leave the input untouched
-          (None, Some(in))
-      }
+    val inputConnections = exposedSignals.filterNot(_.isMemory).map { signal =>
+      // the name of the signal coming out of the observed circuit
+      val outputName = s"${signal.target.module}.${signal.target.ref}"
+      // the prefix of the matching input we expect
+      val signalName = s"${sys.name}.${signal.nameInObserver}"
+      // find input symbol
+      val sym = sys.inputs.find(_.name == signalName)
+        .getOrElse(throw new RuntimeException(s"TODO: support non-ground type signals to be observed: $signalName"))
+      sym.name -> sym.rename(outputName)
     }
-    val connectedSys = sys.copy(inputs = signalsAndInputs.flatMap(_._2), signals = signalsAndInputs.flatMap(_._1) ++ sys.signals)
-    connectedSys
+    val connectedInputs = mc.TransitionSystem.connect(sys, inputConnections.toMap)
 
-     */
+    // connect mems if there are any
+    val memReplacements =  exposedSignals.filter(_.isMemory).map { signal =>
+      // the name of the signal coming out of the observed circuit
+      val outputName = s"${signal.target.module}.${signal.target.ref}"
+      // the prefix of the matching input we expect
+      val signalName = s"${sys.name}.${signal.nameInObserver}"
+      // find state symbol
+      val sym = sys.states.map(_.sym).find(_.name == signalName)
+        .getOrElse(throw new RuntimeException(s"TODO: support non-ground type signals to be observed: $signalName"))
+      sym.name -> sym.rename(outputName)
+    }
+    val connectedState = mc.TransitionSystem.connectStates(connectedInputs, memReplacements.toMap)
 
-    sys
+    connectedState
   }
 
   private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
