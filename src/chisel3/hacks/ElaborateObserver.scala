@@ -13,8 +13,8 @@ import scala.collection.mutable
 object ElaborateObserver {
   def apply(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference])  = {
     ensureUniqueCircuitNames(observing)
-    val (chiselIR, _) = Builder.build(Module(new ObservingModule(observing, name) { gen() }))
-    val prefix = new FixNamings(observing.map(_.name).toSet)
+    val (chiselIR, mod) = Builder.build(Module(new ObservingModule(observing, name) { gen() }))
+    val prefix = new FixNamings(observing.map(_.name).toSet, mod._namespace)
     val pp = prefix.run(chiselIR)
     (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), prefix.getExternalRefs)
   }
@@ -34,7 +34,7 @@ object ElaborateObserver {
  */
 case class ExternalReference(signal: ReferenceTarget, nameInObserver: String)
 
-class FixNamings(val topLevelModules: Set[String]) {
+class FixNamings(val topLevelModules: Set[String], namespace: Namespace) {
 
   case class FakeId(ref: Arg) extends chisel3.internal.HasId {
     override def toNamed = ???
@@ -47,6 +47,12 @@ class FixNamings(val topLevelModules: Set[String]) {
   def getExternalRefs: Seq[ExternalReference] = externalReferences.toSeq
   private val externalReferences = mutable.LinkedHashSet[ExternalReference]()
 
+  // maps an observed signal to its internal name
+  private val mappings = mutable.HashMap[String, String]()
+  private def getInternalName(path: Iterable[String]): String = {
+    mappings.getOrElseUpdate(path.mkString("."), namespace.name(path.mkString("_")))
+  }
+
   private def onNode(node: Node): Node = {
     val new_ref: Arg = node.id.getRef match {
       case a: Slot => onArg(a)
@@ -56,12 +62,11 @@ class FixNamings(val topLevelModules: Set[String]) {
         val path = node.id.pathName.split('.')
         val isCrossModuleRef = topLevelModules.contains(path.head)
         if(isCrossModuleRef) {
-          val circuit = path.head
-          val nameInObserver = path.drop(1).mkString("_")
+          // create a unique name inside the observer module
+          val nameInObserver = getInternalName(path)
           val ref = node.id.toTarget.asInstanceOf[ReferenceTarget]
           externalReferences.add(ExternalReference(ref, nameInObserver))
-          // observed signals will be in ${circuit} input bundle
-          Slot(Node(FakeId(Ref(circuit))), nameInObserver)
+          Node(FakeId(Ref(nameInObserver)))
         } else { r }
     }
     Node(FakeId(new_ref))

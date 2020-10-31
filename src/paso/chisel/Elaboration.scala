@@ -6,7 +6,7 @@ package paso.chisel
 
 import chisel3.{MultiIOModule, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
-import firrtl.annotations.Annotation
+import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
@@ -32,11 +32,14 @@ case class Elaboration() {
     r
   }
 
-  private def compileInvariant(inv: ChiselInvariants, exposedSignals: Map[String, (String, ir.Type)]): mc.TransitionSystem = {
-    // convert refs to exposed signals
-    val annos = inv.externalRefs.map{ r =>
-      val (_, tpe) = exposedSignals(s"${r.signal.circuit}.${r.nameInObserver}")
-      CrossModuleInput(r.nameInObserver, r.signal.circuit, tpe)
+  private def compileInvariant(inv: ChiselInvariants, exposedSignals: Seq[ExposedSignalAnnotation]): mc.TransitionSystem = {
+    // There could be multiple annotations for a single exposed signals that was lowered to ground types.
+    // We use the original nameInObserver to filter out any such duplicates.
+    val exposed = exposedSignals.groupBy(_.nameInObserver).map(_._2.head)
+    val invModuleRef = CircuitTarget(inv.state.circuit.main).module(inv.state.circuit.main)
+    val annos = exposed.map{ r =>
+      if(r.isMemory) CrossModuleMem(invModuleRef.ref(r.nameInObserver), r.depth, r.tpe)
+      else CrossModuleInput(invModuleRef.ref(r.nameInObserver), r.tpe)
     } ++ Seq(RunFirrtlTransformAnnotation(Dependency(passes.CrossModuleReferencesToInputsPass))) ++
     // add an invertAsserts port that turns asserts into assumes when active
     Seq(RunFirrtlTransformAnnotation(Dependency(passes.InvertAssertPass)))
@@ -46,6 +49,8 @@ case class Elaboration() {
     val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     // connect cross module reference inputs
+    // TODO
+    /*
     val signalsAndInputs = sys.inputs.map { in =>
       val ref = inv.externalRefs.find(r => in.name.startsWith(sys.name + "." + r.signal.circuit))
       ref match {
@@ -64,6 +69,10 @@ case class Elaboration() {
     }
     val connectedSys = sys.copy(inputs = signalsAndInputs.flatMap(_._2), signals = signalsAndInputs.flatMap(_._1) ++ sys.signals)
     connectedSys
+
+     */
+
+    sys
   }
 
   private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
@@ -86,7 +95,7 @@ case class Elaboration() {
   }
 
   /** used for both: RTL implementation and untimed module spec */
-  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Map[String, (String, ir.Type)])
+  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Seq[ExposedSignalAnnotation])
   private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], prefix: String, ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
@@ -106,10 +115,8 @@ case class Elaboration() {
       a.originalModule -> a.target.instance
     }.toMap
 
-    // update external references with the type derived from the exposed signal
-    val exposed = resAnnos.collect { case ExposedSignalAnnotation(_, name, portName, _, tpe) =>
-      s"$circuitName.$name" -> (portName, tpe)
-    }.toMap
+    // collect information about exposed signals
+    val exposed = resAnnos.collect { case a : ExposedSignalAnnotation => a }
 
     // add prefix to transition system before namespacing
     val withPrefix = transitionSystem.copy(name = prefix + transitionSystem.name)
@@ -120,7 +127,7 @@ case class Elaboration() {
     FormalSys(namespaced, submoduleNames, exposed)
   }
 
-  private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Map[String, (String, ir.Type)])
+  private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
   private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = ""): Untimed = {
     // connect all calls inside the module (TODO: support for bindings with UFs)
     val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
@@ -147,7 +154,7 @@ case class Elaboration() {
   }
 
   private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference], prefix: String = ""):
-  (Spec, Map[String, (String, ir.Type)]) = {
+  (Spec, Seq[ExposedSignalAnnotation]) = {
     val ut = compileUntimed(spec, externalRefs, prefix = prefix)
     val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
     (Spec(ut.model, pt), ut.exposedSignals)

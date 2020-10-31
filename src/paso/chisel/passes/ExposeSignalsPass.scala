@@ -13,11 +13,11 @@ import firrtl.{CircuitState, DependencyAPIMigration, Transform, ir}
 
 
 /** requests a signal to be exposed */
-case class SignalToExposeAnnotation(target: ReferenceTarget, name: String) extends SingleTargetAnnotation[ReferenceTarget] {
+case class SignalToExposeAnnotation(target: ReferenceTarget, nameInObserver: String) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 /** used to return the port name and the signal type */
-case class ExposedSignalAnnotation(target: ReferenceTarget, name: String, portName: String, isMemory: Boolean, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
+case class ExposedSignalAnnotation(target: ReferenceTarget, nameInObserver: String, isMemory: Boolean, depth: BigInt, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
   override def duplicate(n: ReferenceTarget) = copy(target = n)
 }
 
@@ -51,14 +51,14 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
         // we need to special case memories since we cannot expose them as outputs!
         if(info.isMemory) {
           // we cannot expose memories as ports, instead we track the state directly
-          val exposed = ExposedSignalAnnotation(signal, name, signalPortName, true, info.tpe)
+          val exposed = ExposedSignalAnnotation(signal, name, true, info.depth, info.tpe)
           (None, List(exposed))
         } else {
           val field = ir.Field(name = name, flip = ir.Default, tpe = info.tpe)
           val src = SourceAnnotation(signal.toNamed, name)
           val sinkRef = signalPortRef.field(name)
           val sink = SinkAnnotation(sinkRef.toNamed, name)
-          val exposed = ExposedSignalAnnotation(sinkRef, name, signalPortName, false, info.tpe)
+          val exposed = ExposedSignalAnnotation(sinkRef, name, false, info.depth, info.tpe)
           (Some(field), List(src, sink, exposed))
         }
       }
@@ -91,17 +91,16 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
   }
 }
 
-private case class SignalInfo(isMemory: Boolean, tpe: ir.Type)
+private case class SignalInfo(isMemory: Boolean, tpe: ir.Type, depth: BigInt)
 private class LocalSymbolTable extends firrtl.analyses.SymbolTable {
   def declareInstance(name: String, module: String): Unit = declare(name, ir.UnknownType, firrtl.InstanceKind)
   override def declare(d: ir.DefInstance): Unit = declare(d.name, d.tpe, firrtl.InstanceKind)
   override def declare(d: DefMemory): Unit = {
-    val vecType = ir.VectorType(d.dataType, d.depth.toInt)
-    nameToType(d.name) = SignalInfo(true, vecType)
+    nameToType(d.name) = SignalInfo(true, d.dataType, d.depth)
   }
   override def declare(name: String, tpe: ir.Type, kind: firrtl.Kind): Unit = {
     assert(kind != firrtl.MemKind, "Memories should be handled by a different function!")
-    nameToType(name) = SignalInfo(false, tpe)
+    nameToType(name) = SignalInfo(false, tpe, 0)
   }
   val nameToType = scala.collection.mutable.HashMap[String, SignalInfo]()
 }

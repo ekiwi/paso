@@ -4,11 +4,17 @@
 
 package paso.chisel.passes
 
-import firrtl.annotations.NoTargetAnnotation
+import firrtl.annotations.{NoTargetAnnotation, ReferenceTarget, SingleTargetAnnotation}
 import firrtl.{CircuitState, DependencyAPIMigration, Transform, ir}
 import firrtl.options.Dependency
 
-case class CrossModuleInput(name: String, portName: String, tpe: ir.Type) extends NoTargetAnnotation
+case class CrossModuleInput(target: ReferenceTarget, tpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
+  override def duplicate(n: ReferenceTarget) = copy(target = n)
+}
+
+case class CrossModuleMem(target: ReferenceTarget, depth: BigInt, dataTpe: ir.Type) extends SingleTargetAnnotation[ReferenceTarget] {
+  override def duplicate(n: ReferenceTarget) = copy(target = n)
+}
 
 /** Replace all references to signals outside of the module with input ports.
  *  This pass is used to elaborate invariants and mapping functions separately from
@@ -28,23 +34,25 @@ object CrossModuleReferencesToInputsPass extends Transform with DependencyAPIMig
     val main = state.circuit.modules.find(_.name == state.circuit.main).get.asInstanceOf[ir.Module]
     assert(main.ports.length == 3, f"Invariance modules should not have any ports besides clock, reset and enabled!")
 
-    // find all cross module signals
-    val signalsByPort = state.annotations.collect{ case a: CrossModuleInput => a }.groupBy(_.portName)
-
-    // every circuit that is referenced gets their own port
-    val newPorts = signalsByPort.map { case (portName, signals) =>
-      val fields = signals.map(s => ir.Field(s.name, ir.Default, s.tpe))
-      ir.Port(ir.NoInfo, portName, ir.Input, ir.BundleType(fields))
+    // all signals besides memories result in an input port
+    val newPorts = state.annotations.collect { case a: CrossModuleInput =>
+      assert(a.target.circuit == state.circuit.main)
+      assert(a.target.module == main.name)
+      ir.Port(ir.FileInfo("observed external signal"), a.target.ref, ir.Input, a.tpe)
     }
 
-    // check to make sure there is no aliasing
-    val namespace = firrtl.Namespace(main)
-    newPorts.foreach { p =>
-      assert(!namespace.contains(p.name), f"Cannot create port ${p.name} because a signal of the same name already exists!")
+    // memories result in a local copy of the memory
+    val mems = state.annotations.collect { case a: CrossModuleMem =>
+      assert(a.target.circuit == state.circuit.main)
+      assert(a.target.module == main.name)
+      firrtl.CDefMemory(ir.FileInfo("observed external signal"), a.target.ref, a.dataTpe, a.depth,
+        seq=false, readUnderWrite = ir.ReadUnderWrite.Undefined)
     }
 
-    // add new portsto main
-    val newMain = main.copy(ports=main.ports ++ newPorts)
+    // add new ports to main
+    val newMain = main.copy(ports=main.ports ++ newPorts, body = ir.Block(mems :+ main.body))
+
+    println(newMain.serialize)
 
     state.copy(circuit = state.circuit.copy(modules = Seq(newMain)))
   }
