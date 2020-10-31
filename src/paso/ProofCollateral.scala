@@ -4,7 +4,7 @@
 package paso
 
 import chisel3._
-import chisel3.experimental.{ChiselAnnotation, annotate}
+import chisel3.experimental.{ChiselAnnotation, IO, annotate}
 import chisel3.util.log2Ceil
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 
@@ -45,17 +45,12 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
 
     // generate a wire to represent the universally quantified variable
     val bits = log2Ceil(range.end)
-    val ii = Wire(UInt(bits.W)).suggestName(s"ii_${range.start}_to_${range.end-1}")
-    dontTouch(ii)
-    annotate(new ChiselAnnotation { override def toFirrtl = ForallStartAnnotation(ii.toTarget, range.start, range.end) })
+    // TODO: ensure unique name for the IO
+    val ii = IO(Input(UInt(bits.W))).suggestName(s"ii_${range.start}_to_${range.end-1}")
+    annotate(new ChiselAnnotation { override def toFirrtl = ForallAnnotation(ii.toTarget, range.start, range.end) })
 
     // generate the block code once
     block(ii)
-
-    // mark the end of the block (important: this only works if we do not run too many passes / optimizations)
-    val end = WireInit(false.B).suggestName("forall_end")
-    dontTouch(end)
-    annotate(new ChiselAnnotation { override def toFirrtl = ForallEndAnnotation(end.toTarget) })
   }
 }
 
@@ -69,10 +64,6 @@ case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, me
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
-case class ForallStartAnnotation(target: ReferenceTarget, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
-
-case class ForallEndAnnotation(target: ReferenceTarget) extends SingleTargetAnnotation[ReferenceTarget] {
+case class ForallAnnotation(target: ReferenceTarget, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
