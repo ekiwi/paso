@@ -214,7 +214,10 @@ object UntimedModelCopy {
         mc.Signal(name + "$0", smt.BVSymbol(name, w), mc.IsOutput)
       }
     }
-    val finalSys = sysWithCopiedOutputs.copy(signals = sysWithCopiedOutputs.signals ++ outputsAliases)
+    val finalSys = sysWithCopiedOutputs.copy(
+      inputs = sysWithCopiedOutputs.inputs ++ info.enabled ++ info.args,
+      signals = sysWithCopiedOutputs.signals ++ outputsAliases,
+    )
 
     (finalSys, info)
   }
