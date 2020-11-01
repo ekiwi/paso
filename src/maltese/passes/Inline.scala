@@ -16,7 +16,7 @@ import scala.collection.mutable
  * This pass does not remove any symbols.
  * Use DeadCodeElimination to get rid of any unused signals after inlining.
  */
-object Inline extends Pass {
+class Inline(inlineEverything: Boolean = false) extends Pass {
   override def name: String = "Inline"
 
   // some setting to play around with
@@ -27,9 +27,11 @@ object Inline extends Pass {
   private val InlineIteInSlice = true
 
   override def run(sys: TransitionSystem): TransitionSystem = {
-    //val doInline = findSignalsToInline(sys)
-    // inline everything
-    val doInline = sys.signals.map(_.name)
+    val doInline = if(inlineEverything) {
+      sys.signals.map(_.name).toSet
+    } else {
+      findSignalsToInline(sys)
+    }
 
     if(doInline.isEmpty) {
       sys
@@ -73,7 +75,7 @@ object Inline extends Pass {
     case other => other.mapExpr(replaceSymbols(_, false, false))
   }
 
-  private def findSignalsToInline(sys: TransitionSystem): Set[String] = {
+  protected def findSignalsToInline(sys: TransitionSystem): Set[String] = {
     // count how often a symbol is used
     val useCount = Analysis.countUses(sys.signals)
     val onlyUsedOnce = sys.signals.filter(s => useCount(s.name) <= InlineUseMax).map(_.name).toSet

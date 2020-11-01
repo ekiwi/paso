@@ -13,7 +13,7 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import maltese.mc.{IsOutput, Signal, TransitionSystem}
-import maltese.passes.{AddForallQuantifiers, QuantifiedVariable}
+import maltese.passes.{AddForallQuantifiers, PassManager, QuantifiedVariable, Simplify, Inline, DeadCodeElimination}
 import paso.chisel.passes._
 import paso.{ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
 import paso.verification.{Spec, Subspec, UntimedModel, VerificationProblem}
@@ -160,10 +160,20 @@ case class Elaboration() {
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       mWithPrefix.copy(args=args, ret=ret)
     }
-    val model = UntimedModel(formal.model, methods)
+    val simplifiedSys = simplifyTransitionSystem(formal.model)
+    val model = UntimedModel(simplifiedSys, methods)
 
     Untimed(model, spec.protos, formal.exposedSignals)
   }
+
+  private val simplificationPasses = PassManager(List(
+    Simplify, new Inline(), DeadCodeElimination,
+    Simplify, new Inline(), DeadCodeElimination,
+    Simplify
+  ))
+
+  private def simplifyTransitionSystem(sys: TransitionSystem): TransitionSystem =
+    simplificationPasses.run(sys, trace = false)
 
   private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference], prefix: String = ""):
   (Spec, Seq[ExposedSignalAnnotation]) = {
