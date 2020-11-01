@@ -13,10 +13,10 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
 import maltese.mc.{IsOutput, Signal, TransitionSystem}
+import maltese.passes.{AddForallQuantifiers, QuantifiedVariable}
 import paso.chisel.passes._
-import paso.untimed
+import paso.{ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
 import paso.verification.{Spec, Subspec, UntimedModel, VerificationProblem}
-import paso.{IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
@@ -45,7 +45,7 @@ case class Elaboration() {
     Seq(RunFirrtlTransformAnnotation(Dependency(passes.InvertAssertPass)))
 
     // convert invariant module to SMT
-    val (transitionSystem, _) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
     val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     // connect cross module reference inputs
@@ -74,7 +74,17 @@ case class Elaboration() {
     }
     val connectedState = mc.TransitionSystem.connectStates(connectedInputs, memReplacements.toMap)
 
-    connectedState
+    // add quantifiers
+    val quantifiedVariables = resAnnos.collect{ case ForallAnnotation(target, width, start, end) =>
+      QuantifiedVariable(smt.BVSymbol(target.module + "." + target.ref, width), start, end)
+    }
+    val withQuantifiers = AddForallQuantifiers.run(sys, quantifiedVariables)
+
+    println(connectedState.serialize)
+    println()
+    println(withQuantifiers.serialize)
+
+    withQuantifiers
   }
 
   private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {

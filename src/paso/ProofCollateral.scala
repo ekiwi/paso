@@ -47,7 +47,7 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
     val bits = log2Ceil(range.end)
     // TODO: ensure unique name for the IO
     val ii = IO(Input(UInt(bits.W))).suggestName(s"ii_${range.start}_to_${range.end-1}")
-    annotate(new ChiselAnnotation { override def toFirrtl = ForallAnnotation(ii.toTarget, range.start, range.end) })
+    annotate(new ChiselAnnotation { override def toFirrtl = ForallAnnotation(ii.toTarget, bits, range.start, range.end) })
 
     // generate the block code once
     block(ii)
@@ -64,6 +64,6 @@ case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, me
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }
 
-case class ForallAnnotation(target: ReferenceTarget, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
+case class ForallAnnotation(target: ReferenceTarget, width: Int, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)
 }

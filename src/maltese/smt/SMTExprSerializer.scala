@@ -21,6 +21,7 @@ object SMTExprSerializer {
     case BVSlice(e, hi, lo) => s"${serialize(e)}[$hi:$lo]"
     case BVNot(e) => s"not(${serialize(e)})"
     case BVNegate(e) => s"neg(${serialize(e)})"
+    case BVForall(variable, e) => s"forall(${variable.toStringWithType}, ${serialize(e)}"
     // binary
     case BVEqual(a, b) => s"eq(${serialize(a)}, ${serialize(b)})"
     case BVComparison(Compare.Greater, a, b, false) => s"ugt(${serialize(a)}, ${serialize(b)})"

@@ -6,6 +6,7 @@ package paso.protocols
 
 import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
+import maltese.passes.Analysis
 import maltese.smt
 import maltese.smt.solvers.Solver
 
@@ -100,7 +101,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
       } else {
         // ensure that the any new sticky inputs do not depend on any outputs
         stickyInputs.foreach { case (input, value) =>
-          val syms = findSymbols(value.value)
+          val syms = Analysis.findSymbols(value.value)
           val outputs = filterOutputs(syms).map(_.toString)
           assert(outputs.isEmpty, s"Input $input depends on outputs $outputs and is also sticky. The output will have a different value in the next step and thus this is not allowed!")
         }
@@ -131,7 +132,7 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
    * - outputs: output will be added to read outputs which are used to decide whether an input can be set
    */
   private def analyzeRValue(ctx: PathCtx, e: smt.BVExpr, info: ir.Info = ir.NoInfo, isSet: Boolean = false): (PathCtx, smt.BVExpr) = {
-    val syms = findSymbols(e)
+    val syms = Analysis.findSymbols(e)
 
     // args
     if(!isSet) { // set maps any unmapped args
@@ -215,11 +216,6 @@ class SymbolicProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: B
     simplify(e)
   }
   private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
-  private def findSymbols(e: smt.SMTExpr): List[smt.SMTSymbol] = e match {
-    case s: smt.BVSymbol => List(s)
-    case s: smt.ArraySymbol => List(s)
-    case other => other.children.flatMap(findSymbols)
-  }
   private def replace(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
     case s : smt.BVSymbol => subs.getOrElse(s.name, s)
     case other => other.mapExpr(replace(_, subs))

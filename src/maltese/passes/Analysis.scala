@@ -10,6 +10,12 @@ import maltese.smt._
 import scala.collection.mutable
 
 object Analysis {
+  def findSymbols(e: SMTExpr): List[SMTSymbol] = e match {
+    case s: BVSymbol => List(s)
+    case s: ArraySymbol => List(s)
+    case other => other.children.flatMap(findSymbols)
+  }
+
   def countUses(signals: Iterable[Signal]): String => Int = {
     // count how often a symbol is used
     implicit val useCount = mutable.HashMap[String, Int]().withDefaultValue(0)

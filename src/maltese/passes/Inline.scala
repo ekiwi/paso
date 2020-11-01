@@ -27,7 +27,10 @@ object Inline extends Pass {
   private val InlineIteInSlice = true
 
   override def run(sys: TransitionSystem): TransitionSystem = {
-    val doInline = findSignalsToInline(sys)
+    //val doInline = findSignalsToInline(sys)
+    // inline everything
+    val doInline = sys.signals.map(_.name)
+
     if(doInline.isEmpty) {
       sys
     } else {
