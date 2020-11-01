@@ -13,7 +13,7 @@ object DeadCodeElimination extends Pass {
   override def name: String = "DeadCodeElimination"
 
   override def run(sys: TransitionSystem): TransitionSystem = {
-    val useCount = Analysis.countUses(sys.signals)
+    val useCount = Analysis.countUses(sys)
     val eliminatedStates = sys.states.map(_.sym.name).filter(n => useCount(n) == 0).toSet
     val signals = sys.signals.filterNot { s => s.lbl match {
       case mc.IsNode => useCount(s.name) == 0
@@ -22,7 +22,9 @@ object DeadCodeElimination extends Pass {
         eliminatedStates.contains(state)
       case _ => false
     }}
+    // filter out RANDOM inputs that are never used
+    val inputs = sys.inputs.filterNot { i => i.name.contains("RANDOM") && useCount(i.name) == 0 }
     val states = sys.states.filterNot(s => eliminatedStates.contains(s.sym.name))
-    sys.copy(signals = signals, states = states)
+    sys.copy(inputs = inputs, signals = signals, states = states)
   }
 }

@@ -4,7 +4,7 @@
 
 package maltese.passes
 
-import maltese.mc.Signal
+import maltese.mc
 import maltese.smt._
 
 import scala.collection.mutable
@@ -16,10 +16,13 @@ object Analysis {
     case other => other.children.flatMap(findSymbols)
   }
 
-  def countUses(signals: Iterable[Signal]): String => Int = {
+  def countUses(sys: mc.TransitionSystem): String => Int =
+    countUses(sys.signals.map(_.e) ++ sys.states.flatMap(s => s.init ++ s.next))
+
+  def countUses(expr: Iterable[SMTExpr]): String => Int = {
     // count how often a symbol is used
     implicit val useCount = mutable.HashMap[String, Int]().withDefaultValue(0)
-    signals.map(_.e).foreach(countUses)
+    expr.foreach(countUses)
     useCount
   }
 

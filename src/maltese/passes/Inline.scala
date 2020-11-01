@@ -77,7 +77,7 @@ class Inline(inlineEverything: Boolean = false) extends Pass {
 
   protected def findSignalsToInline(sys: TransitionSystem): Set[String] = {
     // count how often a symbol is used
-    val useCount = Analysis.countUses(sys.signals)
+    val useCount = Analysis.countUses(sys.signals.map(_.e))
     val onlyUsedOnce = sys.signals.filter(s => useCount(s.name) <= InlineUseMax).map(_.name).toSet
     // we also want to inline signals that are only aliases
     val leafSignals = if(InlineLeaves) sys.signals.filter(s => isLeafExpr(s.e)).map(_.name).toSet else Set[String]()
