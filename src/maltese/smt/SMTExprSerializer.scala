@@ -42,7 +42,7 @@ object SMTExprSerializer {
 
   def serialize(expr: ArrayExpr): String = expr match {
     case ArraySymbol(name, _, _) => name
-    case ArrayConstant(e, indexWidth) => s"([${serialize(e)}] x ${ (BigInt(1) << indexWidth) - 1 })"
+    case ArrayConstant(e, indexWidth) => s"([${serialize(e)}] x ${ (BigInt(1) << indexWidth) })"
     case ArrayStore(array, index, data) => s"${serialize(array)}[${serialize(index)} := ${serialize(data)}]"
     case ArrayIte(cond, tru, fals) => s"ite(${serialize(cond)}, ${serialize(tru)}, ${serialize(fals)})"
   }
