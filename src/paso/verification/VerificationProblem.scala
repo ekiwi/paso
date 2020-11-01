@@ -173,7 +173,8 @@ object VerificationProblem {
       invariants.name + ".enabled" -> smt.BVAnd(notReset, startState),
       invariants.name + ".invertAssert" -> invertAssert,
     ))
-    assert(sys.inputs.isEmpty, s"Unexpected inputs: ${sys.inputs.mkString(", ")}")
+    val nonRandomInputs = sys.inputs.filterNot(_.name.contains("RANDOM"))
+    assert(nonRandomInputs.isEmpty, s"Unexpected inputs: ${nonRandomInputs.mkString(", ")}")
     sys
   }
 
