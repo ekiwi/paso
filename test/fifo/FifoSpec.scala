@@ -93,7 +93,7 @@ class CircularProof(impl: CircularPointerFifo, spec: UntimedFifo[UInt]) extends 
     }
   }
 
-  invariances { dut =>
+  invariants { dut =>
     assert(dut.cnt <= dut.depth.U)
     assert(dut.rdPtr < dut.depth.U)
     assert(dut.wrPtr < dut.depth.U)
@@ -117,7 +117,7 @@ class ShiftProof(impl: ShiftRegisterFifo, spec: UntimedFifo[UInt]) extends Proof
     }
   }
 
-  invariances { dut => assert(dut.count <= dut.depth.U) }
+  invariants { dut => assert(dut.count <= dut.depth.U) }
 }
 
 
@@ -184,7 +184,7 @@ class BasejumpFifoInductive(impl: BasejumpFifo, spec: UntimedSequentialFifo[UInt
     }
   }
 
-    //invariances { dut => assert(dut.count <= dut.depth.U) }
+    //invariants { dut => assert(dut.count <= dut.depth.U) }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

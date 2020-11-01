@@ -183,7 +183,7 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
   require(impl.d.writePorts == 2)
   require(impl.d.readPorts == 4)
 
-  invariances { impl =>
+  invariants { impl =>
     // all mems in a write bank contain the same value
     forall(0 until impl.d.size.depth.toInt) { addr =>
       (0 until 2).foreach { writeBank =>

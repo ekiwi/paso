@@ -14,7 +14,7 @@ import scala.collection.mutable
 abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec: S) {
 
   val invs = new mutable.ArrayBuffer[I => Unit]()
-  def invariances(gen: I => Unit): Unit = invs.append(gen)
+  def invariants(gen: I => Unit): Unit = invs.append(gen)
 
 
   val maps = new mutable.ArrayBuffer[(I,S) => Unit]()
