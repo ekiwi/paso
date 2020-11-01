@@ -74,6 +74,8 @@ private class Btor2Serializer private () {
       line(s"read ${t(expr.width)} ${s(array)} ${s(index)}")
     case BVIte(cond, tru, fals) =>
       line(s"ite ${t(expr.width)} ${s(cond)} ${s(tru)} ${s(fals)}")
+    case forall : BVForall =>
+      throw new RuntimeException(s"Quantifiers are not supported by the btor2 format: ${forall}")
   }
 
   private def s(op: Op.Value): String = op match {
