@@ -78,11 +78,11 @@ case class Elaboration() {
     val quantifiedVariables = resAnnos.collect{ case ForallAnnotation(target, width, start, end) =>
       QuantifiedVariable(smt.BVSymbol(target.module + "." + target.ref, width), start, end)
     }
-    val withQuantifiers = AddForallQuantifiers.run(sys, quantifiedVariables)
+    val withQuantifiers = AddForallQuantifiers.run(connectedState, quantifiedVariables)
 
-    println(connectedState.serialize)
-    println()
-    println(withQuantifiers.serialize)
+    //println(connectedState.serialize)
+    //println()
+    //println(withQuantifiers.serialize)
 
     withQuantifiers
   }
