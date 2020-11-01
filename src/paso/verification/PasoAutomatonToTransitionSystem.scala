@@ -257,15 +257,21 @@ object UntimedModelCopy {
 
     // for each copy, find all signals that it depends on and copy them in the order that they appear in the original
     // inputs do not need to be copies since they are automatically duplicated with the protocol
-    val newSignals = copies.flatMap { case(signal, suffix) =>
+    val inputsAndSignals = copies.map { case(signal, suffix) =>
       val signalsToCopy = transitiveDeps(signal, deps) + signal
       val subs = signalsToCopy.map(n => n -> nameToSymbol(n).rename(n + suffix)).toMap
-      sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
+      val signals = sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
         mc.Signal(s.name + suffix, replace(s.e, subs), s.lbl)
       }
+      // we need to possible duplicate any random inputs
+      val inputs = sys.inputs.filter(_.name.contains("RANDOM")).filter(i => signalsToCopy(i.name)).map(i => i.rename(i.name + suffix))
+      (inputs, signals)
     }
 
-    sys.copy(signals = sys.signals ++ newSignals)
+    val newInputs = inputsAndSignals.flatMap(_._1)
+    val newSignals = inputsAndSignals.flatMap(_._2)
+
+    sys.copy(inputs = sys.inputs ++ newInputs, signals = sys.signals ++ newSignals)
   }
 
   private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
