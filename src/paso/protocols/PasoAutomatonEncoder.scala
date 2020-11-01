@@ -32,19 +32,12 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   private case class Loc(name: String, transition: Int, copyId: Int = 0) {
     override def toString: String = s"$name$$$copyId@$transition"
   }
-  private val transitionMap: Map[String, Transition] =
-    protocols.flatMap { p => p.transitions.zipWithIndex.map { case (t, i) => s"${p.name}$$0@$i" -> t }}.toMap
-  private val transitionCopyMap = mutable.HashMap[String, Transition]()
+  private val transitionMap = mutable.HashMap[String, Transition]()
   private def transition(loc: Loc): Transition = {
-    // if the loc is of copy=0, i.e. the original copy, we just look it up
-    if(loc.copyId == 0) {
-      transitionMap(loc.toString)
-    } else {
-      if(!transitionCopyMap.contains(loc.toString)) {
-        copyProtocol(loc)
-      }
-      transitionCopyMap(loc.toString)
+    if(!transitionMap.contains(loc.toString)) {
+      copyProtocol(loc)
     }
+    transitionMap(loc.toString)
   }
 
   /** States are characterized by the active protocols and whether a new protocol is going to be started. */
@@ -221,9 +214,9 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     assert(loc.copyId == protocolCopies(original.name))
     protocolCopies(original.name) = loc.copyId + 1
     val suffix = s"$$${loc.copyId}"
-    transitionCopyMap ++= ProtocolCopy(original, suffix)
+    transitionMap ++= ProtocolCopy(original, suffix)
   }
-  private val protocolCopies = mutable.HashMap[String, Int]() ++ protocols.map(p => p.name -> 1)
+  private val protocolCopies = mutable.HashMap[String, Int]() ++ protocols.map(p => p.name -> 0)
 
   // https://stackoverflow.com/questions/8321906/lazy-cartesian-product-of-several-seqs-in-scala/8569263
   private def product[N](xs: Seq[Seq[N]]): Seq[Seq[N]] =
