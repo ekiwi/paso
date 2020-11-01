@@ -160,7 +160,21 @@ case class Elaboration() {
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       mWithPrefix.copy(args=args, ret=ret)
     }
-    val simplifiedSys = simplifyTransitionSystem(formal.model)
+
+    // Memories in Firrtl cannot have a synchronous reset, we thus need to convert the reset after the fact
+    val reset = smt.BVSymbol(formal.model.name + "." + "reset", 1)
+    val states = formal.model.states.map {
+      case s @ mc.State(sym: smt.BVSymbol, init, Some(next)) =>
+        assert(init.isEmpty)
+        s
+      case mc.State(sym: smt.ArraySymbol, Some(init: smt.ArrayExpr), Some(next: smt.ArrayExpr)) =>
+        mc.State(sym, None, Some(smt.ArrayIte(reset, init, next)))
+      case other => throw new RuntimeException(s"Unexpected state: $other")
+    }
+    val sysWithSynchronousMemInit = formal.model.copy(states = states)
+
+    // Simplify Transition System
+    val simplifiedSys = simplifyTransitionSystem(sysWithSynchronousMemInit)
     val model = UntimedModel(simplifiedSys, methods)
 
     Untimed(model, spec.protos, formal.exposedSignals)
