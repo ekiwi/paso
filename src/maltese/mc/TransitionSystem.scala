@@ -39,8 +39,14 @@ object TransitionSystem {
     (Iterator(sys.name) ++
       sys.inputs.map(i => s"input ${i.name} : ${SMTExpr.serializeType(i)}") ++
       sys.signals.map(s => s"${SignalLabel.labelToString(s.lbl)} ${s.name} : ${SMTExpr.serializeType(s.e)} = ${s.e}") ++
-      sys.states.map(s => s"state ${s.sym.name} : ${SMTExpr.serializeType(s.sym)}\n  [init] ${s.init}\n  [next] ${s.next}")
+      sys.states.map(serialize)
       ).mkString("\n")
+  }
+
+  def serialize(s: State): String = {
+    s"state ${s.sym.name} : ${SMTExpr.serializeType(s.sym)}" +
+      (s.init match { case None => "" case Some(init) => s"\n  [init] ${init}" }) +
+      (s.next match { case None => "" case Some(next) => s"\n  [next] ${next}"})
   }
 
   /** prefixes all signal names with the name of the transition system */
