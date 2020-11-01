@@ -197,41 +197,52 @@ object UntimedModelCopy {
   def run(untimedModel: UntimedModel, protocolCopies: Seq[(String, Int)]): (mc.TransitionSystem, UntimedInputInfo) = {
     val methods = untimedModel.methods.map(m => (untimedModel.name + "." + m.name) -> m).toMap
 
-    // calculate method inputs
-    val infos = protocolCopies.map { case (methodName, copyCount) =>
-      val suffixes = List("") ++ (1 until copyCount).map(i => s"$$$i")
-      val method = methods(methodName)
-      UntimedInputInfo(
-        suffixes.map(s => method.fullIoName + "_enabled" + s).map(n => smt.BVSymbol(n, 1)),
-        suffixes.flatMap(s => method.args.map{ case (name, w) => smt.BVSymbol(name + s, w) })
-      )
-    }
-    val info = UntimedInputInfo(infos.flatMap(_.enabled), infos.flatMap(_.args))
+    // connect method inputs
+    val (sysWithInputsConnected, info) = connectInputs(untimedModel.sys, protocolCopies, methods)
 
-    // shortcut if there are no copies
-    if(protocolCopies.forall(_._2 <= 1)) {
-      return (untimedModel.sys, info)
-    }
-
-    // do the actual copying:
+    // copy outputs (as far as necessary)
     val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
-      val outputs = methods(methodName).ret.map(_._1) // we do not need to copy the guard because it depends on the state only
-      (1 until copyCount).flatMap(i => outputs.map(o => (o, s"$$$i")))
+      // we do not need to copy the guard because it depends on the state only
+      val outputs = methods(methodName).ret.map(_._1)
+      (0 until copyCount).flatMap(i => outputs.map(o => (o, s"$$$i")))
     }
-    val sysWithCopiedOutputs = duplicateOutputs(untimedModel.sys, copyOutputs)
+    val sysWithCopiedOutputs = duplicateOutputs(sysWithInputsConnected, copyOutputs)
 
-    val existingInputs = sysWithCopiedOutputs.inputs.map(_.name).toSet
-    val inputCopies = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
+    // if there is only a single copy, we just need to rename the output (by creating a copy)
+    val outputsAliases = protocolCopies.filter(_._2 == 1).flatMap { case (methodName, copyCount) =>
+      methods(methodName).ret.map { case (name, w) =>
+        mc.Signal(name + "$0", smt.BVSymbol(name, w), mc.IsOutput)
+      }
+    }
+    val finalSys = sysWithCopiedOutputs.copy(signals = sysWithCopiedOutputs.signals ++ outputsAliases)
+
+    (finalSys, info)
+  }
+
+  private def connectInputs(sys: mc.TransitionSystem, protocolCopies: Seq[(String, Int)], methods: Map[String, MethodInfo]):
+  (mc.TransitionSystem, UntimedInputInfo) = {
+    val enabledInputs = mutable.ArrayBuffer[smt.BVSymbol]()
+    val argInputs = mutable.ArrayBuffer[smt.BVSymbol]()
+    val inputConnections = protocolCopies.flatMap { case (methodName, copyCount) =>
+      val suffixes = (0 until copyCount).map(i => s"$$$i")
       val method = methods(methodName)
-      val inputs = method.args.map(a => smt.BVSymbol(a._1, a._2)) :+ (smt.BVSymbol(method.fullIoName + "_enabled", 1))
-      (1 until copyCount).flatMap(i => inputs.map(sym => sym.rename(sym.name + s"$$$i")))
-    }.filterNot(i => existingInputs.contains(i.name))
-    val sysWithAllInputAndOutputCopies = sysWithCopiedOutputs.copy(inputs = sysWithCopiedOutputs.inputs ++ inputCopies)
-
-    // TODO
-    assert(sysWithAllInputAndOutputCopies.states.isEmpty, "TODO: deal with states")
-
-    (sysWithAllInputAndOutputCopies, info)
+      val enabled = suffixes.map(s => smt.BVSymbol(method.fullIoName + "_enabled" + s, 1))
+      enabledInputs ++= enabled
+      // Only one enabled signal (per method) will be true in any cycle (one hot encoded!)
+      // If any of them is true, we want to commit the state.
+      val conEnabled = List((method.fullIoName + "_enabled") -> smt.BVOr(enabled))
+      // We need to connect the args associated with the active enabled signal
+      val conArgs = method.args.map { case (name, w) =>
+        val argCopies = suffixes.map(s => smt.BVSymbol(name + s, w))
+        argInputs ++= argCopies
+        // pick the copy associated with the enabled copy
+        name -> argCopies.zip(enabled).drop(1)
+          .foldLeft[smt.BVExpr](argCopies.head){ case (other, (arg, enabled)) => smt.BVIte(enabled, arg, other) }
+      }
+      conEnabled ++ conArgs
+    }.toMap
+    val info = UntimedInputInfo(enabledInputs, argInputs)
+    (mc.TransitionSystem.connect(sys, inputConnections), info)
   }
 
   private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String)]): mc.TransitionSystem = {
@@ -242,20 +253,16 @@ object UntimedModelCopy {
     val nameToSymbol = (sys.inputs ++ sys.signals.map(_.sym)).map(s => s.name -> s).toMap
 
     // for each copy, find all signals that it depends on and copy them in the order that they appear in the original
-    val inputsAndSignals = copies.map { case(signal, suffix) =>
+    // inputs do not need to be copies since they are automatically duplicated with the protocol
+    val newSignals = copies.flatMap { case(signal, suffix) =>
       val signalsToCopy = transitiveDeps(signal, deps) + signal
       val subs = signalsToCopy.map(n => n -> nameToSymbol(n).rename(n + suffix)).toMap
-      val inputs = sys.inputs.filter(i => signalsToCopy(i.name)).map(i => i.rename(i.name + suffix))
-      val signals = sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
+      sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
         mc.Signal(s.name + suffix, replace(s.e, subs), s.lbl)
       }
-      (inputs, signals)
     }
 
-    val newInputs = inputsAndSignals.flatMap(_._1)
-    val newSignals = inputsAndSignals.flatMap(_._2)
-
-    sys.copy(inputs = sys.inputs ++ newInputs, signals = sys.signals ++ newSignals)
+    sys.copy(signals = sys.signals ++ newSignals)
   }
 
   private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
