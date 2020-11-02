@@ -270,11 +270,12 @@ object SMTTransitionSystemEncoder {
   val BadSuffix = "_b"
   val AssumptionSuffix = "_u"
   private def lblToKind(lbl: SignalLabel): String = lbl match {
-    case IsNode => "wire"
+    case IsNode | IsInit | IsNext => "wire"
     case IsOutput => "output"
     // different from how the normal SMT encoding works, we actually defined bad states instead of safe states
     case IsBad => "bad"
     case IsConstraint => "assume"
+    case IsFair => "fair"
   }
   private def toDescription(sym: smt.SMTSymbol, kind: String, comments: String => Option[String]): List[Comment] = {
     List(sym match {

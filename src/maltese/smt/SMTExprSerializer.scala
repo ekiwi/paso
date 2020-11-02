@@ -38,8 +38,7 @@ object SMTExprSerializer {
     // n-ary
     case BVSelect(choices) =>
       choices.map{ case (c,v) => serialize(c) + " -> " + serialize(v) }.mkString("select(", ", ", ")")
-    case BVFunctionCall(name, args, _) =>
-      name + args.map { case b: BVExpr => serialize(b) case a: ArrayExpr => serialize(a) }.mkString("(", ",", ")")
+    case BVFunctionCall(name, args, _) => name + serialize(args).mkString("(", ",", ")")
   }
 
   def serialize(expr: ArrayExpr): String = expr match {
@@ -47,5 +46,9 @@ object SMTExprSerializer {
     case ArrayConstant(e, indexWidth) => s"([${serialize(e)}] x ${ (BigInt(1) << indexWidth) })"
     case ArrayStore(array, index, data) => s"${serialize(array)}[${serialize(index)} := ${serialize(data)}]"
     case ArrayIte(cond, tru, fals) => s"ite(${serialize(cond)}, ${serialize(tru)}, ${serialize(fals)})"
+    case ArrayFunctionCall(name, args, _, _) => name + serialize(args).mkString("(", ",", ")")
   }
+
+  private def serialize(args: Iterable[SMTFunctionArg]): Iterable[String] =
+    args.map { case b: BVExpr => serialize(b) case a: ArrayExpr => serialize(a) case u: UTSymbol => u.name }
 }

@@ -36,6 +36,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
   override def assert(expr: smt.BVExpr): Unit = ???
   override def queryModel(e: smt.BVSymbol) = ???
   override def getValue(e: smt.BVExpr) = ???
+  override def runCommand(cmd: SMTCommand): Unit = ???
 
   /** releases all native resources */
   override def close(): Unit = ???

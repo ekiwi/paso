@@ -46,6 +46,14 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
   // TODO
   override def getValue(e: BVExpr) = ???
 
+  override def runCommand(cmd: SMTCommand): Unit = cmd match {
+    case Comment(_) => // ignore
+    case SetLogic(logic) => setLogic(logic)
+    case DefineFunction(name, args, e) => ???
+    case DeclareFunction(sym, args) => ???
+    case DeclareUninterpretedSort(name) => ???
+  }
+
   /** releases all native resources */
   override def close(): Unit = {
     freeModel()

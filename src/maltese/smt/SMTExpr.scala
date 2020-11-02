@@ -266,4 +266,3 @@ object False {
 sealed trait SMTType
 case class BVType(width: Int) extends SMTType
 case class ArrayType(indexWidth: Int, dataWidth: Int) extends SMTType
-case class UType(name: String) extends SMTType

@@ -5,7 +5,7 @@
 
 package maltese.smt
 
-import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DefineFunction, SMTCommand}
+import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DefineFunction, SMTCommand, SetLogic}
 
 import scala.util.matching.Regex
 
@@ -26,7 +26,6 @@ object SMTLibSerializer {
   def serialize(t: SMTType): String = t match {
     case BVType(width) => serializeBitVectorType(width)
     case ArrayType(indexWidth, dataWidth) => serializeArrayType(indexWidth, dataWidth)
-    case UType(name) => serializeUninterpretedType(name)
   }
 
   private def serialize(e: BVExpr): String = e match {
@@ -76,6 +75,7 @@ object SMTLibSerializer {
     case BVConcat(a, b)                     => s"(concat ${asBitVector(a)} ${asBitVector(b)})"
     case ArrayRead(array, index)            => s"(select ${serialize(array)} ${asBitVector(index)})"
     case BVIte(cond, tru, fals)             => s"(ite ${serialize(cond)} ${serialize(tru)} ${serialize(fals)})"
+    case BVFunctionCall(name, args, _)      => args.map(serializeArg).mkString(s"($name ", " ", ")")
   }
 
   def serialize(e: ArrayExpr): String = e match {
@@ -83,18 +83,25 @@ object SMTLibSerializer {
     case ArrayStore(array, index, data) => s"(store ${serialize(array)} ${serialize(index)} ${serialize(data)})"
     case ArrayIte(cond, tru, fals)      => s"(ite ${serialize(cond)} ${serialize(tru)} ${serialize(fals)})"
     case c @ ArrayConstant(e, _)        => s"((as const ${serializeArrayType(c.indexWidth, c.dataWidth)}) ${serialize(e)})"
+    case ArrayFunctionCall(name, args, _, _) => args.map(serializeArg).mkString(s"($name ", " ", ")")
   }
 
   def serialize(c: SMTCommand): String = c match {
     case Comment(msg)                   => msg.split("\n").map("; " + _).mkString("\n")
     case DeclareUninterpretedSort(name) => s"(declare-sort ${escapeIdentifier(name)} 0)"
     case DefineFunction(name, args, e) =>
-      val aa = args.map(a => s"(${escapeIdentifier(a.name)} ${serialize(a.tpe)})").mkString(" ")
+      val aa = args.map(a => s"(${serializeArg(a)} ${serializeArgTpe(a)})").mkString(" ")
       s"(define-fun ${escapeIdentifier(name)} ($aa) ${serialize(e.tpe)} ${serialize(e)})"
     case DeclareFunction(sym, tpes) =>
-      val aa = tpes.map(serialize).mkString(" ")
+      val aa = tpes.map(serializeArgTpe).mkString(" ")
       s"(declare-fun ${escapeIdentifier(sym.name)} ($aa) ${serialize(sym.tpe)})"
+    case SetLogic(logic) => s"(set-logic ${SMTFeature.toName(logic)})"
   }
+
+  private def serializeArgTpe(a: SMTFunctionArg): String =
+    a match { case u: UTSymbol => escapeIdentifier(u.tpe) case s: SMTExpr => serialize(s.tpe) }
+  private def serializeArg(a: SMTFunctionArg): String =
+    a match { case u: UTSymbol => escapeIdentifier(u.name) case s: SMTExpr => serialize(s) }
 
   private def serializeArrayType(indexWidth: Int, dataWidth: Int): String =
     s"(Array ${serializeBitVectorType(indexWidth)} ${serializeBitVectorType(dataWidth)})"
