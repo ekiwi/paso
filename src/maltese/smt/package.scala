@@ -6,4 +6,6 @@ package maltese
 
 package object smt {
   type Solver = solvers.Solver
+  type Logic = solvers.Solver.Logic
+  val SMTFeature = solvers.SMTFeature
 }

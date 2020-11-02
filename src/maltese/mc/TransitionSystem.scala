@@ -4,7 +4,7 @@
 
 package maltese.mc
 
-import maltese.mc
+import maltese.{mc, smt}
 import maltese.smt.{BVExpr, BVSymbol, SMTExpr, SMTSymbol}
 
 case class State(sym: SMTSymbol, init: Option[SMTExpr], next: Option[SMTExpr]) {
@@ -97,4 +97,26 @@ object TransitionSystem {
     val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
     sys.copy(states = states, signals = connections ++ sys.signals)
   }
+
+  def systemExpressions(sys: TransitionSystem): Iterable[smt.SMTExpr] =
+    sys.signals.map(_.e) ++ sys.states.flatMap(s => s.init ++ s.next)
+
+  def analyzeFeatures(sys: TransitionSystem): TransitionSystemFeatures =
+    systemExpressions(sys).map(analyzeFeatures).reduce((a,b) => a | b)
+
+  def analyzeFeatures(e: smt.SMTExpr): TransitionSystemFeatures = {
+    val info = e match {
+      case fa: smt.BVForall => Some(HasQuantifier)
+      case a: smt.ArrayExpr => Some(HasArrays)
+      case _ => None
+    }
+    (e.children.map(analyzeFeatures) ++ info).reduce((a,b) => a | b)
+  }
+  private val HasQuantifier = TransitionSystemFeatures(true, false)
+  private val HasArrays = TransitionSystemFeatures(false, true)
+}
+
+case class TransitionSystemFeatures(hasQuantifiers: Boolean, hasArrays: Boolean) {
+  def |(other: TransitionSystemFeatures): TransitionSystemFeatures =
+    TransitionSystemFeatures(hasQuantifiers | other.hasQuantifiers, hasArrays | other.hasArrays)
 }

@@ -2,10 +2,13 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package maltese.smt
+package maltese.smt.solvers
+
+import maltese.smt.{SMTExpr, SMTFunctionArg, SMTSymbol}
 
 sealed trait SMTCommand
 case class Comment(msg: String) extends SMTCommand
+case class SetLogic(logic: Solver.Logic) extends SMTCommand
 case class DefineFunction(name: String, args: Seq[SMTFunctionArg], e: SMTExpr) extends SMTCommand
 case class DeclareFunction(sym: SMTSymbol, args: Seq[SMTFunctionArg]) extends SMTCommand
 case class DeclareUninterpretedSort(name: String) extends SMTCommand

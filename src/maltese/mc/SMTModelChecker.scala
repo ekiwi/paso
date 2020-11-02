@@ -5,6 +5,9 @@
 package maltese.mc
 
 import maltese.smt
+import maltese.smt.solvers
+import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DefineFunction, SMTCommand, SetLogic}
+
 import scala.collection.mutable
 
 case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean, simplify: Boolean)
@@ -127,16 +130,23 @@ trait SMTEncoding {
  */
 object SMTTransitionSystemEncoder {
 
-  def encode(sys: TransitionSystem): Iterable[smt.SMTCommand] = {
-    val cmds = mutable.ArrayBuffer[smt.SMTCommand]()
+  def encode(sys: TransitionSystem, solver: smt.Solver): Unit = {
+    encode(sys).foreach(solver.runCommand)
+  }
+
+  def encode(sys: TransitionSystem): Iterable[SMTCommand] = {
+    val cmds = mutable.ArrayBuffer[SMTCommand]()
     val name = sys.name
+
+    // set appropriate logic
+    cmds += SetLogic(determineLogic(sys))
 
     // we currently do not support comments associated with signals
     val comments: Map[String, String] = Map()
 
     // declare state type
     val stateType = id(name + "_s")
-    cmds += smt.DeclareUninterpretedSort(stateType)
+    cmds += DeclareUninterpretedSort(stateType)
 
     // state symbol
     val State = smt.UTSymbol("state", stateType)
@@ -146,14 +156,14 @@ object SMTTransitionSystemEncoder {
     def declare(sym: smt.SMTSymbol, kind: String): Unit = {
       cmds ++= toDescription(sym, kind, comments.get)
       val s = smt.SMTSymbol.fromExpr(sym.name + SignalSuffix, sym)
-      cmds += smt.DeclareFunction(s, List(State))
+      cmds += DeclareFunction(s, List(State))
     }
     sys.inputs.foreach(i => declare(i, "input"))
     sys.states.foreach(s => declare(s.sym, "register"))
 
     // signals are just functions of other signals, inputs and state
     def define(sym: smt.SMTSymbol, e: smt.SMTExpr, suffix: String = SignalSuffix): Unit = {
-      cmds += smt.DefineFunction(sym.name + suffix, List(State), replaceSymbols(SignalSuffix, State)(e))
+      cmds += DefineFunction(sym.name + suffix, List(State), replaceSymbols(SignalSuffix, State)(e))
     }
     sys.signals.foreach { signal =>
       val sym = signal.sym
@@ -184,7 +194,7 @@ object SMTTransitionSystemEncoder {
     }
     // the transition relation is over two states
     val transitionExpr = replaceSymbols(SignalSuffix, State)(smt.BVAnd(transitionRelations))
-    cmds += smt.DefineFunction(name + "_t", List(State, StateNext), transitionExpr)
+    cmds += solvers.DefineFunction(name + "_t", List(State, StateNext), transitionExpr)
 
     // The init relation just asserts that all init function hold
     val initRelations = sys.states.filter(_.init.isDefined).map { state =>
@@ -216,11 +226,11 @@ object SMTTransitionSystemEncoder {
     case IsBad => "bad"
     case IsConstraint => "assume"
   }
-  private def toDescription(sym: smt.SMTSymbol, kind: String, comments: String => Option[String]): List[smt.Comment] = {
+  private def toDescription(sym: smt.SMTSymbol, kind: String, comments: String => Option[String]): List[Comment] = {
     List(sym match {
-      case smt.BVSymbol(name, width) => smt.Comment(s"firrtl-smt2-$kind $name $width")
-      case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.Comment(s"firrtl-smt2-$kind $name $indexWidth $dataWidth")
-    }) ++ comments(sym.name).map(smt.Comment)
+      case smt.BVSymbol(name, width) => solvers.Comment(s"firrtl-smt2-$kind $name $width")
+      case smt.ArraySymbol(name, indexWidth, dataWidth) => solvers.Comment(s"firrtl-smt2-$kind $name $indexWidth $dataWidth")
+    }) ++ comments(sym.name).map(solvers.Comment)
   }
 
   // All signals are modelled with functions that need to be called with the state as argument,
@@ -229,6 +239,14 @@ object SMTTransitionSystemEncoder {
     case smt.BVSymbol(name, width) => smt.BVFunctionCall(id(name + suffix), List(arg), width)
     case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.ArrayFunctionCall(id(name + suffix), List(arg), indexWidth, dataWidth)
     case other => other.mapExpr(replaceSymbols(suffix, arg))
+  }
+
+  private def determineLogic(sys: TransitionSystem): smt.Logic = {
+    val features = TransitionSystem.analyzeFeatures(sys)
+    val base = smt.SMTFeature.BitVector + smt.SMTFeature.UninterpretedFunctions
+    val withArrays = if(features.hasArrays) base + smt.SMTFeature.Array else base
+    val withQuantifiers = if(features.hasQuantifiers) withArrays else withArrays + smt.SMTFeature.QuantifierFree
+    withQuantifiers
   }
 }
 

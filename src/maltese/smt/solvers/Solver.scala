@@ -36,6 +36,7 @@ trait Solver {
     pCheckCount += 1
     doCheck(produceModel)
   }
+  def runCommand(cmd: SMTCommand): Unit
   def queryModel(e: BVSymbol): Option[BigInt]
   def getValue(e: BVExpr): Option[BigInt]
   /** releases all native resources */
