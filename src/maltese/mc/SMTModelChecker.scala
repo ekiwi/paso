@@ -26,6 +26,10 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     require(kMax > 0 && kMax <= 2000, s"unreasonable kMax=$kMax")
     if(fileName.nonEmpty) println("WARN: dumping to file is not supported at the moment.")
 
+    // set correct logic for solver
+    val logic = SMTTransitionSystemEncoder.determineLogic(sys)
+    solver.setLogic(logic)
+
     // create new context
     solver.push()
 
@@ -188,9 +192,6 @@ object SMTTransitionSystemEncoder {
     val cmds = mutable.ArrayBuffer[SMTCommand]()
     val name = sys.name
 
-    // set appropriate logic
-    cmds += SetLogic(determineLogic(sys))
-
     // we currently do not support comments associated with signals
     val comments: Map[String, String] = Map()
 
@@ -292,7 +293,7 @@ object SMTTransitionSystemEncoder {
     case other => other.mapExpr(replaceSymbols(suffix, arg))
   }
 
-  private def determineLogic(sys: TransitionSystem): smt.Logic = {
+  def determineLogic(sys: TransitionSystem): smt.Logic = {
     val features = TransitionSystem.analyzeFeatures(sys)
     val base = smt.SMTFeature.BitVector + smt.SMTFeature.UninterpretedFunctions
     val withArrays = if(features.hasArrays) base + smt.SMTFeature.Array else base
