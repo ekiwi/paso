@@ -78,10 +78,10 @@ object Paso {
   }
   private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???
 
-  val MCBotr = ProofOptions(CVC4, Btormc)
-  val MCYices2 = ProofOptions(CVC4, Yices2)
-  val MCCVC4 = ProofOptions(CVC4, CVC4)
-  val MCZ3 = ProofOptions(CVC4, Z3)
+  val MCBotr = ProofOptions(Btormc)
+  val MCYices2 = ProofOptions(Yices2)
+  val MCCVC4 = ProofOptions(CVC4)
+  val MCZ3 = ProofOptions(Z3)
   val Default = MCBotr
 }
 
@@ -91,4 +91,4 @@ case object Yices2 extends SolverName
 case object Btormc extends SolverName
 case object Z3 extends SolverName
 
-case class ProofOptions(baseCaseSolver: SolverName, modelChecker: SolverName, oneMethodAtATime: Boolean = true, checkSimplifications: Boolean = false)
+case class ProofOptions(modelChecker: SolverName, oneMethodAtATime: Boolean = true, checkSimplifications: Boolean = false)

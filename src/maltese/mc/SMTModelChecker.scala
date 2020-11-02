@@ -10,10 +10,10 @@ import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, 
 
 import scala.collection.mutable
 
-case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean, simplify: Boolean)
+case class SMTModelCheckerOptions(checkConstraints: Boolean, checkBadStatesIndividually: Boolean)
 object SMTModelCheckerOptions {
-  val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true, false)
-  val Performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false, true)
+  val Default: SMTModelCheckerOptions = SMTModelCheckerOptions(true, true)
+  val Performance: SMTModelCheckerOptions = SMTModelCheckerOptions(false, false)
 }
 
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */

@@ -7,7 +7,6 @@ package paso.verification
 import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
-import maltese.smt.solvers.{Solver, Yices2}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
 import paso.untimed
 
@@ -22,7 +21,7 @@ case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
     val checker = makeChecker(opt.modelChecker)
-    val solver = Yices2()
+    val solver = smt.solvers.Yices2()
 
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
@@ -61,7 +60,7 @@ object VerificationProblem {
   def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int): Unit = {
     val resetLength = 1
     val checker = makeChecker(modelChecker)
-    val solver = Yices2()
+    val solver = smt.solvers.Yices2()
 
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
@@ -81,12 +80,11 @@ object VerificationProblem {
     assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
-  private def makeChecker(name: paso.SolverName): IsModelChecker = {
-    if(name == paso.Btormc) {
-      new mc.BtormcModelChecker()
-    } else {
-      throw new NotImplementedError(s"TODO: $name")
-    }
+  private def makeChecker(name: paso.SolverName): IsModelChecker = name match {
+    case paso.Btormc => new mc.BtormcModelChecker()
+    case paso.CVC4 => new mc.SMTModelChecker(new smt.solvers.CVC4SMTLib())
+    case paso.Z3 => new mc.SMTModelChecker(new smt.solvers.Z3SMTLib())
+    case paso.Yices2 => new mc.SMTModelChecker(smt.solvers.Yices2())
   }
 
   private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
@@ -108,7 +106,7 @@ object VerificationProblem {
     }
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: Solver, invert: Boolean): (TransitionSystem, Int) = {
+  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: smt.Solver, invert: Boolean): (TransitionSystem, Int) = {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
     val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
     val longestPath = automaton.longestPath
