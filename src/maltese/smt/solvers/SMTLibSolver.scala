@@ -27,6 +27,12 @@ class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
   override def supportsConstArrays = true
   override def supportsUninterpretedFunctions = true
   override def supportsQuantifiers = true
+
+  // Z3 only supports array (as const ...) when the logic is set to ALL
+  override protected def doSetLogic(logic: Logic): Unit = getLogic match {
+    case None => writeCommand("(set-logic ALL)")
+    case Some(_) => // ignore
+  }
 }
 
 
@@ -105,11 +111,11 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
   private def serialize(c: SMTCommand): String = smt.SMTLibSerializer.serialize(c)
 
   private val proc = new InteractiveProcess(cmd, true)
-  private def writeCommand(str : String): Unit = {
+  protected def writeCommand(str : String): Unit = {
     if(debug) println(s"-> $str")
     proc.writeInput(str + "\n")
   }
-  private def readResponse() : Option[String] = {
+  protected def readResponse() : Option[String] = {
     val r = proc.readOutput()
     if(debug) println(s"<- $r")
     r
