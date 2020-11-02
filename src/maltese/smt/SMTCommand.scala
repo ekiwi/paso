@@ -4,8 +4,8 @@
 
 package maltese.smt
 
-private sealed trait SMTCommand
-private case class Comment(msg: String) extends SMTCommand
-private case class DefineFunction(name: String, args: Seq[SMTSymbol], e: SMTExpr) extends SMTCommand
-private case class DeclareFunction(sym: SMTSymbol, args: Seq[SMTType]) extends SMTCommand
-private case class DeclareUninterpretedSort(name: String) extends SMTCommand
+sealed trait SMTCommand
+case class Comment(msg: String) extends SMTCommand
+case class DefineFunction(name: String, args: Seq[SMTSymbol], e: SMTExpr) extends SMTCommand
+case class DeclareFunction(sym: SMTSymbol, args: Seq[SMTType]) extends SMTCommand
+case class DeclareUninterpretedSort(name: String) extends SMTCommand
