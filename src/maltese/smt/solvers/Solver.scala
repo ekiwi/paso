@@ -13,7 +13,7 @@ object Solver {
 trait Solver {
   // basic properties
   def name: String
-  def supportsQuantifiers: Boolean = false
+  def supportsQuantifiers: Boolean
   /** Constant Arrays are not required by SMTLib: https://rise4fun.com/z3/tutorialcontent/guide */
   def supportsConstArrays: Boolean
   def supportsUninterpretedFunctions: Boolean

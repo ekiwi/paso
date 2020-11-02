@@ -24,6 +24,7 @@ object Yices2 {
 
 class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.ContextT, params: Yices2Api.ParamsT) extends Solver {
   override def name = "yices2"
+  override def supportsQuantifiers = false
   override def supportsConstArrays = false
   override def supportsUninterpretedFunctions = true
 
@@ -52,6 +53,7 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
     case DefineFunction(name, args, e) => ???
     case DeclareFunction(sym, args) => ???
     case DeclareUninterpretedSort(name) => ???
+    case DeclareUninterpretedSymbol(name, tpe) => ???
   }
 
   /** releases all native resources */

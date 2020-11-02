@@ -12,24 +12,27 @@ class Yices2SMTLib extends SMTLibSolver(List("yices-smt2", "--incremental")) {
   override def name = "yices2-smtlib"
   override def supportsConstArrays = false
   override def supportsUninterpretedFunctions = true
+  override def supportsQuantifiers = false
 }
 
 class CVC4SMTLib extends SMTLibSolver(List("cvc4", "--incremental", "--produce-models", "--lang", "smt2")) {
   override def name = "cvc4-smtlib"
   override def supportsConstArrays = true
   override def supportsUninterpretedFunctions = true
+  override def supportsQuantifiers = true
 }
 
 class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
   override def name = "z3-smtlib"
   override def supportsConstArrays = true
   override def supportsUninterpretedFunctions = true
+  override def supportsQuantifiers = true
 }
 
 
 /** provides basic facilities to interact with any SMT solver that supports a SMTLib base textual interface */
 abstract class SMTLibSolver(cmd: List[String]) extends Solver {
-  private val debug: Boolean = false
+  private val debug: Boolean = true
 
   override def push(): Unit = {
     writeCommand("(push 1)")

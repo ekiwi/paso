@@ -25,6 +25,7 @@ object SMTExprMap {
     case old @ BVSlice(e, hi, lo) => val n = bv(e) ; if(n.eq(e)) old else BVSlice(n, hi, lo)
     case old @ BVNot(e) => val n = bv(e) ; if(n.eq(e)) old else BVNot(n)
     case old @ BVNegate(e) => val n = bv(e) ; if(n.eq(e)) old else BVNegate(n)
+    case old @ BVForall(variables, e) => val n = bv(e) ; if(n.eq(e)) old else BVForall(variables, n)
     // binary
     case old @ BVEqual(a, b) =>
       val (nA, nB) = (bv(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else BVEqual(nA, nB)
@@ -40,8 +41,6 @@ object SMTExprMap {
       val (nA, nB) = (ar(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else ArrayRead(nA, nB)
     case old @ BVImplies(a, b) =>
       val (nA, nB) = (bv(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else BVImplies(nA, nB)
-    case old @ BVForall(a, b) =>
-      val (nA, nB) = (bv(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else BVForall(nA.asInstanceOf[BVSymbol], nB)
     // ternary
     case old @ BVIte(a, b, c) =>
       val (nA, nB, nC) = (bv(a), bv(b), bv(c))
