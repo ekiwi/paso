@@ -30,7 +30,7 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     solver.push()
 
     // declare/define functions and encode the transition system
-    val enc: SMTEncoding = ??? // new CompactEncoding(sys, options.simplify)
+    val enc: SMTEncoding = new CompactEncoding(sys)
     enc.defineHeader(solver)
     enc.init(solver)
 

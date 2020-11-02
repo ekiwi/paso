@@ -6,6 +6,7 @@ package maltese.smt.solvers
 
 import maltese.smt
 import maltese.smt.solvers.Solver.Logic
+import maltese.smt.solvers.uclid.InteractiveProcess
 
 class Yices2SMTLib extends SMTLibSolver(List("yices-smt2", "--incremental")) {
   override def name = "yices2-smtlib"
@@ -28,20 +29,86 @@ class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
 
 /** provides basic facilities to interact with any SMT solver that supports a SMTLib base textual interface */
 abstract class SMTLibSolver(cmd: List[String]) extends Solver {
+  private val debug: Boolean = true
 
-
-
-  override def push(): Unit = ???
-  override def pop(): Unit = ???
-  override def assert(expr: smt.BVExpr): Unit = ???
-  override def queryModel(e: smt.BVSymbol) = ???
-  override def getValue(e: smt.BVExpr) = ???
-  override def runCommand(cmd: SMTCommand): Unit = ???
+  override def push(): Unit = {
+    writeCommand("(push 1)")
+  }
+  override def pop(): Unit = {
+    writeCommand("(pop 1)")
+  }
+  override def assert(expr: smt.BVExpr): Unit = {
+    println("TODO: declare free variables automatically")
+    writeCommand(s"(assert ${serialize(expr)})")
+  }
+  override def queryModel(e: smt.BVSymbol): Option[BigInt] = getValue(e)
+  override def getValue(e: smt.BVExpr): Option[BigInt] = {
+    val cmd = s"(get-value (${serialize(e)}))"
+    writeCommand(cmd)
+    readResponse() match {
+      case Some(strModel) => Some(parseValue(strModel.trim))
+      case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
+    }
+  }
+  override def runCommand(cmd: SMTCommand): Unit = cmd match {
+    case Comment(_) => // ignore comments
+    case SetLogic(logic) => setLogic(logic)
+    case c: DefineFunction => writeCommand(serialize(c))
+    case c: DeclareFunction => writeCommand(serialize(c))
+    case c: DeclareUninterpretedSort => writeCommand(serialize(c))
+  }
 
   /** releases all native resources */
-  override def close(): Unit = ???
-  override protected def doSetLogic(logic: Logic): Unit = ???
-  override protected def doCheck(produceModel: Boolean) = ???
+  override def close(): Unit = {
+    proc.finishInput()
+    Thread.sleep(5)
+    proc.kill()
+  }
+  override protected def doSetLogic(logic: Logic): Unit = {
+    writeCommand(serialize(SetLogic(logic)))
+  }
+  override protected def doCheck(produceModel: Boolean): SolverResult = {
+    writeCommand("(check-sat)")
+    readResponse() match {
+      case Some(res) =>
+        res.stripLineEnd match {
+          case "sat" => IsSat
+          case "unsat" => IsUnSat
+          case other => throw new RuntimeException(s"Unexpected result from SMT solver: $other")
+        }
+      case None =>
+        throw new RuntimeException("Unexpected EOF result from SMT solver.")
+    }
+  }
+
+  private def parseValue(v: String): BigInt = {
+    require(v.startsWith("((("))
+    require(v.endsWith("))"))
+    val bare = v.drop(3).dropRight(2)
+    val parts = v.split(')')
+    require(parts.length == 2)
+    val valueStr = parts.last.trim
+    if(valueStr == "true") { BigInt(1) }
+    else if(valueStr == "false") { BigInt(0) }
+    else {
+      require(valueStr.startsWith("#b"), s"Only binary format supported, not: $valueStr")
+      BigInt(valueStr.drop(2), 2)
+    }
+  }
+
+  private def serialize(e: smt.SMTExpr): String = smt.SMTLibSerializer.serialize(e)
+  private def serialize(c: SMTCommand): String = smt.SMTLibSerializer.serialize(c)
+
+  private val proc = new InteractiveProcess(cmd, true)
+  private def writeCommand(str : String): Unit = {
+    if(debug) println(s"-> $str")
+    proc.writeInput(str + "\n")
+  }
+  private def readResponse() : Option[String] = {
+    val r = proc.readOutput()
+    if(debug) println(s"<- $r")
+    r
+  }
 }
 
 

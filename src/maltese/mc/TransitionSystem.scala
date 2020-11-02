@@ -110,10 +110,11 @@ object TransitionSystem {
       case a: smt.ArrayExpr => Some(HasArrays)
       case _ => None
     }
-    (e.children.map(analyzeFeatures) ++ info).reduce((a,b) => a | b)
+    (e.children.map(analyzeFeatures) ++ info).foldLeft(Base)((a,b) => a | b)
   }
   private val HasQuantifier = TransitionSystemFeatures(true, false)
   private val HasArrays = TransitionSystemFeatures(false, true)
+  private val Base = TransitionSystemFeatures(false, false)
 }
 
 case class TransitionSystemFeatures(hasQuantifiers: Boolean, hasArrays: Boolean) {
