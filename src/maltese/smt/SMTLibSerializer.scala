@@ -5,7 +5,7 @@
 
 package maltese.smt
 
-import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DefineFunction, SMTCommand, SetLogic}
+import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, SetLogic}
 
 import scala.util.matching.Regex
 
@@ -87,7 +87,7 @@ object SMTLibSerializer {
   }
 
   def serialize(c: SMTCommand): String = c match {
-    case Comment(msg)                   => msg.split("\n").map("; " + _).mkString("\n")
+    case Comment(msg) => msg.split("\n").map("; " + _).mkString("\n")
     case DeclareUninterpretedSort(name) => s"(declare-sort ${escapeIdentifier(name)} 0)"
     case DefineFunction(name, args, e) =>
       val aa = args.map(a => s"(${serializeArg(a)} ${serializeArgTpe(a)})").mkString(" ")
@@ -96,6 +96,8 @@ object SMTLibSerializer {
       val aa = tpes.map(serializeArgTpe).mkString(" ")
       s"(declare-fun ${escapeIdentifier(sym.name)} ($aa) ${serialize(sym.tpe)})"
     case SetLogic(logic) => s"(set-logic ${SMTFeature.toName(logic)})"
+    case DeclareUninterpretedSymbol(name, tpe) =>
+      s"(declare-fun ${escapeIdentifier(name)} () ${escapeIdentifier(tpe)})"
   }
 
   private def serializeArgTpe(a: SMTFunctionArg): String =
@@ -108,7 +110,6 @@ object SMTLibSerializer {
   private def serializeBitVectorType(width: Int): String =
     if (width == 1) { "Bool" }
     else { assert(width > 1); s"(_ BitVec $width)" }
-  private def serializeUninterpretedType(name: String): String = escapeIdentifier(name)
 
   private def serialize(op: Op.Value): String = op match {
     case Op.And                  => "bvand"

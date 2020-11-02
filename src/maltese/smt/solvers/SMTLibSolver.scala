@@ -29,7 +29,7 @@ class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
 
 /** provides basic facilities to interact with any SMT solver that supports a SMTLib base textual interface */
 abstract class SMTLibSolver(cmd: List[String]) extends Solver {
-  private val debug: Boolean = true
+  private val debug: Boolean = false
 
   override def push(): Unit = {
     writeCommand("(push 1)")
@@ -38,7 +38,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     writeCommand("(pop 1)")
   }
   override def assert(expr: smt.BVExpr): Unit = {
-    println("TODO: declare free variables automatically")
+    // TODO: println("TODO: declare free variables automatically")
     writeCommand(s"(assert ${serialize(expr)})")
   }
   override def queryModel(e: smt.BVSymbol): Option[BigInt] = getValue(e)
@@ -56,6 +56,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     case c: DefineFunction => writeCommand(serialize(c))
     case c: DeclareFunction => writeCommand(serialize(c))
     case c: DeclareUninterpretedSort => writeCommand(serialize(c))
+    case c: DeclareUninterpretedSymbol => writeCommand(serialize(c))
   }
 
   /** releases all native resources */
@@ -64,8 +65,9 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     Thread.sleep(5)
     proc.kill()
   }
-  override protected def doSetLogic(logic: Logic): Unit = {
-    writeCommand(serialize(SetLogic(logic)))
+  override protected def doSetLogic(logic: Logic): Unit = getLogic match {
+    case None => writeCommand(serialize(SetLogic(logic)))
+    case Some(old) => require(logic == old, s"Cannot change logic from $old to $logic")
   }
   override protected def doCheck(produceModel: Boolean): SolverResult = {
     writeCommand("(check-sat)")

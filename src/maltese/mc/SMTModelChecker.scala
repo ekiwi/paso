@@ -6,7 +6,7 @@ package maltese.mc
 
 import maltese.smt
 import maltese.smt.solvers
-import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DefineFunction, SMTCommand, SetLogic}
+import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, SetLogic}
 
 import scala.collection.mutable
 
@@ -137,6 +137,7 @@ class CompactEncoding(sys: TransitionSystem) extends SMTEncoding {
 
   private def appendState(solver: smt.Solver): smt.UTSymbol = {
     val s = smt.UTSymbol(s"s${states.length}", stateType)
+    solver.runCommand(DeclareUninterpretedSymbol(s.name, s.tpe))
     states.append(s)
     s
   }
@@ -157,14 +158,14 @@ class CompactEncoding(sys: TransitionSystem) extends SMTEncoding {
   /** returns an expression representing the constraint in the current state */
   def getConstraint(name: String): smt.BVExpr = {
     assert(states.nonEmpty)
-    val foo = id(name + AssumptionSuffix)
+    val foo = id(name + "_f")
     smt.BVFunctionCall(foo, List(states.last), 1)
   }
 
   /** returns an expression representing the constraint in the current state */
   def getBadState(name: String): smt.BVExpr = {
     assert(states.nonEmpty)
-    val foo = id(name + BadSuffix)
+    val foo = id(name + "_f")
     smt.BVFunctionCall(foo, List(states.last), 1)
   }
 
