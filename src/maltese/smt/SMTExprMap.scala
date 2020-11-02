@@ -50,6 +50,10 @@ object SMTExprMap {
       val nChoices = choices.map(c => (bv(c._1), bv(c._2)))
       val anyNew = nChoices.zip(choices).exists{ case (n, o) => !n._1.eq(o._1) || !n._2.eq(o._2) }
       if(anyNew) BVSelect(nChoices) else old
+    case old @ BVFunctionCall(name, args, width) =>
+      val nArgs = args.map { case b: BVExpr => bv(b) case a: ArrayExpr => ar(a)}
+      val anyNew = nArgs.zip(args).exists{ case (n, o) => !n.eq(o) }
+      if(anyNew) BVFunctionCall(name, nArgs, width) else old
   }
 
   /** maps bv/ar over subexpressions of expr and returns expr with the results replaced */

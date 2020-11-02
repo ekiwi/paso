@@ -77,6 +77,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       case smt.BVSelect(_) => throw new NotImplementedError("BVSelect")
       case smt.ArrayEqual(a, b) => if(evalArray(a).data == evalArray(b).data) BigInt(1) else BigInt(0)
       case _ : smt.BVForall => throw new NotImplementedError("forall")
+      case _ : smt.BVFunctionCall => throw new NotImplementedError("function call")
     }
     value
   }

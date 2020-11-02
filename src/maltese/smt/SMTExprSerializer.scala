@@ -38,6 +38,8 @@ object SMTExprSerializer {
     // n-ary
     case BVSelect(choices) =>
       choices.map{ case (c,v) => serialize(c) + " -> " + serialize(v) }.mkString("select(", ", ", ")")
+    case BVFunctionCall(name, args, _) =>
+      name + args.map { case b: BVExpr => serialize(b) case a: ArrayExpr => serialize(a) }.mkString("(", ",", ")")
   }
 
   def serialize(expr: ArrayExpr): String = expr match {

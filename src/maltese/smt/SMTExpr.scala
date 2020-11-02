@@ -197,6 +197,11 @@ case class BVForall(variable: BVSymbol, e: BVExpr) extends BVUnaryExpr {
   override def reapply(expr: BVExpr) = BVForall(variable, expr)
 }
 
+/** apply arguments to a function which returns a result of bit vector type */
+case class BVFunctionCall(name: String, args: List[SMTExpr], width: Int) extends BVExpr {
+  override def children = args
+}
+
 object BVAnd {
   def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.And, a, b)
   def apply(exprs: Iterable[BVExpr]): BVExpr = {
