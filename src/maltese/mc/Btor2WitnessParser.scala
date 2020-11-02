@@ -35,8 +35,9 @@ object Btor2WitnessParser {
       val ii = Integer.parseUnsignedInt(parts.head)
       val (value, index) = if(is_array) {
         assert(parts(1).startsWith("[") && parts(1).endsWith("]"), s"Expected `[index]`, not `${parts(1)}` in: $parts")
-        val ii = BigInt(parts(1).drop(1).dropRight(1), 2)
-        (BigInt(parts(2), 2), Some(ii))
+        val indexString = parts(1).drop(1).dropRight(1)
+        val ii = if(indexString == "*") None else Some(BigInt(indexString, 2))
+        (BigInt(parts(2), 2), ii)
       } else { (BigInt(parts(1), 2), None) }
       Assignment(ii, value, index, symbol = parts.last)
     }
