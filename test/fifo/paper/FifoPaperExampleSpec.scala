@@ -33,10 +33,11 @@ class Fifo(val depth: Int) extends Module {
   if(false) {
     val memPort = mem(memAddr)
     when(memWrite) { memPort := io.dataIn }
+      // the following is broken since the data will only be available with a one cycle delay...
    .elsewhen(memRead) { io.dataOut := memPort }
   } else {
     when(memWrite) { mem.write(memAddr, io.dataIn) }
-    .elsewhen(memRead) { io.dataOut := mem.read(memAddr) }
+    io.dataOut := mem.read(memAddr, !memWrite)
   }
 }
 
