@@ -14,7 +14,7 @@ object Btor2WitnessParser {
   private case class Props(bad: Seq[Int], fair: Seq[Int]) extends State
   private case class States(ii: Int) extends State
   private case class Inputs(ii: Int) extends State
-  private case class Assignment(ii: Int, value: BigInt, index: Option[BigInt], symbol: String)
+  private case class Assignment(ii: Int, value: BigInt, index: Option[BigInt], symbol: String, isArray: Boolean)
 
   def read(lines: Iterable[String], parseMax: Int = 1): Seq[Witness] = {
     var state: State = Start()
@@ -22,7 +22,7 @@ object Btor2WitnessParser {
     // work in progress witness
     var failedBad: Seq[Int] = Seq()
     val regInit = mutable.HashMap[Int, BigInt]()
-    val memInit = mutable.HashMap[Int, Seq[(BigInt, BigInt)]]()
+    val memInit = mutable.HashMap[Int, Seq[(Option[BigInt], BigInt)]]()
     val allInputs = mutable.ArrayBuffer[Map[Int, BigInt]]()
     val inputs = mutable.Map[Int, BigInt]()
 
@@ -39,7 +39,7 @@ object Btor2WitnessParser {
         val ii = if(indexString == "*") None else Some(BigInt(indexString, 2))
         (BigInt(parts(2), 2), ii)
       } else { (BigInt(parts(1), 2), None) }
-      Assignment(ii, value, index, symbol = parts.last)
+      Assignment(ii, value, index, symbol = parts.last, is_array)
     }
 
     def parse_line(line: String): Unit = {
@@ -64,7 +64,6 @@ object Btor2WitnessParser {
       }
       def newStates(): State = {
         val ii = uintStartingAt(1)
-        assert(ii == 0, s"We currently only support a single state frame!")
         States(ii)
       }
       def finishInputFrame() {
@@ -93,11 +92,12 @@ object Btor2WitnessParser {
           if(line == ".") { finishWitness() }
           else if(line.startsWith("@")) { newInputs() } else {
             val a = parseAssignment(parts)
-            a.index match {
-              case None => regInit(a.ii) = a.value
-              case Some(index) =>
-                val priorWrites = memInit.getOrElse(a.ii, Seq())
-                memInit(a.ii) = priorWrites ++ Seq((index, a.value))
+            assert(s.ii == 0, "We currently do not support non-deterministic state updates")
+            if(a.isArray) {
+              val priorWrites = memInit.getOrElse(a.ii, Seq())
+              memInit(a.ii) = priorWrites ++ Seq((a.index, a.value))
+            } else {
+              regInit(a.ii) = a.value
             }
             s
           }

@@ -36,9 +36,13 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
 
   private case class Memory(data: Seq[BigInt]) {
     def depth: Int = data.size
-    def write(index: BigInt, value: BigInt): Memory = {
-      assert(index >= 0 && index < depth, s"index ($index) needs to be non-negative smaller than the depth ($depth)!")
-      Memory(data.updated(index.toInt, value))
+    def write(index: Option[BigInt], value: BigInt): Memory = {
+      index match {
+        case None => Memory(Array.fill(depth)(value))
+        case Some(ii) =>
+          assert(ii >= 0 && ii < depth, s"index ($ii) needs to be non-negative smaller than the depth ($depth)!")
+          Memory(data.updated(ii.toInt, value))
+      }
     }
     def read(index: BigInt): BigInt = {
       assert(index >= 0 && index < depth, s"index ($index) needs to be non-negative smaller than the depth ($depth)!")
@@ -50,7 +54,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     val r = scala.util.Random
     (0 to depth).map( _ => BigInt(r.nextLong()))
   }
-  private def writesToMemory(depth: Int, writes: Iterable[(BigInt, BigInt)]): Memory =
+  private def writesToMemory(depth: Int, writes: Iterable[(Option[BigInt], BigInt)]): Memory =
     writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
 
   private def eval(expr: smt.BVExpr): BigInt = {
@@ -88,7 +92,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       val value = eval(e)
       Memory(Seq.fill(arrayDepth(indexWidth))(value))
     case smt.ArrayStore(array, index, data) =>
-      evalArray(array).write(eval(index), eval(data))
+      evalArray(array).write(Some(eval(index)), eval(data))
     case smt.ArrayIte(cond, tru, fals) =>
       val c = eval(cond)
       assert(c == 0 || c == 1)
@@ -106,7 +110,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     println("TODO: memories")
   }
 
-  def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(BigInt, BigInt)]], withVcd: Boolean) = {
+  def init(regInit: Map[Int, BigInt], memInit: Map[Int, Seq[(Option[BigInt], BigInt)]], withVcd: Boolean) = {
     // initialize vcd
     vcdWriter = if(!withVcd) None else {
       val vv = vcd.VCD(sys.name)
