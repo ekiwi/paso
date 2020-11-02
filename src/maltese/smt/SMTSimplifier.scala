@@ -182,5 +182,5 @@ object SMTSimplifier {
 
   private def and(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.And, a, b)
   private def or(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.Or, a, b)
-  private def not(a: BVExpr): BVNot = BVNot(a)
+  def not(e: BVExpr): BVExpr = e match { case BVNot(inner) => inner case o => BVNot(o) }
 }

@@ -4,7 +4,7 @@
 
 package maltese.smt
 
-sealed trait SMTExpr {
+sealed trait SMTExpr extends SMTFunctionArg {
   def tpe: SMTType
   def children: List[SMTExpr]
   def foreachExpr(f: SMTExpr => Unit): Unit = children.foreach(f)
@@ -198,9 +198,16 @@ case class BVForall(variable: BVSymbol, e: BVExpr) extends BVUnaryExpr {
 }
 
 /** apply arguments to a function which returns a result of bit vector type */
-case class BVFunctionCall(name: String, args: List[SMTExpr], width: Int) extends BVExpr {
-  override def children = args
+case class BVFunctionCall(name: String, args: List[SMTFunctionArg], width: Int) extends BVExpr {
+  override def children = args.map(_.asInstanceOf[SMTExpr])
 }
+/** apply arguments to a function which returns a result of array type */
+case class ArrayFunctionCall(name: String, args: List[SMTFunctionArg], indexWidth: Int, dataWidth: Int) extends ArrayExpr {
+  override def children = args.map(_.asInstanceOf[SMTExpr])
+}
+sealed trait SMTFunctionArg
+// we allow symbols with uninterpreted type to be function arguments
+case class UTSymbol(name: String, tpe: String) extends SMTFunctionArg
 
 object BVAnd {
   def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.And, a, b)

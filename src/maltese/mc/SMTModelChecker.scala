@@ -125,7 +125,7 @@ trait SMTEncoding {
  * prevents this encoding from working with boolector.
  * For simplicity reasons, we do not support hierarchical designs (no `_h` function).
  */
-private object SMTTransitionSystemEncoder {
+object SMTTransitionSystemEncoder {
 
   def encode(sys: TransitionSystem): Iterable[smt.SMTCommand] = {
     val cmds = mutable.ArrayBuffer[smt.SMTCommand]()
@@ -138,22 +138,26 @@ private object SMTTransitionSystemEncoder {
     val stateType = id(name + "_s")
     cmds += smt.DeclareUninterpretedSort(stateType)
 
+    // state symbol
+    val State = smt.UTSymbol("state", stateType)
+    val StateNext = smt.UTSymbol("state_n", stateType)
+
     // inputs and states are modelled as constants
-    def declare(sym: smt.SMTSymbol, lbl: SignalLabel): Unit = {
-      cmds ++= toDescription(sym, lbl, comments.get)
+    def declare(sym: smt.SMTSymbol, kind: String): Unit = {
+      cmds ++= toDescription(sym, kind, comments.get)
       val s = smt.SMTSymbol.fromExpr(sym.name + SignalSuffix, sym)
-      cmds += smt.DeclareFunction(s, List(stateType))
+      cmds += smt.DeclareFunction(s, List(State))
     }
     sys.inputs.foreach(i => declare(i, "input"))
     sys.states.foreach(s => declare(s.sym, "register"))
 
     // signals are just functions of other signals, inputs and state
     def define(sym: smt.SMTSymbol, e: smt.SMTExpr, suffix: String = SignalSuffix): Unit = {
-      cmds += smt.DefineFunction(sym.name + suffix, List((State, stateType)), replaceSymbols(e))
+      cmds += smt.DefineFunction(sym.name + suffix, List(State), replaceSymbols(SignalSuffix, State)(e))
     }
     sys.signals.foreach { signal =>
       val sym = signal.sym
-      cmds ++= toDescription(sym, lbl, comments.get)
+      cmds ++= toDescription(sym, lblToKind(signal.lbl), comments.get)
       define(sym, signal.e)
     }
 
@@ -174,44 +178,45 @@ private object SMTTransitionSystemEncoder {
     // the transition relation asserts that the value of the next state is the next value from the previous state
     // e.g., (reg state_n) == (reg_next state)
     val transitionRelations = sys.states.map { state =>
-      val newState = symbolToFunApp(state.sym, SignalSuffix, StateNext)
-      val nextOldState = symbolToFunApp(state.sym, NextSuffix, State)
+      val newState = replaceSymbols(SignalSuffix, StateNext)(state.sym)
+      val nextOldState = replaceSymbols(NextSuffix, State)(state.sym)
       smt.SMTEqual(newState, nextOldState)
     }
     // the transition relation is over two states
-    val transitionExpr = replaceSymbols(smt.BVAnd(transitionRelations))
-    cmds += smt.DefineFunction(name + "_t", List((State, stateType), (StateNext, stateType)), transitionExpr)
+    val transitionExpr = replaceSymbols(SignalSuffix, State)(smt.BVAnd(transitionRelations))
+    cmds += smt.DefineFunction(name + "_t", List(State, StateNext), transitionExpr)
 
     // The init relation just asserts that all init function hold
     val initRelations = sys.states.filter(_.init.isDefined).map { state =>
-      val stateSignal = symbolToFunApp(state.sym, SignalSuffix, State)
-      val initSignal = symbolToFunApp(state.sym, InitSuffix, State)
+      val stateSignal = replaceSymbols(SignalSuffix, State)(state.sym)
+      val initSignal = replaceSymbols(InitSuffix, State)(state.sym)
       smt.SMTEqual(stateSignal, initSignal)
     }
     defineConjunction(initRelations, "_i")
 
     // assertions and assumptions
-    val assertions = sys.signals.filter(a => sys.asserts.contains(a.name)).map(a => replaceSymbols(a.toSymbol))
-    defineConjunction(assertions, "_a")
-    val assumptions = sys.signals.filter(a => sys.assumes.contains(a.name)).map(a => replaceSymbols(a.toSymbol))
-    defineConjunction(assumptions, "_u")
+    val bads = sys.signals.filter(_.lbl == IsBad).map(a => replaceSymbols(SignalSuffix, State)(a.sym))
+    defineConjunction(bads.map(_.asInstanceOf[smt.BVExpr]), BadSuffix)
+    val assumptions = sys.signals.filter(_.lbl == IsConstraint).map(a => replaceSymbols(SignalSuffix, State)(a.sym))
+    defineConjunction(assumptions.map(_.asInstanceOf[smt.BVExpr]), AssumptionSuffix)
 
     cmds
   }
 
   private def id(s: String): String = smt.SMTLibSerializer.escapeIdentifier(s)
-  private val State = "state"
-  private val StateNext = "state_n"
   private val SignalSuffix = "_f"
   private val NextSuffix = "_next"
   private val InitSuffix = "_init"
-  private def toDescription(sym: smt.SMTSymbol, lbl: SignalLabel, comments: String => Option[String]): List[smt.Comment] = {
-    val kind = lbl match {
-      case IsNode => "wire"
-      case IsOutput => "output"
-      case IsBad => "assert"
-      case IsConstraint => "assume"
-    }
+  private val BadSuffix = "_b"
+  private val AssumptionSuffix = "_u"
+  private def lblToKind(lbl: SignalLabel): String = lbl match {
+    case IsNode => "wire"
+    case IsOutput => "output"
+    // different from how the normal SMT encoding works, we actually defined bad states instead of safe states
+    case IsBad => "bad"
+    case IsConstraint => "assume"
+  }
+  private def toDescription(sym: smt.SMTSymbol, kind: String, comments: String => Option[String]): List[smt.Comment] = {
     List(sym match {
       case smt.BVSymbol(name, width) => smt.Comment(s"firrtl-smt2-$kind $name $width")
       case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.Comment(s"firrtl-smt2-$kind $name $indexWidth $dataWidth")
@@ -220,14 +225,10 @@ private object SMTTransitionSystemEncoder {
 
   // All signals are modelled with functions that need to be called with the state as argument,
   // this replaces all Symbols with function applications to the state.
-  private def replaceSymbols(e: smt.SMTExpr): smt.SMTExpr = {
-    SMTExprVisitor.map(symbolToFunApp(_, SignalSuffix, State))(e)
-  }
-  private def replaceSymbols(e:   smt.BVExpr): smt.BVExpr = replaceSymbols(e.asInstanceOf[smt.SMTExpr]).asInstanceOf[smt.BVExpr]
-  private def symbolToFunApp(sym: smt.SMTExpr, suffix: String, arg: String): smt.SMTExpr = sym match {
-    case smt.BVSymbol(name, width)                    => smt.BVRawExpr(s"(${id(name + suffix)} $arg)", width)
-    case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.ArrayRawExpr(s"(${id(name + suffix)} $arg)", indexWidth, dataWidth)
-    case other                                    => other
+  private def replaceSymbols(suffix: String, arg: smt.SMTFunctionArg)(e: smt.SMTExpr): smt.SMTExpr = e match {
+    case smt.BVSymbol(name, width) => smt.BVFunctionCall(id(name + suffix), List(arg), width)
+    case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.ArrayFunctionCall(id(name + suffix), List(arg), indexWidth, dataWidth)
+    case other => other.mapExpr(replaceSymbols(suffix, arg))
   }
 }
 

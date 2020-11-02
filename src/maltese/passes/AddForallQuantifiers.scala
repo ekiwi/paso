@@ -73,8 +73,5 @@ object AddForallQuantifiers {
     smt.BVAnd(List(lower, upper))
   }
 
-  private def not(e: smt.BVExpr): smt.BVExpr = e match {
-    case smt.BVNot(inner) => inner
-    case o => smt.BVNot(o)
-  }
+  private def not(e: smt.BVExpr) = smt.SMTSimplifier.not(e)
 }
