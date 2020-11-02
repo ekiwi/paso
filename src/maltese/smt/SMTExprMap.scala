@@ -39,6 +39,8 @@ object SMTExprMap {
       val (nA, nB) = (ar(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else ArrayRead(nA, nB)
     case old @ BVImplies(a, b) =>
       val (nA, nB) = (bv(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else BVImplies(nA, nB)
+    case old @ BVForall(a, b) =>
+      val (nA, nB) = (bv(a), bv(b)) ; if(nA.eq(a) && nB.eq(b)) old else BVForall(nA.asInstanceOf[BVSymbol], nB)
     // ternary
     case old @ BVIte(a, b, c) =>
       val (nA, nB, nC) = (bv(a), bv(b), bv(c))

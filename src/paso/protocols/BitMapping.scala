@@ -24,6 +24,7 @@ object BitMapping {
       (constraints, mappings, mappedBits + (s.name -> res._3))
     case l : smt.BVLiteral =>
       (List(smt.BVEqual(lhs, l)), List(), mappedBits)
+    case other => throw new NotImplementedError(s"Unexpected expression: $other")
   }
 
   def analyze(alreadyMapped: BigInt, lhs: smt.BVExpr, s: smt.BVSymbol, hi: Int, lo: Int): (smt.BVExpr, smt.BVExpr, BigInt) = {
