@@ -37,6 +37,7 @@ trait Solver {
     doCheck(produceModel)
   }
   def queryModel(e: BVSymbol): Option[BigInt]
+  def getValue(e: BVExpr): Option[BigInt]
   /** releases all native resources */
   def close(): Unit
 

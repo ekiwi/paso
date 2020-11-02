@@ -43,6 +43,9 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
     }
   }
 
+  // TODO
+  override def getValue(e: BVExpr) = ???
+
   /** releases all native resources */
   override def close(): Unit = {
     freeModel()
