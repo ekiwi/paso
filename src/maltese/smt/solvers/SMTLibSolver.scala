@@ -42,3 +42,5 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
   override protected def doSetLogic(logic: Logic): Unit = ???
   override protected def doCheck(produceModel: Boolean) = ???
 }
+
+
