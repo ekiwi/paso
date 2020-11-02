@@ -5,29 +5,20 @@
 
 package maltese.smt.solvers.uclid
 
-import scala.concurrent.SyncChannel
 import scala.collection.JavaConverters._
-import com.typesafe.scalalogging.Logger
 
 class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
-  val logger = Logger(classOf[InteractiveProcess])
-
   // create the process.
-  val cmdLine = (args).asJava
-  val builder = new ProcessBuilder(cmdLine)
+  private val cmdLine = (args).asJava
+  private val builder = new ProcessBuilder(cmdLine)
   builder.redirectErrorStream(true)
-  val process = builder.start()
-  val out = process.getInputStream
-  val in = process.getOutputStream
-  var exitValue : Option[Int] = None
+  private val process = builder.start()
+  private val out = process.getInputStream
+  private val in = process.getOutputStream
 
   // stores what we've written to the interactive process so far
-  var inputString = ""
+  private var inputString = ""
   override def toString = inputString
-
-  // channels for input and output.
-  val inputChannel = new SyncChannel[Option[String]]()
-  val outputChannel = new SyncChannel[Option[String]]()
 
   // Is this the best way of telling if a process is alive?
   def isAlive : Boolean = {
@@ -41,7 +32,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
 
   // Write to the process's input stream.
   def writeInput(str: String): Unit = {
-    logger.debug("-> {}", str)
     in.write(stringToBytes(str))
     if (saveInput) inputString += str
   }
@@ -59,7 +49,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
     while (!done) {
       if (!isAlive) {
         done = true
-        logger.debug("Process dead")
       }
       val numAvail = out.available()
       if (numAvail == 0) {
@@ -74,7 +63,6 @@ class InteractiveProcess(args: List[String], saveInput: Boolean=false) {
             bytes.slice(0, numRead)
           }
         })
-        logger.debug("<- {}", string)
 
         return Some(string)
       }
