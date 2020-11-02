@@ -288,10 +288,11 @@ object SMTTransitionSystemEncoder {
 
   // All signals are modelled with functions that need to be called with the state as argument,
   // this replaces all Symbols with function applications to the state.
-  private def replaceSymbols(suffix: String, arg: smt.SMTFunctionArg)(e: smt.SMTExpr): smt.SMTExpr = e match {
-    case smt.BVSymbol(name, width) => smt.BVFunctionCall(id(name + suffix), List(arg), width)
-    case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.ArrayFunctionCall(id(name + suffix), List(arg), indexWidth, dataWidth)
-    case other => other.mapExpr(replaceSymbols(suffix, arg))
+  private def replaceSymbols(suffix: String, arg: smt.SMTFunctionArg, vars: Set[String] = Set())(e: smt.SMTExpr): smt.SMTExpr = e match {
+    case smt.BVSymbol(name, width) if !vars(name) => smt.BVFunctionCall(id(name + suffix), List(arg), width)
+    case smt.ArraySymbol(name, indexWidth, dataWidth) if !vars(name) => smt.ArrayFunctionCall(id(name + suffix), List(arg), indexWidth, dataWidth)
+    case fa@ smt.BVForall(variable, _) => fa.mapExpr(replaceSymbols(suffix, arg, vars + variable.name))
+    case other => other.mapExpr(replaceSymbols(suffix, arg, vars))
   }
 
   def determineLogic(sys: TransitionSystem): smt.Logic = {
