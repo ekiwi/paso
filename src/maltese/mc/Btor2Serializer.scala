@@ -129,8 +129,20 @@ private class Btor2Serializer private () {
       // While the spec does not seem to allow array ite, it seems to be supported in practice.
       // It is essential to model memories, so any support in the wild should be fairly well tested.
       line(s"ite ${t(expr.indexWidth, expr.dataWidth)} ${s(cond)} ${s(tru)} ${s(fals)}")
-    case ArrayConstant(e, _) => s(e)
+    case ArrayConstant(e, indexWidth) =>
+      // The problem we are facing here is that the only way to create a constant array from a bv expression
+      // seems to be to use the bv expression as the init value of a state variable.
+      // Thus we need to create a fake state for every array init expression.
+      arrayConstants.getOrElseUpdate(e.toString, {
+        comment(s"$expr")
+        val eId = s(e)
+        val tpeId = t(indexWidth, e.width)
+        val state = line(s"state $tpeId")
+        line(s"init $tpeId $state $eId")
+        state
+      })
   }
+  private val arrayConstants = mutable.HashMap[String, Int]()
 
   private def s(expr: SMTExpr): Int = expr match {
     case b: BVExpr    => s(b)
@@ -172,7 +184,11 @@ private class Btor2Serializer private () {
     sys.states.foreach { st =>
       // calculate init expression before declaring the state
       // this is required by btormc (presumably to avoid cycles in the init expression)
-      val initId = st.init.map { init => comment(s"${st.sym}.init"); s(init) }
+      val initId = st.init.map {
+        // only in the context of initializing a state can we use a bv expression to model an array
+        case ArrayConstant(e, _) => comment(s"${st.sym}.init"); s(e)
+        case init => comment(s"${st.sym}.init"); s(init)
+      }
       declare(st.sym.name, None, line(s"state ${t(st.sym)} ${st.sym.name}"))
       st.init.foreach { init => line(s"init ${t(init)} ${s(st.sym)} ${initId.get}") }
     }
