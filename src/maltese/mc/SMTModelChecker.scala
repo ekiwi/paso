@@ -128,7 +128,7 @@ trait SMTEncoding {
 class CompactEncoding(sys: TransitionSystem) extends SMTEncoding {
   import SMTTransitionSystemEncoder._
   private val stateType = id(sys.name + "_s")
-  private val stateInitFun = id(sys.name + InitSuffix)
+  private val stateInitFun = id(sys.name + "_i")
   private val stateTransitionFun = id(sys.name + "_t")
 
   private val states = mutable.ArrayBuffer[smt.UTSymbol]()
@@ -266,8 +266,8 @@ object SMTTransitionSystemEncoder {
 
   def id(s: String): String = smt.SMTLibSerializer.escapeIdentifier(s)
   private val SignalSuffix = "_f"
-  val NextSuffix = "_next"
-  val InitSuffix = "_init"
+  private val NextSuffix = "_next"
+  private val InitSuffix = "_init"
   val BadSuffix = "_b"
   val AssumptionSuffix = "_u"
   private def lblToKind(lbl: SignalLabel): String = lbl match {
