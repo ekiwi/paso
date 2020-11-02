@@ -166,7 +166,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       observedMemories.foreach{ mem =>
         val depth = arrayDepth(mem.indexWidth)
         val array = memories(arrayNameToIndex(mem.name))
-        (0 to depth.toInt).foreach(a => v.wireChanged(s"${mem.name}.${a}", array.read(a)))
+        (0 until depth.toInt).foreach(a => v.wireChanged(s"${mem.name}.${a}", array.read(a)))
       }
     }
 
