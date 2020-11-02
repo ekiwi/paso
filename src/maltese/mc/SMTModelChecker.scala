@@ -121,6 +121,56 @@ trait SMTEncoding {
 }
 
 
+class CompactEncoding(sys: TransitionSystem) extends SMTEncoding {
+  import SMTTransitionSystemEncoder._
+  private val stateType = id(sys.name + "_s")
+  private val stateInitFun = id(sys.name + InitSuffix)
+  private val stateTransitionFun = id(sys.name + "_t")
+
+  private val states = mutable.ArrayBuffer[smt.UTSymbol]()
+
+  override def defineHeader(solver: smt.Solver): Unit = encode(sys, solver)
+
+  private def appendState(solver: smt.Solver): smt.UTSymbol = {
+    val s = smt.UTSymbol(s"s${states.length}", stateType)
+    states.append(s)
+    s
+  }
+
+  def init(solver: smt.Solver): Unit = {
+    assert(states.isEmpty)
+    val s0 = appendState(solver)
+    solver.assert(smt.BVFunctionCall(stateInitFun, List(s0), 1))
+  }
+
+  def unroll(solver: smt.Solver): Unit = {
+    assert(states.nonEmpty)
+    appendState(solver)
+    val tStates = states.takeRight(2).toList
+    solver.assert(smt.BVFunctionCall(stateTransitionFun, tStates, 1))
+  }
+
+  /** returns an expression representing the constraint in the current state */
+  def getConstraint(name: String): smt.BVExpr = {
+    assert(states.nonEmpty)
+    val foo = id(name + AssumptionSuffix)
+    smt.BVFunctionCall(foo, List(states.last), 1)
+  }
+
+  /** returns an expression representing the constraint in the current state */
+  def getBadState(name: String): smt.BVExpr = {
+    assert(states.nonEmpty)
+    val foo = id(name + BadSuffix)
+    smt.BVFunctionCall(foo, List(states.last), 1)
+  }
+
+  def getSignalAt(sym: smt.BVSymbol, k: Int): smt.BVExpr = {
+    assert(states.length > k, s"no state s$k")
+    val state = states(k)
+    val foo = id(sym.name + "_f")
+    smt.BVFunctionCall(foo, List(state), sym.width)
+  }
+}
 
 /** This Transition System encoding is directly inspired by yosys' SMT backend:
  * https://github.com/YosysHQ/yosys/blob/master/backends/smt2/smt2.cc
@@ -213,12 +263,12 @@ object SMTTransitionSystemEncoder {
     cmds
   }
 
-  private def id(s: String): String = smt.SMTLibSerializer.escapeIdentifier(s)
+  def id(s: String): String = smt.SMTLibSerializer.escapeIdentifier(s)
   private val SignalSuffix = "_f"
-  private val NextSuffix = "_next"
-  private val InitSuffix = "_init"
-  private val BadSuffix = "_b"
-  private val AssumptionSuffix = "_u"
+  val NextSuffix = "_next"
+  val InitSuffix = "_init"
+  val BadSuffix = "_b"
+  val AssumptionSuffix = "_u"
   private def lblToKind(lbl: SignalLabel): String = lbl match {
     case IsNode => "wire"
     case IsOutput => "output"
@@ -248,134 +298,4 @@ object SMTTransitionSystemEncoder {
     val withQuantifiers = if(features.hasQuantifiers) withArrays else withArrays + smt.SMTFeature.QuantifierFree
     withQuantifiers
   }
-}
-
-/**
- * This Transition System encoding is directly inspired by yosys' SMT backend:
- * https://github.com/YosysHQ/yosys/blob/master/backends/smt2/smt2.cc
- * */
-class CompactEncoding(sys: TransitionSystem, doSimplify: Boolean = false) extends SMTEncoding {
-  val simplify: smt.SMTExpr => smt.SMTExpr = if(doSimplify) { smt.SMTSimplifier.simplify } else { e => e }
-  private val name = sys.name
-  private val stateType = smt.UninterpretedType(name + "_s")
-  private val stateInitFun = smt.Symbol(name + "_is", smt.MapType(List(stateType), smt.BoolType))
-  private val stateTransitionFun = smt.Symbol(name + "_t", smt.MapType(List(stateType, stateType), smt.BoolType))
-  private val constraintFuns = sys.constraints.zipWithIndex.map{ case(c,ii) =>
-    c -> smt.Symbol(s"c$ii", smt.MapType(List(stateType), smt.BoolType))
-  }.toMap
-  private val badFuns = sys.bad.zipWithIndex.map{ case(b,ii) =>
-    b -> smt.Symbol(s"b$ii", smt.MapType(List(stateType), smt.BoolType))
-  }.toMap
-  private val states = mutable.ArrayBuffer[smt.Symbol]()
-
-
-  def defineHeader(solver: smt.Solver): Unit = {
-    def define(f: smt.DefineFun): Unit = solver.define(f.copy(e = simplify(f.e)))
-    solver.declare(stateType)
-
-    val stateSymbol = smt.Symbol("state", stateType)
-    val nextStateSymbol = smt.Symbol("next_state", stateType)
-
-    // input, output and state functions
-    val outputSignals = sys.outputs.map(o => smt.Symbol(o._1, o._2.typ))
-    val signals = sys.states.map(_.sym) ++ sys.inputs ++ outputSignals
-    val signalFuns = signals.map(s => s -> smt.Symbol(s.id + "_f", smt.MapType(List(stateType), s.typ))).toMap
-    val signalSubs = signalFuns.mapValues(f => smt.FunctionApplication(f, List(stateSymbol)))
-
-    // we want to leave state and inputs uninterpreted
-    (sys.states.map(_.sym) ++ sys.inputs).foreach(s => solver.declare(signalFuns(s)))
-
-    // outputs can be defined in terms of state and inputs (and maybe other outputs ???)
-    sys.outputs.foreach { case (name, expr) =>
-      val funExpr = substituteSmtSymbols(expr, signalSubs)
-      val funSym = signalFuns(smt.Symbol(name, expr.typ))
-      val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      define(fun)
-    }
-
-    // define state next and init functions
-    val transitionRelations = sys.states.map { s =>
-      assert(s.next.nonEmpty, "Next function required")
-      val funExpr = substituteSmtSymbols(s.next.get, signalSubs)
-      val funSym = smt.Symbol(s.sym.id + "_next", smt.MapType(List(stateType), funExpr.typ))
-      val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      define(fun)
-
-      // on a transition, the next state is equal to the result of the next state function applied to the old state
-      val newState = smt.FunctionApplication(signalFuns(s.sym), List(nextStateSymbol))
-      val nextOldState = smt.FunctionApplication(funSym, List(stateSymbol))
-      eq(newState, nextOldState)
-    }
-
-    val initRelations = sys.states.collect { case s @ smt.State(_, Some(init), _) =>
-      val funExpr = substituteSmtSymbols(init, signalSubs)
-      val funSym = smt.Symbol(s.sym.id + "_init", smt.MapType(List(stateType), funExpr.typ))
-      val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      define(fun)
-
-      // on init, the current state is equal to the init state
-      eq(signalSubs(s.sym), smt.FunctionApplication(funSym, List(stateSymbol)))
-    }
-
-    // define init function
-    define(smt.DefineFun(stateInitFun, List(stateSymbol), conjunction(initRelations)))
-
-    // define transition function
-    define(smt.DefineFun(stateTransitionFun, List(stateSymbol, nextStateSymbol), conjunction(transitionRelations)))
-
-    // define constraint functions
-    constraintFuns.foreach { case (expr, funSym) =>
-      val funExpr = substituteSmtSymbols(expr, signalSubs)
-      val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      define(fun)
-    }
-
-    // define bad state functions
-    badFuns.foreach { case (expr, funSym) =>
-      val funExpr = substituteSmtSymbols(expr, signalSubs)
-      val fun = smt.DefineFun(funSym, List(stateSymbol), funExpr)
-      define(fun)
-    }
-  }
-
-  private def appendState(): smt.Symbol = {
-    val s = smt.Symbol(s"s${states.length}", stateType)
-    states.append(s)
-    s
-  }
-
-  def init(solver: smt.Solver): Unit = {
-    assert(states.isEmpty)
-    val s0 = appendState()
-    solver.assert(smt.FunctionApplication(stateInitFun, List(s0)))
-  }
-
-  def unroll(solver: smt.Solver): Unit = {
-    assert(states.nonEmpty)
-    appendState()
-    val tStates = states.takeRight(2).toList
-    solver.assert(smt.FunctionApplication(stateTransitionFun, tStates))
-  }
-
-  /** returns an expression representing the constraint in the current state */
-  def getConstraint(name: String): smt.BVExpr = {
-    assert(states.nonEmpty)
-    val foo = constraintFuns(e)
-    smt.FunctionApplication(foo, List(states.last))
-  }
-
-  /** returns an expression representing the constraint in the current state */
-  def getBadState(name: String): smt.BVExpr = {
-    assert(states.nonEmpty)
-    val foo = badFuns(e)
-    smt.FunctionApplication(foo, List(states.last))
-  }
-
-  def getSignalAt(sym: smt.BVSymbol, k: Int): smt.BVExpr = {
-    assert(states.length > k, s"no state s$k")
-    val state = states(k)
-    val foo = smt.Symbol(signal.id + "_f", smt.MapType(List(stateType), signal.typ))
-    smt.FunctionApplication(foo, List(state))
-  }
-
 }
