@@ -39,6 +39,7 @@ trait Solver {
   def runCommand(cmd: SMTCommand): Unit
   def queryModel(e: BVSymbol): Option[BigInt]
   def getValue(e: BVExpr): Option[BigInt]
+  def getValue(e: ArrayExpr): Seq[(Option[BigInt], BigInt)]
   /** releases all native resources */
   def close(): Unit
 

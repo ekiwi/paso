@@ -91,10 +91,15 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
   }
 
   private def getWitness(sys: TransitionSystem, enc: SMTEncoding, kMax: Int, failedBad: Seq[Int]): Witness = {
-    val regInit = sys.states.zipWithIndex.map { case (state, i) =>
-      assert(!state.sym.isInstanceOf[smt.ArraySymbol], "TODO: support arrays!")
+    val (bvStates, arrayStates) = sys.states.partition(_.sym.isInstanceOf[smt.BVExpr])
+    val regInit = bvStates.zipWithIndex.map { case (state, i) =>
       val value = solver.getValue(enc.getSignalAt(state.sym.asInstanceOf[smt.BVSymbol], 0)).get
       i -> value
+    }.toMap
+
+    val memInit = arrayStates.zipWithIndex.map { case (state, i) =>
+      val values = solver.getValue(enc.getSignalAt(state.sym.asInstanceOf[smt.ArraySymbol], 0))
+      i -> values
     }.toMap
 
     val inputs = (0 to kMax).map { k =>
@@ -104,7 +109,7 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
       }.toMap
     }
 
-    Witness(failedBad, regInit, Map(), inputs)
+    Witness(failedBad, regInit, memInit, inputs)
   }
 
 }
@@ -122,6 +127,7 @@ trait SMTEncoding {
   def getBadState(name: String): smt.BVExpr
   /** returns an expression representing the signal in state k */
   def getSignalAt(sym: smt.BVSymbol, k: Int): smt.BVExpr
+  def getSignalAt(sym: smt.ArraySymbol, k: Int): smt.ArrayExpr
 }
 
 
@@ -174,6 +180,13 @@ class CompactEncoding(sys: TransitionSystem) extends SMTEncoding {
     val state = states(k)
     val foo = id(sym.name + "_f")
     smt.BVFunctionCall(foo, List(state), sym.width)
+  }
+
+  def getSignalAt(sym: smt.ArraySymbol, k: Int): smt.ArrayExpr = {
+    assert(states.length > k, s"no state s$k")
+    val state = states(k)
+    val foo = id(sym.name + "_f")
+    smt.ArrayFunctionCall(foo, List(state), sym.indexWidth, sym.dataWidth)
   }
 }
 

@@ -59,6 +59,15 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
       case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
     }
   }
+  override def getValue(e: smt.ArrayExpr): Seq[(Option[BigInt], BigInt)] = {
+    val cmd = s"(get-value (${serialize(e)}))"
+    writeCommand(cmd)
+    readResponse() match {
+      case Some(strModel) =>
+        throw new NotImplementedError(s"TODO:\n$strModel")
+      case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
+    }
+  }
   override def runCommand(cmd: SMTCommand): Unit = cmd match {
     case Comment(_) => // ignore comments
     case SetLogic(logic) => setLogic(logic)
@@ -101,9 +110,10 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     val valueStr = parts.last.trim
     if(valueStr == "true") { BigInt(1) }
     else if(valueStr == "false") { BigInt(0) }
+    else if(valueStr.startsWith("#b")) { BigInt(valueStr.drop(2), 2) }
+    else if(valueStr.startsWith("#x")) { BigInt(valueStr.drop(2), 16) }
     else {
-      require(valueStr.startsWith("#b"), s"Only binary format supported, not: $valueStr")
-      BigInt(valueStr.drop(2), 2)
+      throw new NotImplementedError(s"Unsupported number format: $valueStr")
     }
   }
 

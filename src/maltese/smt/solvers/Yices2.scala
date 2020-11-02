@@ -46,6 +46,7 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
 
   // TODO
   override def getValue(e: BVExpr) = ???
+  override def getValue(e: ArrayExpr) = ???
 
   override def runCommand(cmd: SMTCommand): Unit = cmd match {
     case Comment(_) => // ignore
