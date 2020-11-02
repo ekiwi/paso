@@ -40,6 +40,11 @@ class Fifo(val depth: Int) extends Module {
   }
 }
 
+class Valid[D <: Data](val dataType: D)  extends Bundle {
+  val valid = Output(Bool())
+  val data = Output(dataType)
+}
+object Valid { def apply[D <: Data](dataType: D) = new Valid(dataType) }
 
 class FifoT(val depth: Int) extends UntimedModule {
   val mem = Mem(depth, UInt(32.W))
@@ -53,11 +58,12 @@ class FifoT(val depth: Int) extends UntimedModule {
     mem(read + count) := in
     count := count + 1.U
   }
-  val pop = fun("pop").out(UInt(32.W)) { out =>
+  val pop = fun("pop").out(Valid(UInt(32.W))) { out =>
     when(empty) {
-      out := DontCare
+      out.valid := false.B
     } .otherwise {
-      out := mem(read)
+      out.data := mem(read)
+      out.valid := true.B
       count := count - 1.U
       read := read + 1.U
     }
@@ -80,7 +86,9 @@ class FifoP(impl: Fifo) extends ProtocolSpec[FifoT] {
     duv.pushDontPop.set(false.B)
     duv.valid.set(true.B)
     clock.stepAndFork()
-    duv.dataOut.expect(out)
+    when(out.valid) {
+      duv.dataOut.expect(out.data)
+    }
     clock.step()
   }
 
@@ -111,10 +119,10 @@ class FifoI(impl: Fifo, spec: FifoT) extends ProofCollateral(impl, spec) {
 
 class FifoPaperExampleSpec extends AnyFlatSpec {
   "Fifo" should "refine its spec" in {
-    Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCBotr, new FifoI(_, _))
+    Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCZ3, new FifoI(_, _))
   }
 
-  "Fifo" should "bmc" ignore {
-    Paso(new Fifo(8))(new FifoP(_)).bmc(1)
+  "Fifo" should "bmc" in {
+    Paso(new Fifo(8))(new FifoP(_)).bmc(10)
   }
 }
