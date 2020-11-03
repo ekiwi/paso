@@ -11,9 +11,10 @@ class Identity[D <: Data](dataType: D) extends UntimedModule {
   val idle = fun("idle") {}
 }
 
-class IdentityAndKeepOut[D <: Data](val dataType: D)  extends Bundle {
+class IdentityAndKeepOut[D <: Data](dataType: D)  extends Bundle {
   val valid = Output(Bool())
   val data = Output(dataType)
+  override def cloneType: this.type = new IdentityAndKeepOut(dataType).asInstanceOf[this.type]
 }
 class IdentityAndKeep[D <: Data](dataType: D) extends UntimedModule {
   // FIXME: convert to manual valid signal instead of implicit valid signal

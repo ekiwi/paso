@@ -41,9 +41,10 @@ class Fifo(val depth: Int) extends Module {
   }
 }
 
-class Valid[D <: Data](val dataType: D)  extends Bundle {
+class Valid[D <: Data](gen: D)  extends Bundle {
   val valid = Output(Bool())
-  val data = Output(dataType)
+  val data = Output(gen)
+  override def cloneType: this.type = new Valid(gen).asInstanceOf[this.type]
 }
 object Valid { def apply[D <: Data](dataType: D) = new Valid(dataType) }
 
