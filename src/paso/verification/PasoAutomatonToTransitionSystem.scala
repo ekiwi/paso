@@ -186,7 +186,7 @@ object PredicateEncoder {
   }
 }
 
-case class UntimedInputInfo(enabled: Iterable[smt.BVSymbol], args: Iterable[smt.BVSymbol])
+case class UntimedInputInfo(enabled: Iterable[smt.BVSymbol], start: Iterable[smt.BVSymbol], args: Iterable[smt.BVSymbol])
 
 /** In order to support multiple copies of a single protocol, we also need to duplicate the combinatorial
  *  parts of the untimed module transaction that belongs to it. However, we leave all state shared.
@@ -222,7 +222,7 @@ object UntimedModelCopy {
     val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedStates, protocolCopies, methods)
 
     val finalSys = sysWithInputsConnected.copy(
-      inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.args,
+      inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.start ++ info.args,
       signals = sysWithInputsConnected.signals ++ outputsAliases,
     )
 
@@ -236,12 +236,16 @@ object UntimedModelCopy {
   private def connectInputs(sys: mc.TransitionSystem, protocolCopies: Seq[(String, Int)], methods: Map[String, MethodInfo]):
   (mc.TransitionSystem, UntimedInputInfo) = {
     val enabledInputs = mutable.ArrayBuffer[smt.BVSymbol]()
+    val startInputs = mutable.ArrayBuffer[smt.BVSymbol]()
     val argInputs = mutable.ArrayBuffer[smt.BVSymbol]()
     val inputConnections = protocolCopies.flatMap { case (methodName, copyCount) =>
       val suffixes = (0 until copyCount).map(i => s"$$$i")
       val method = methods(methodName)
       val enabled = suffixes.map(s => smt.BVSymbol(method.fullIoName + "_enabled" + s, 1))
       enabledInputs ++= enabled
+      if(suffixes.length > 1) {
+        startInputs ++= suffixes.map(s => smt.BVSymbol(method.fullIoName + "_start" + s, 1))
+      }
       // Only one enabled signal (per method) will be true in any cycle (one hot encoded!)
       // If any of them is true, we want to commit the state.
       val conEnabled = List((method.fullIoName + "_enabled") -> smt.BVOr(enabled))
@@ -255,7 +259,7 @@ object UntimedModelCopy {
       }
       conEnabled ++ conArgs
     }.toMap
-    val info = UntimedInputInfo(enabledInputs, argInputs)
+    val info = UntimedInputInfo(enabledInputs, startInputs, argInputs)
     (mc.TransitionSystem.connect(sys, inputConnections), info)
   }
 
@@ -305,7 +309,7 @@ object UntimedModelCopy {
         // keep the last value of stateCopy around
         val prev = mc.State(stateCopy.rename(stateCopy.name + "_prev"), None, Some(stateCopy))
         // the copied state is the same as before unless the transaction is started in this cycle
-        val start = smt.BVSymbol(methodName + "_start", 1)
+        val start = smt.BVSymbol(method.fullIoName + s"_start$$$i", 1)
         val signal = mc.Signal(stateCopy.name, smt.SMTIte(start, state.sym, prev.sym))
         (prev, signal)
       }}
