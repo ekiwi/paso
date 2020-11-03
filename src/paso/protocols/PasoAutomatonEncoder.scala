@@ -18,7 +18,7 @@ case class PasoAutomaton(
 )
 case class PasoState(id: Int, isStart: Boolean, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
-case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr])
+case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr], startTransaction: Option[String] = None)
 case class PasoStateGuarded(stateId: Int, pred: Guarded)
 case class PasoStateGuardedMapping(stateId: Int, map: GuardedMapping)
 case class PasoGuardedSignal(stateId: Int, guard: List[smt.BVExpr], signal: smt.BVSymbol)
@@ -168,7 +168,8 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
           val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
           val nextId = getStateId(active = active, start = next.exists(_.fork))
           // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
-          stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = (next.flatMap(_.guard) :+ newGuard).toList)
+          stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = (next.flatMap(_.guard) :+ newGuard).toList,
+            startTransaction = Some(s"${newLoc.name}$$${newLoc.copyId}"))
         }
       }
     }
