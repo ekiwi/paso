@@ -13,7 +13,7 @@ import scala.collection.mutable
 case class PasoAutomaton(
   states: Array[PasoState], edges: Seq[PasoStateEdge], assumptions: Seq[PasoStateGuarded],
   assertions: Seq[PasoStateGuarded], mappings: Seq[PasoStateGuardedMapping],
-  commits: Seq[PasoGuardedCommit], transactionStartSignals: Seq[(String, smt.BVExpr)],
+  commits: Seq[PasoGuardedSignal], transactionActiveSignals: Seq[(String, smt.BVExpr)],
   longestPath: Int, untimed: UntimedModel, protocolCopies: Seq[(String, Int)]
 )
 case class PasoState(id: Int, isStart: Boolean, info: String)
@@ -21,7 +21,7 @@ case class PasoState(id: Int, isStart: Boolean, info: String)
 case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr])
 case class PasoStateGuarded(stateId: Int, pred: Guarded)
 case class PasoStateGuardedMapping(stateId: Int, map: GuardedMapping)
-case class PasoGuardedCommit(stateId: Int, guard: List[smt.BVExpr], commit: smt.BVSymbol)
+case class PasoGuardedSignal(stateId: Int, guard: List[smt.BVExpr], signal: smt.BVSymbol)
 
 /**
  * Combines the untimed module and all its protocols into a "Paso Automaton" transition system.
@@ -73,7 +73,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   private val mappings = mutable.ArrayBuffer[PasoStateGuardedMapping]()
 
   /** collects all state updates for all protocols depending on the state */
-  private val commits = mutable.ArrayBuffer[PasoGuardedCommit]()
+  private val commits = mutable.ArrayBuffer[PasoGuardedSignal]()
 
   /** symbols that describe which protocol is starting to execute this cycle,
    *  this relies on these conditions to be mutually exclusive
@@ -180,7 +180,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     assumptions ++= tran.assumptions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
     mappings ++= tran.mappings.map(g => PasoStateGuardedMapping(stateId, g.copy(guard = addGuard(g.guard))))
     assertions ++= tran.assertions.map(g => PasoStateGuarded(stateId, g.copy(guard = addGuard(g.guard))))
-    commits ++= tran.next.collect{ case Next(g, _, Some(commit), _, _) => PasoGuardedCommit(stateId, addGuard(g), commit) }
+    commits ++= tran.next.collect{ case Next(g, _, Some(commit), _, _) => PasoGuardedSignal(stateId, addGuard(g), commit) }
   }
 
   private def getFreeCopy(name: String, active: Iterable[Loc]): Loc = {

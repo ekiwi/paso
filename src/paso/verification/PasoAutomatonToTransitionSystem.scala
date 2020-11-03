@@ -67,8 +67,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       mc.Signal(invalidState.name+"Check", not(smt.BVImplies(notReset, not(invalidState))), mc.IsBad)
     )
 
-    // turn transaction start signals into signals
-    val startSignals = auto.transactionStartSignals.map{ case (name, e) => mc.Signal(name, e) }
+    // the active signal shows whether the particular transaction could be started
+    val activeSignals = auto.transactionActiveSignals.map{ case (name, e) => mc.Signal(name, e) }
 
     // since we assume that everytime a transactions _can_ be started, a transaction _will_ be started, we just need
     // to check which state we are in
@@ -85,12 +85,12 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // encode paso FSM state transitions
     val stateState = encodeStateEdges(state, auto.edges, reset)
 
-    val signals = stateSignals ++ startSignals ++ stateIsZero ++ assumptions ++ assertions ++ startAnyTransaction
+    val signals = stateSignals ++ activeSignals ++ stateIsZero ++ assumptions ++ assertions ++ startAnyTransaction
     mc.TransitionSystem("PasoAutomaton", List(), List(stateState), signals.toList)
   }
 
-  private def connectMethodEnabled(commits: Seq[PasoGuardedCommit], enabled: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
-    val methodToCommits = commits.groupBy(_.commit.name)
+  private def connectMethodEnabled(commits: Seq[PasoGuardedSignal], enabled: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
+    val methodToCommits = commits.groupBy(_.signal.name)
     enabled.map { enabled =>
       val commits = methodToCommits.getOrElse(enabled.name, List())
       val en = if(commits.isEmpty) smt.False() else sumOfProduct(commits.map(c => inState(c.stateId) +: c.guard))
