@@ -200,8 +200,9 @@ object UntimedModelCopy {
     // copy outputs (as far as necessary)
     val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
       // we do not need to copy the guard because it depends on the state only
-      val outputs = methods(methodName).ret.map(_._1)
-      (0 until copyCount).flatMap(i => outputs.map(o => (o, s"$$$i")))
+      val method = methods(methodName)
+      val outputs = method.ret.map(_._1)
+      (0 until copyCount).flatMap(i => outputs.map(o => (o, method.name, s"$$$i")))
     }
     val sysWithCopiedOutputs = duplicateOutputs(untimedModel.sys, copyOutputs)
 
@@ -219,6 +220,10 @@ object UntimedModelCopy {
       inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.args,
       signals = sysWithInputsConnected.signals ++ outputsAliases,
     )
+
+    println(untimedModel.sys.serialize)
+    println()
+    println(finalSys.serialize)
 
     (finalSys, info)
   }
@@ -249,23 +254,33 @@ object UntimedModelCopy {
     (mc.TransitionSystem.connect(sys, inputConnections), info)
   }
 
-  private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String)]): mc.TransitionSystem = {
+  private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String, String)]): mc.TransitionSystem = {
     if(copies.isEmpty) return sys
     // lookup table for dependencies
-    val state = sys.states.map(_.name).toSet
-    val deps = sys.signals.map(s => s.name -> (findSymbols(s.e).map(_.name).toSet -- state)).toMap
-    val nameToSymbol = (sys.inputs ++ sys.signals.map(_.sym)).map(s => s.name -> s).toMap
+    val isInput = sys.inputs.map(_.name).toSet
+    val deps = sys.signals.map(s => s.name -> (findSymbols(s.e).map(_.name).toSet)).toMap
+    val nameToSymbol = (sys.inputs ++ sys.signals.map(_.sym) ++ sys.states.map(_.sym)).map(s => s.name -> s).toMap
+
+    // We rename inputs only by their suffix since they are exclusive to their respective methods
+    // Internal signals and states however could be shared, thus they also need the method name.
+    def rename(name: String, method: String, suffix: String): String =
+      if(isInput(name)) { name + suffix } else { s"$name$$$method$suffix" }
 
     // for each copy, find all signals that it depends on and copy them in the order that they appear in the original
-    // inputs do not need to be copies since they are automatically duplicated with the protocol
-    val inputsAndSignals = copies.map { case(signal, suffix) =>
+    // most inputs do not need to be copies since they are automatically duplicated with the protocol
+    val alreadyCopied = mutable.HashSet[String]()
+    val inputsAndSignals = copies.map { case(signal, method, suffix) =>
       val signalsToCopy = transitiveDeps(signal, deps) + signal
-      val subs = signalsToCopy.map(n => n -> nameToSymbol(n).rename(n + suffix)).toMap
-      val signals = sys.signals.filter(s => signalsToCopy(s.name)).map{s =>
-        mc.Signal(s.name + suffix, replace(s.e, subs), s.lbl)
+      val subs = signalsToCopy.map(n => n -> nameToSymbol(n).rename(rename(n, method, suffix))).toMap
+      val signals = sys.signals.filter(s => signalsToCopy(s.name) && !alreadyCopied(rename(s.name, method, suffix))).map { s =>
+        mc.Signal(rename(s.name, method, suffix), replace(s.e, subs), s.lbl)
       }
       // we need to possible duplicate any random inputs
-      val inputs = sys.inputs.filter(_.name.contains("RANDOM")).filter(i => signalsToCopy(i.name)).map(i => i.rename(i.name + suffix))
+      val inputs = sys.inputs.filter(_.name.contains("RANDOM"))
+        .filter(i => signalsToCopy(i.name) && !alreadyCopied(i.name + suffix))
+        .map(i => i.rename(i.name + suffix))
+      // remember which copied signals we have already created
+      alreadyCopied ++= inputs.map(_.name) ++ signals.map(_.name)
       (inputs, signals)
     }
 
