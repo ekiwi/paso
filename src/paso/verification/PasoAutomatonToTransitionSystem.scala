@@ -199,12 +199,17 @@ object UntimedModelCopy {
 
     // copy outputs (as far as necessary)
     val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
-      // we do not need to copy the guard because it depends on the state only
       val method = methods(methodName)
+      // we do not need to copy the guard because it depends on the state only
       val outputs = method.ret.map(_._1)
       (0 until copyCount).flatMap(i => outputs.map(o => (o, method.name, s"$$$i")))
     }
     val sysWithCopiedOutputs = duplicateOutputs(untimedModel.sys, copyOutputs)
+
+    // Duplicate states (as far as necessary):
+    // For protocols with multiple copies we need to keep a separate copy of the untimed module state
+    // in order to be able to compute the result over the old state even when the protocol has already committed
+    val sysWithCopiedStates = duplicateStates(sysWithCopiedOutputs, methods, protocolCopies)
 
     // if there is only a single copy, we just need to rename the output (by creating a copy)
     val outputsAliases = protocolCopies.filter(_._2 == 1).flatMap { case (methodName, copyCount) =>
@@ -214,7 +219,7 @@ object UntimedModelCopy {
     }
 
     // connect method inputs
-    val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedOutputs, protocolCopies, methods)
+    val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedStates, protocolCopies, methods)
 
     val finalSys = sysWithInputsConnected.copy(
       inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.args,
@@ -288,6 +293,24 @@ object UntimedModelCopy {
     val newSignals = inputsAndSignals.flatMap(_._2)
 
     sys.copy(inputs = sys.inputs ++ newInputs, signals = sys.signals ++ newSignals)
+  }
+
+  private def duplicateStates(sys: TransitionSystem, methods: Map[String, MethodInfo], protocolCopies: Seq[(String, Int)]): TransitionSystem = {
+    // For protocols with multiple copies we need to keep a separate copy of the untimed module state
+    // in order to be able to compute the result over the old state even when the protocol has already committed
+    val stateAndSignals = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
+      val method = methods(methodName)
+      (0 until copyCount).flatMap { i => sys.states.map { state =>
+        val stateCopy = state.sym.rename(state.name + s"$$${method.name}$$$i")
+        // keep the last value of stateCopy around
+        val prev = mc.State(stateCopy.rename(stateCopy.name + "_prev"), None, Some(stateCopy))
+        // the copied state is the same as before unless the transaction is started in this cycle
+        val start = smt.BVSymbol(methodName + "_start", 1)
+        val signal = mc.Signal(stateCopy.name, smt.SMTIte(start, state.sym, prev.sym))
+        (prev, signal)
+      }}
+    }
+    sys.copy(states = sys.states ++ stateAndSignals.map(_._1), signals = sys.signals ++ stateAndSignals.map(_._2))
   }
 
   private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
