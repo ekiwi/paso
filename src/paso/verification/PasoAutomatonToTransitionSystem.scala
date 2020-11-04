@@ -39,9 +39,10 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val (untimedSys, untimedInputs) = UntimedModelCopy.run(auto.untimed, auto.protocolCopies)
 
     // connect untimed system inputs (reset, method enabled and method args)
-    val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys, Map(
-      s"${untimedSys.name}.reset" -> reset,
-    ) ++ connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
+    val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys,
+      Map(s"${untimedSys.name}.reset" -> reset) ++
+      connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
+      connectMethodStart(auto.edges, untimedInputs.start) ++
       connectMethodArgs(auto.mappings, untimedInputs.args)
     )
 
@@ -95,6 +96,15 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
       val commits = methodToCommits.getOrElse(enabled.name, List())
       val en = if(commits.isEmpty) smt.False() else sumOfProduct(commits.map(c => inState(c.stateId) +: c.guard))
       enabled.name -> en
+    }
+  }
+
+  private def connectMethodStart(edges: Iterable[PasoStateEdge], startSignals: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
+    val startSignalToEdge = edges.filter(_.startTransaction.nonEmpty).groupBy(_.startTransaction.get)
+    startSignals.map { start =>
+      val edges = startSignalToEdge.getOrElse(start.name, List())
+      val en = if(edges.isEmpty) smt.False() else sumOfProduct(edges.map(e => inState(e.from) +: e.guard))
+      start.name -> en
     }
   }
 
@@ -228,9 +238,9 @@ object UntimedModelCopy {
       signals = sysWithInputsConnected.signals ++ outputsAliases,
     )
 
-    println(untimedModel.sys.serialize)
-    println()
-    println(finalSys.serialize)
+    //println(untimedModel.sys.serialize)
+    //println()
+    //println(finalSys.serialize)
 
     (finalSys, info)
   }
