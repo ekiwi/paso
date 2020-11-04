@@ -187,7 +187,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         vcdWriter.foreach(_.wireChanged(name, value))
       case Signal(name, e: smt.ArrayExpr, _) =>
         val value = evalArray(e)
-        memories(bvNameToIndex(name)) = value
+        memories(arrayNameToIndex(name)) = value
     }
 
     // calculate next states
