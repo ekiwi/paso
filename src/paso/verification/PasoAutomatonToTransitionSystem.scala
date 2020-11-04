@@ -197,6 +197,11 @@ object UntimedModelCopy {
   def run(untimedModel: UntimedModel, protocolCopies: Seq[(String, Int)]): (mc.TransitionSystem, UntimedInputInfo) = {
     val methods = untimedModel.methods.map(m => (untimedModel.name + "." + m.name) -> m).toMap
 
+    // Duplicate states (as far as necessary):
+    // For protocols with multiple copies we need to keep a separate copy of the untimed module state
+    // in order to be able to compute the result over the old state even when the protocol has already committed
+    val sysWithCopiedStates = duplicateStates(untimedModel.sys, methods, protocolCopies)
+
     // copy outputs (as far as necessary)
     val copyOutputs = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
       val method = methods(methodName)
@@ -204,12 +209,9 @@ object UntimedModelCopy {
       val outputs = method.ret.map(_._1)
       (0 until copyCount).flatMap(i => outputs.map(o => (o, method.name, s"$$$i")))
     }
-    val sysWithCopiedOutputs = duplicateOutputs(untimedModel.sys, copyOutputs)
+    val sysWithCopiedOutputs = duplicateOutputs(sysWithCopiedStates, copyOutputs)
 
-    // Duplicate states (as far as necessary):
-    // For protocols with multiple copies we need to keep a separate copy of the untimed module state
-    // in order to be able to compute the result over the old state even when the protocol has already committed
-    val sysWithCopiedStates = duplicateStates(sysWithCopiedOutputs, methods, protocolCopies)
+
 
     // if there is only a single copy, we just need to rename the output (by creating a copy)
     val outputsAliases = protocolCopies.filter(_._2 == 1).flatMap { case (methodName, copyCount) =>
@@ -219,7 +221,7 @@ object UntimedModelCopy {
     }
 
     // connect method inputs
-    val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedStates, protocolCopies, methods)
+    val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedOutputs, protocolCopies, methods)
 
     val finalSys = sysWithInputsConnected.copy(
       inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.start ++ info.args,
@@ -266,14 +268,14 @@ object UntimedModelCopy {
   private def duplicateOutputs(sys: mc.TransitionSystem, copies: Seq[(String, String, String)]): mc.TransitionSystem = {
     if(copies.isEmpty) return sys
     // lookup table for dependencies
-    val isInput = sys.inputs.map(_.name).toSet
+    val isIO = (sys.inputs.map(_.name) ++ sys.signals.filter(_.lbl == mc.IsOutput).map(_.name)).toSet
     val deps = sys.signals.map(s => s.name -> (findSymbols(s.e).map(_.name).toSet)).toMap
     val nameToSymbol = (sys.inputs ++ sys.signals.map(_.sym) ++ sys.states.map(_.sym)).map(s => s.name -> s).toMap
 
-    // We rename inputs only by their suffix since they are exclusive to their respective methods
+    // We rename inputs and outputs only by their suffix since they are exclusive to their respective methods
     // Internal signals and states however could be shared, thus they also need the method name.
     def rename(name: String, method: String, suffix: String): String =
-      if(isInput(name)) { name + suffix } else { s"$name$$$method$suffix" }
+      if(isIO(name)) { name + suffix } else { s"$name$$$method$suffix" }
 
     // for each copy, find all signals that it depends on and copy them in the order that they appear in the original
     // most inputs do not need to be copies since they are automatically duplicated with the protocol
