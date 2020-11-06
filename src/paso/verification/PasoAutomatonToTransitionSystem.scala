@@ -341,12 +341,16 @@ object UntimedModelCopy {
         val committed = smt.BVSymbol(method.fullIoName + s"_committed$$$i", 1)
         val enabled = smt.BVSymbol(method.fullIoName + s"_enabled$$$i", 1)
         val end = smt.BVSymbol(method.fullIoName + s"_end$$$i", 1)
-        val next = smt.BVIte(end, smt.False(), smt.BVIte(enabled, smt.True(), committed))
-        // TODO: init
+        val reset = smt.BVSymbol(sys.name + ".reset", 1)
+        val next = smt.BVIte(smt.BVOr(end, reset), smt.False(), smt.BVIte(enabled, smt.True(), committed))
         mc.State(committed, init=None, next=Some(next))
       }
     }
-    sys.copy(states = sys.states ++ stateAndSignals.map(_._1) ++ committedState, signals = sys.signals ++ stateAndSignals.map(_._2))
+    // signal that can be used to constrain the [...]_committed signals to false
+    val nonCommittedExpr = smt.BVNot(smt.BVOr(committedState.map(_.sym.asInstanceOf[smt.BVSymbol])))
+    val nonCommitted = List(mc.Signal(sys.name + ".$nonCommitted", nonCommittedExpr, mc.IsOutput))
+    sys.copy(states = sys.states ++ stateAndSignals.map(_._1) ++ committedState,
+      signals = sys.signals ++ stateAndSignals.map(_._2) ++ nonCommitted)
   }
 
   private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
