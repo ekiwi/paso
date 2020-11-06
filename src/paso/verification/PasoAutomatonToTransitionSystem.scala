@@ -5,7 +5,7 @@
 package paso.verification
 
 import Chisel.log2Ceil
-import maltese.mc.{IsBad, IsConstraint, Signal, SignalLabel, State, TransitionSystem}
+import maltese.mc.{Signal, State, TransitionSystem}
 import maltese.{mc, smt}
 import paso.protocols._
 import paso.untimed.MethodInfo
@@ -42,7 +42,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys,
       Map(s"${untimedSys.name}.reset" -> reset) ++
       connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
-      connectMethodStart(auto.edges, untimedInputs.start) ++
+      connectMethodEnd(auto.edges, untimedInputs.ending) ++
       connectMethodArgs(auto.mappings, untimedInputs.args)
     )
 
@@ -54,6 +54,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
     val combined = mc.TransitionSystem.combine(finalUntimedSys.name, List(finalUntimedSys, pasoAutomaton))
+    println(combined.serialize)
     TopologicalSort.run(combined)
   }
 
@@ -99,12 +100,13 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     }
   }
 
-  private def connectMethodStart(edges: Iterable[PasoStateEdge], startSignals: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
-    val startSignalToEdge = edges.filter(_.startTransaction.nonEmpty).groupBy(_.startTransaction.get)
-    startSignals.map { start =>
-      val edges = startSignalToEdge.getOrElse(start.name, List())
+  private def connectMethodEnd(edges: Iterable[PasoStateEdge], endSignals: Iterable[smt.BVSymbol]): Iterable[(String, smt.BVExpr)] = {
+    val startSignalToEdge = edges.flatMap(e => e.endTransaction.map(t => t -> e)).groupBy(_._1)
+    endSignals.map { ending =>
+      val transitionToStart = ending.name.split("_end").mkString("") // remove the '_end' from the signal name
+      val edges = startSignalToEdge.getOrElse(transitionToStart, List()).map(_._2)
       val en = if(edges.isEmpty) smt.False() else sumOfProduct(edges.map(e => inState(e.from) +: e.guard))
-      start.name -> en
+      ending.name -> en
     }
   }
 
@@ -196,7 +198,7 @@ object PredicateEncoder {
   }
 }
 
-case class UntimedInputInfo(enabled: Iterable[smt.BVSymbol], start: Iterable[smt.BVSymbol], args: Iterable[smt.BVSymbol])
+case class UntimedInputInfo(enabled: Iterable[smt.BVSymbol], ending: Iterable[smt.BVSymbol], args: Iterable[smt.BVSymbol])
 
 /** In order to support multiple copies of a single protocol, we also need to duplicate the combinatorial
  *  parts of the untimed module transaction that belongs to it. However, we leave all state shared.
@@ -222,7 +224,6 @@ object UntimedModelCopy {
     val sysWithCopiedOutputs = duplicateOutputs(sysWithCopiedStates, copyOutputs)
 
 
-
     // if there is only a single copy, we just need to rename the output (by creating a copy)
     val outputsAliases = protocolCopies.filter(_._2 == 1).flatMap { case (methodName, copyCount) =>
       methods(methodName).ret.map { case (name, w) =>
@@ -234,7 +235,7 @@ object UntimedModelCopy {
     val (sysWithInputsConnected, info) = connectInputs(sysWithCopiedOutputs, protocolCopies, methods)
 
     val finalSys = sysWithInputsConnected.copy(
-      inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.start ++ info.args,
+      inputs = sysWithInputsConnected.inputs ++ info.enabled ++ info.ending ++ info.args,
       signals = sysWithInputsConnected.signals ++ outputsAliases,
     )
 
@@ -248,7 +249,7 @@ object UntimedModelCopy {
   private def connectInputs(sys: mc.TransitionSystem, protocolCopies: Seq[(String, Int)], methods: Map[String, MethodInfo]):
   (mc.TransitionSystem, UntimedInputInfo) = {
     val enabledInputs = mutable.ArrayBuffer[smt.BVSymbol]()
-    val startInputs = mutable.ArrayBuffer[smt.BVSymbol]()
+    val endInputs = mutable.ArrayBuffer[smt.BVSymbol]()
     val argInputs = mutable.ArrayBuffer[smt.BVSymbol]()
     val inputConnections = protocolCopies.flatMap { case (methodName, copyCount) =>
       val suffixes = (0 until copyCount).map(i => s"$$$i")
@@ -256,7 +257,7 @@ object UntimedModelCopy {
       val enabled = suffixes.map(s => smt.BVSymbol(method.fullIoName + "_enabled" + s, 1))
       enabledInputs ++= enabled
       if(suffixes.length > 1) {
-        startInputs ++= suffixes.map(s => smt.BVSymbol(method.fullIoName + "_start" + s, 1))
+        endInputs ++= suffixes.map(s => smt.BVSymbol(method.fullIoName + "_end" + s, 1))
       }
       // Only one enabled signal (per method) will be true in any cycle (one hot encoded!)
       // If any of them is true, we want to commit the state.
@@ -271,7 +272,7 @@ object UntimedModelCopy {
       }
       conEnabled ++ conArgs
     }.toMap
-    val info = UntimedInputInfo(enabledInputs, startInputs, argInputs)
+    val info = UntimedInputInfo(enabledInputs, endInputs, argInputs)
     (mc.TransitionSystem.connect(sys, inputConnections), info)
   }
 
@@ -320,9 +321,9 @@ object UntimedModelCopy {
         val stateCopy = state.sym.rename(state.name + s"$$${method.name}$$$i")
         // keep the last value of stateCopy around
         val prev = mc.State(stateCopy.rename(stateCopy.name + "_prev"), None, Some(stateCopy))
-        // the copied state is the same as before unless the transaction is started in this cycle
-        val start = smt.BVSymbol(method.fullIoName + s"_start$$$i", 1)
-        val signal = mc.Signal(stateCopy.name, smt.SMTIte(start, state.sym, prev.sym))
+        // we use the copied state once the transaction has committed
+        val committed = smt.BVSymbol(method.fullIoName + s"_committed$$$i", 1)
+        val signal = mc.Signal(stateCopy.name, smt.SMTIte(committed, prev.sym, state.sym))
         (prev, signal)
       }}
     }
