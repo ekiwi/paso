@@ -43,9 +43,9 @@ object VerificationProblem {
     val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = false)
 
     // for the induction we start the automaton in its initial state and assume
-    val startStates = startInInitState(spec.name, subspecs.map(_.name))
+    val startStates = List(startInInitState(spec.name, subspecs.map(_.name)), nonCommittedInInitState(spec.name, subspecs.map(_.name)))
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants, startStates))
+      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
     val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
 
@@ -158,6 +158,25 @@ object VerificationProblem {
       Signal(s"startState$ii", smt.BVNot(assertion), mc.IsBad)
     }
     mc.TransitionSystem("StartInInitState", List(), List(), assumptions ++ assertions)
+  }
+
+  private def nonCommittedInInitState(specName: String, subspecNames: Iterable[String]): TransitionSystem = {
+    val isInit = smt.BVSymbol("isInit", 1)
+    // when a paso automaton is in its init state, there is no active transaction and thus $nonCommitted must be true
+    val implications = (List(specName) ++ subspecNames).map { name =>
+      val init = smt.BVSymbol(name + ".automaton.initState", 1)
+      val nonCommitted = smt.BVSymbol(name + ".$nonCommitted", 1)
+      smt.BVImplies(init, nonCommitted)
+    }
+    // assume in state 0
+    val assumptions = implications.zipWithIndex.map { case (impl, ii) =>
+      Signal(s"assumeNonCommitted$ii", smt.BVImplies(isInit, impl), mc.IsConstraint)
+    }
+    // assert otherwise
+    val assertions = implications.zipWithIndex.map { case (impl, ii) =>
+      Signal(s"assertNonCommitted$ii", smt.BVNot(smt.BVImplies(smt.BVAnd(notReset, isInit), impl)), mc.IsBad)
+    }
+    mc.TransitionSystem("NonCommittedInInitState", List(), List(), assumptions ++ assertions)
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem =
