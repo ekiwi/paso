@@ -54,7 +54,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
     // we need to do a topological sort on the combined systems since not all signals might be in the correct order
     val combined = mc.TransitionSystem.combine(finalUntimedSys.name, List(finalUntimedSys, pasoAutomaton))
-    println(combined.serialize)
+
     TopologicalSort.run(combined)
   }
 

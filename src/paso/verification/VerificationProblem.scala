@@ -76,7 +76,7 @@ object VerificationProblem {
       List(generateBmcConditions(resetLength), impl, spec, invariants))
 
     // call checker
-    val success = check(checker, bmcSys, kMax + resetLength, printSys = true)
+    val success = check(checker, bmcSys, kMax + resetLength, printSys = false)
     assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
