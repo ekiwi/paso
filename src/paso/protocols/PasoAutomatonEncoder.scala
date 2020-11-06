@@ -18,7 +18,7 @@ case class PasoAutomaton(
 )
 case class PasoState(id: Int, isStart: Boolean, info: String)
 /** exclusively tracks the control flow state, called an edge to avoid confusion with transitions */
-case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr], startTransaction: Option[String] = None)
+case class PasoStateEdge(from: Int, to: Int, guard: List[smt.BVExpr], endTransaction: Seq[String], startTransaction: Option[String] = None)
 case class PasoStateGuarded(stateId: Int, pred: Guarded)
 case class PasoStateGuardedMapping(stateId: Int, map: GuardedMapping)
 case class PasoGuardedSignal(stateId: Int, guard: List[smt.BVExpr], signal: smt.BVSymbol)
@@ -31,6 +31,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
   /** Identifies a transition in a particular protocol as well as the copyId of the protocol in case it needed to be duplicated */
   private case class Loc(name: String, transition: Int, copyId: Int = 0) {
     override def toString: String = s"$name$$$copyId@$transition"
+    def nameAndCopyId: String = s"$name$$$transition"
   }
   private val transitionMap = mutable.HashMap[String, Transition]()
   private def transition(loc: Loc): Transition = {
@@ -134,7 +135,9 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
         val next = na.map(_._1)
         val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
         val nextId = getStateId(active = active, start = next.exists(_.fork))
-        stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = next.flatMap(_.guard).toList)
+        // if a transaction was active before but now is not, it ended
+        val endTransactions = st.active.map(_.nameAndCopyId).toSet -- active.map(_.nameAndCopyId).toSet
+        stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = next.flatMap(_.guard).toList, endTransactions.toSeq)
       }
     } else {
       // if we do need to start new transactions, we need to chose an unused copy of each transaction's protocol
@@ -167,9 +170,11 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
           val next = na.map(_._1)
           val active = na.map(_._2).filterNot(_.transition == 0) // filter out starting states
           val nextId = getStateId(active = active, start = next.exists(_.fork))
+          // if a transaction was active before but now is not, it ended
+          val endTransactions = st.active.map(_.nameAndCopyId).toSet -- active.map(_.nameAndCopyId).toSet
           // we only take this next step if we actually chose this new transaction (which is why we add the newGuard)
           stateEdges += PasoStateEdge(from=st.id, to=nextId, guard = (next.flatMap(_.guard) :+ newGuard).toList,
-            startTransaction = Some(s"${newLoc.name}$$${newLoc.copyId}"))
+            endTransaction = endTransactions.toSeq, startTransaction = Some(newLoc.nameAndCopyId))
         }
       }
     }
