@@ -327,7 +327,26 @@ object UntimedModelCopy {
         (prev, signal)
       }}
     }
-    sys.copy(states = sys.states ++ stateAndSignals.map(_._1), signals = sys.signals ++ stateAndSignals.map(_._2))
+    // we also need to keep track of whether a transaction has committed which indicates that we need to use the
+    // previous state
+    val committedState = protocolCopies.filter(_._2 > 1).flatMap { case (methodName, copyCount) =>
+      val method = methods(methodName)
+      (0 until copyCount).map { i =>
+        // | enabled | end | committed' |
+        // | ------- | --- | ---------- |
+        // |    1    |  0  |     1      | --> when enable is asserted, we are committing
+        // |    0    |  1  |     0      | --> when end is asserted, the transaction will be over in the next state
+        // |    0    |  0  | committed  | --> when we neither commit or end, we use the old value
+        // |    1    |  1  |     0      | --> when both are true, our transaction is only a single transition
+        val committed = smt.BVSymbol(method.fullIoName + s"_committed$$$i", 1)
+        val enabled = smt.BVSymbol(method.fullIoName + s"_enabled$$$i", 1)
+        val end = smt.BVSymbol(method.fullIoName + s"_end$$$i", 1)
+        val next = smt.BVIte(end, smt.False(), smt.BVIte(enabled, smt.True(), committed))
+        // TODO: init
+        mc.State(committed, init=None, next=Some(next))
+      }
+    }
+    sys.copy(states = sys.states ++ stateAndSignals.map(_._1) ++ committedState, signals = sys.signals ++ stateAndSignals.map(_._2))
   }
 
   private def transitiveDeps(start: String, deps: Map[String, Set[String]]): Set[String] = {
