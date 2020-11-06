@@ -347,7 +347,9 @@ object UntimedModelCopy {
       }
     }
     // signal that can be used to constrain the [...]_committed signals to false
-    val nonCommittedExpr = smt.BVNot(smt.BVOr(committedState.map(_.sym.asInstanceOf[smt.BVSymbol])))
+    val nonCommittedExpr = if(committedState.isEmpty) { smt.True() } else {
+      smt.BVNot(smt.BVOr(committedState.map(_.sym.asInstanceOf[smt.BVSymbol])))
+    }
     val nonCommitted = List(mc.Signal(sys.name + ".$nonCommitted", nonCommittedExpr, mc.IsOutput))
     sys.copy(states = sys.states ++ stateAndSignals.map(_._1) ++ committedState,
       signals = sys.signals ++ stateAndSignals.map(_._2) ++ nonCommitted)
