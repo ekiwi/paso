@@ -50,6 +50,7 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, sp
   def proof(opt: ProofOptions): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _), opt)
   def proof(opt: ProofOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), inv, opt)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k)
+  def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt)
   def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, new NoSubSpecs(_, _), k)
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
@@ -60,6 +61,7 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
   def proof(opt: ProofOptions): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _), opt)
   def proof(opt: ProofOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv, opt)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k)
+  def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k, opt)
   def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, subspecs, k)
 }
 

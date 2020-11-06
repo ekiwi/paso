@@ -196,7 +196,7 @@ class FifoSpec extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
+    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCZ3, new CircularProof(_, _))
   }
 
   "CircularPointerFifo with readDelay=1" should "refine its spec" in {
@@ -215,11 +215,19 @@ class FifoSpec extends AnyFlatSpec {
     Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new ShiftProof(_, _))
   }
 
+  "ShiftFifo" should "not fail bmc" in {
+    val depth = 8
+    val width = 8
+    val fixed = true
+
+    Paso(new ShiftRegisterFifo(depth, width, fixed))(new FifoProtocols(_)).bmc(8)
+  }
+
   "ShiftFifo with bug" should "fail BMC" in {
     val fail = intercept[AssertionError] {
       Paso(new ShiftRegisterFifo(8, 4, false))(new FifoProtocols(_)).bmc(8)
     }
-    assert(fail.getMessage.contains("Failed to verify ShiftRegisterFifo against UntimedFifo"))
+    assert(fail.getMessage.contains("Found a disagreement between implementation and spec"))
   }
 
   "BasejumpFifo" should "refine its spec" ignore {
