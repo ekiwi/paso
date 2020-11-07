@@ -12,24 +12,51 @@ import maltese.smt
  * */
 object Uclid5Serializer {
   def serialize(sys: TransitionSystem): Iterable[String] = {
-    new Uclid5Serializer().serialize(sys)
+    new Uclid5Serializer().run(sys)
   }
 }
 
 
 class Uclid5Serializer private() {
-  def serialize(sys: TransitionSystem): Iterable[String] = {
-    val module = s"module ${escape(sys.name)} {"
-    val inputs = sys.inputs.map(i => s"  input ${escape(i.name)} : ${bvWidthToType(i.width)}")
-    val outputs = sys.outputs.map(i => s"  input ${escape(i.name)} : ${bvWidthToType(i.width)}")
+  import Uclid5ExprSerializer._
+  def run(sys: TransitionSystem): Iterable[String] = {
+    val lines = mutable.ArrayBuffer[String]()
 
+    lines += s"module ${escapeIdentifier(sys.name)} {"
+    lines += "  // inputs"
+    lines ++= sys.inputs.map(i => s"  input ${serializeWithType(i)};")
+    lines += "  // state"
+    lines ++= sys.states.map(s => s"  var ${serializeWithType(s.sym)};")
+    lines += "  // signals"
+    lines ++= sys.signals.map(s => s"  var ${serializeWithType(s.sym)}; // ${s.lbl}")
+    lines += ""
+    lines += "  init {"
+    evaluateSignals(sys, lines)
+    lines ++= sys.states.map { state => state.init match {
+      case Some(init) => s"    ${escapeIdentifier(state.name)} = ${serialize(init)};"
+      case None => s"    havoc ${escapeIdentifier(state.name)};"
+    }}
+    lines += "  }"
+    lines += ""
+    lines += "  next {"
+    evaluateSignals(sys, lines)
+    lines ++= sys.states.map { state => state.next match {
+      case Some(init) => s"    ${escapeIdentifier(state.name)}' = ${serialize(init)};"
+      case None => s"    havoc ${escapeIdentifier(state.name)}';"
+    }}
+    lines += "  }"
+    lines += "}"
   }
 
-  private def
-
-  private def bvWidthToType(width: Int): String = if(width == 1) { "boolean" } else { s"bv$width" }
-  private def escape(sym: smt.SMTSymbol): String = escape(sym.name)
-  private def escape(name: String): String = name // TODO
+  private def evaluateSignals(sys: TransitionSystem, lines: mutable.ArrayBuffer[String]): Unit = {
+    lines ++= sys.signals.flatMap { s =>
+      List(s"    ${escapeIdentifier(s.name)} = ${serialize(s.e)};") ++ (s.lbl match {
+        case IsConstraint => List(s"    assume(${escapeIdentifier(s.name)});")
+        case IsBad => List(s"    assert(!${escapeIdentifier(s.name)});")
+        case _ => List()
+      })
+    }
+  }
 }
 
 private object Uclid5ExprSerializer {
@@ -42,6 +69,9 @@ private object Uclid5ExprSerializer {
     case smt.BVType(width) => serializeBitVectorType(width)
     case smt.ArrayType(indexWidth, dataWidth) => serializeArrayType(indexWidth, dataWidth)
   }
+
+  def serializeWithType(sym: smt.SMTSymbol): String =
+    s"${escapeIdentifier(sym.name)} : ${serialize(sym.tpe)}"
 
   private def serialize(e: smt.BVExpr): String = e match {
     case smt.BVLiteral(value, width) =>
@@ -56,55 +86,55 @@ private object Uclid5ExprSerializer {
     case smt.BVExtend(e, 0, _)                            => serialize(e)
     case smt.BVExtend(smt.BVLiteral(value, width), by, false) => serialize(smt.BVLiteral(value, width + by))
     case smt.BVExtend(e, by, signed) =>
-      val foo = if (signed) "sign_extend" else "zero_extend"
-      s"((_ $foo $by) ${asBitVector(e)})"
+      val foo = if (signed) "bv_sign_extend" else "bv_zero_extend"
+      s"$foo($by, (${asBitVector(e)}))"
     case smt.BVSlice(e, hi, lo) =>
       if (lo == 0 && hi == e.width - 1) { serialize(e) }
       else {
-        val bits = s"((_ extract $hi $lo) ${asBitVector(e)})"
+        val bits = s"${asBitVector(e)}[$hi:$lo]"
         // 1-bit extracts need to be turned into a boolean
         if (lo == hi) { toBool(bits) }
         else { bits }
       }
-    case smt.BVNot(smt.BVEqual(a, b)) if a.width == 1 => s"(distinct ${serialize(a)} ${serialize(b)})"
+    case smt.BVNot(smt.BVEqual(a, b)) if a.width == 1 => s"(${serialize(a)}) != (${serialize(b)})"
     case smt.BVNot(smt.BVNot(e))                      => serialize(e)
     case smt.BVNot(e) =>
-      if (e.width == 1) { s"(not ${serialize(e)})" }
-      else { s"(bvnot ${serialize(e)})" }
-    case smt.BVNegate(e) => s"(bvneg ${asBitVector(e)})"
+      if (e.width == 1) { s"!(${serialize(e)})" }
+      else { s"~(${serialize(e)})" }
+    case smt.BVNegate(e) => s"-(${asBitVector(e)})"
     case smt.BVImplies(smt.BVLiteral(v, 1), b) if v == 1     => serialize(b)
-    case smt.BVImplies(a, b)                                 => s"(=> ${serialize(a)} ${serialize(b)})"
-    case smt.BVEqual(a, b)                                   => s"(= ${serialize(a)} ${serialize(b)})"
-    case smt.ArrayEqual(a, b)                                => s"(= ${serialize(a)} ${serialize(b)})"
-    case smt.BVComparison(smt.Compare.Greater, a, b, false)      => s"(bvugt ${asBitVector(a)} ${asBitVector(b)})"
-    case smt.BVComparison(smt.Compare.GreaterEqual, a, b, false) => s"(bvuge ${asBitVector(a)} ${asBitVector(b)})"
-    case smt.BVComparison(smt.Compare.Greater, a, b, true)       => s"(bvsgt ${asBitVector(a)} ${asBitVector(b)})"
-    case smt.BVComparison(smt.Compare.GreaterEqual, a, b, true)  => s"(bvsge ${asBitVector(a)} ${asBitVector(b)})"
+    case smt.BVImplies(a, b)                                 => s"(${serialize(a)}) ==> (${serialize(b)})"
+    case smt.BVEqual(a, b)                                   => s"(${serialize(a)}) == (${serialize(b)})"
+    case smt.ArrayEqual(a, b)                                => s"(${serialize(a)}) == (${serialize(b)})"
+    case smt.BVComparison(smt.Compare.Greater, a, b, false)      => s"(${asBitVector(a)}) >_u (${asBitVector(b)})"
+    case smt.BVComparison(smt.Compare.GreaterEqual, a, b, false) => s"(${asBitVector(a)}) >=_u (${asBitVector(b)})"
+    case smt.BVComparison(smt.Compare.Greater, a, b, true)       => s"(${asBitVector(a)}) > (${asBitVector(b)})"
+    case smt.BVComparison(smt.Compare.GreaterEqual, a, b, true)  => s"(${asBitVector(a)}) >= (${asBitVector(b)})"
     // boolean operations get a special treatment for 1-bit vectors aka bools
-    case smt.BVOp(smt.Op.And, a, b) if a.width == 1 => s"(and ${serialize(a)} ${serialize(b)})"
-    case smt.BVOp(smt.Op.Or, a, b) if a.width == 1  => s"(or ${serialize(a)} ${serialize(b)})"
-    case smt.BVOp(smt.Op.Xor, a, b) if a.width == 1 => s"(xor ${serialize(a)} ${serialize(b)})"
-    case smt.BVOp(op, a, b) if a.width == 1     => toBool(s"(${serialize(op)} ${asBitVector(a)} ${asBitVector(b)})")
-    case smt.BVOp(op, a, b)                     => s"(${serialize(op)} ${serialize(a)} ${serialize(b)})"
-    case smt.BVConcat(a, b)                     => s"(concat ${asBitVector(a)} ${asBitVector(b)})"
-    case smt.ArrayRead(array, index)            => s"(select ${serialize(array)} ${asBitVector(index)})"
-    case smt.BVIte(cond, tru, fals)             => s"(ite ${serialize(cond)} ${serialize(tru)} ${serialize(fals)})"
-    case smt.BVFunctionCall(name, args, _)      => args.map(serializeArg).mkString(s"($name ", " ", ")")
-    case smt.BVForall(variable, e) => s"(forall ((${variable.name} ${serialize(variable.tpe)})) ${serialize(e)})"
+    case smt.BVOp(smt.Op.And, a, b) if a.width == 1 => s"(${serialize(a)}) && (${serialize(b)})"
+    case smt.BVOp(smt.Op.Or, a, b) if a.width == 1  => s"(${serialize(a)}) || (${serialize(b)})"
+    case smt.BVOp(smt.Op.Xor, a, b) if a.width == 1 => s"(${serialize(a)}) ^ (${serialize(b)})"
+    case smt.BVOp(op, a, b) if a.width == 1     => toBool(s"(${asBitVector(a)}) ${serialize(op)} (${asBitVector(b)})")
+    case smt.BVOp(op, a, b)                     => s"(${serialize(a)}) ${serialize(op)} (${serialize(b)})"
+    case smt.BVConcat(a, b)                     => s"(${asBitVector(a)}) ++ (${asBitVector(b)})"
+    case smt.ArrayRead(array, index)            => s"(${serialize(array)})[${asBitVector(index)}]"
+    case smt.BVIte(cond, tru, fals)             => s"if (${serialize(cond)}) then (${serialize(tru)}) else (${serialize(fals)})"
+    case smt.BVFunctionCall(name, args, _)      => throw new NotImplementedError("function call")
+    case smt.BVForall(variable, e) => s"(forall (${escapeIdentifier(variable.name)} : ${serialize(variable.tpe)}) :: (${serialize(e)}))"
   }
 
   private def serialize(e: smt.ArrayExpr): String = e match {
     case smt.ArraySymbol(name, _, _)        => escapeIdentifier(name)
-    case smt.ArrayStore(array, index, data) => s"(store ${serialize(array)} ${serialize(index)} ${serialize(data)})"
-    case smt.ArrayIte(cond, tru, fals)      => s"(ite ${serialize(cond)} ${serialize(tru)} ${serialize(fals)})"
-    case c @ smt.ArrayConstant(e, _)        => s"((as const ${serializeArrayType(c.indexWidth, c.dataWidth)}) ${serialize(e)})"
-    case smt.ArrayFunctionCall(name, args, _, _) => args.map(serializeArg).mkString(s"($name ", " ", ")")
+    case smt.ArrayStore(array, index, data) => s"(${serialize(array)})[(${serialize(index)}) -> (${serialize(data)})]"
+    case smt.ArrayIte(cond, tru, fals)      => s"if (${serialize(cond)}) then (${serialize(tru)}) else (${serialize(fals)})"
+    case c @ smt.ArrayConstant(e, _)        => s"const(${serialize(e)}, ${serializeArrayType(c.indexWidth, c.dataWidth)});"
+    case smt.ArrayFunctionCall(name, args, _, _) => throw new NotImplementedError("function call")
   }
 
   private def serializeArrayType(indexWidth: Int, dataWidth: Int): String =
-    s"(Array ${serializeBitVectorType(indexWidth)} ${serializeBitVectorType(dataWidth)})"
+    s"[${serializeBitVectorType(indexWidth)}]${serializeBitVectorType(dataWidth)}"
   private def serializeBitVectorType(width: Int): String =
-    if (width == 1) { "Bool" } else { assert(width > 1); s"(_ BitVec $width)" }
+    if (width == 1) { "boolean" } else { assert(width > 1); s"bv$width" }
 
 
   private def serialize(op: smt.Op.Value): String = op match {
@@ -132,5 +162,5 @@ private object Uclid5ExprSerializer {
     if (e.width > 1) { serialize(e) }
     else { s"if (${serialize(e)}) then ($bvOne) else ($bvZero)" }
 
-  private def escapeIdentifier(name: String): String = name // TODO
+  def escapeIdentifier(name: String): String = name // TODO
 }
