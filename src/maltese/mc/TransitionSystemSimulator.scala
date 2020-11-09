@@ -25,6 +25,9 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private val data = new Array[BigInt](bvNameToIndex.size)
   private val memories = new Array[Memory](arrayNameToIndex.size)
 
+  // quantifier variables
+  private val varData = new mutable.HashMap[String, BigInt]()
+
   // vcd dumping
   private var vcdWriter: Option[vcd.VCD] = None
   private val observedMemories =
@@ -61,7 +64,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     val value = expr match {
       case smt.BVLiteral(value, _) => value
       case smt.BVSymbol(name, _) =>
-        val value = data(bvNameToIndex(name))
+        val value = bvNameToIndex.get(name) match {
+          case Some(index) => data(index)
+          case None => varData(name)
+        }
         assert(value != null, s"Trying to read uninitialized symbol $name!")
         value
       case smt.BVExtend(e, by, signed) => smt.SMTExprEval.doBVExtend(eval(e), e.width, by, signed)
@@ -80,7 +86,20 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         if(c == 1) { eval(tru) } else { eval(fals) }
       case smt.BVSelect(_) => throw new NotImplementedError("BVSelect")
       case smt.ArrayEqual(a, b) => if(evalArray(a).data == evalArray(b).data) BigInt(1) else BigInt(0)
-      case _ : smt.BVForall => throw new NotImplementedError("forall")
+      case smt.BVForall(variable, e) =>
+        val maxValue = (BigInt(1) << variable.width) - 1
+        if(maxValue > 4096) {
+          throw new NotImplementedError(s"TODO: deal with forall of large ranges in witness simulator: $variable has ${variable.width} bits!")
+        }
+        assert(!varData.contains(variable.name))
+        val res = (0 to maxValue.toInt).iterator.forall { value =>
+          // store variable value in map
+          varData(variable.name) = value
+          // evaluate expression
+          eval(e) == 1
+        }
+        varData.remove(variable.name)
+        if(res) BigInt(1) else BigInt(0)
       case _ : smt.BVFunctionCall => throw new NotImplementedError("function call")
     }
     value
