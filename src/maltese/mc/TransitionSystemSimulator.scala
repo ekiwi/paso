@@ -22,8 +22,8 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private val arrayNameToIndex = allArrays.map(_.name).zipWithIndex.toMap
 
   // mutable state
-  private val data = new mutable.ArraySeq[BigInt](bvNameToIndex.size)
-  private val memories = new mutable.ArraySeq[Memory](arrayNameToIndex.size)
+  private val data = new Array[BigInt](bvNameToIndex.size)
+  private val memories = new Array[Memory](arrayNameToIndex.size)
 
   // vcd dumping
   private var vcdWriter: Option[vcd.VCD] = None

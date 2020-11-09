@@ -20,7 +20,7 @@ class BtormcModelChecker extends Btor2ModelChecker {
       case Some(file) => prefix ++ Seq(s"$file")
     }
   }
-  override protected def isFail(ret: Int, res: Seq[String]): Boolean = {
+  override protected def isFail(ret: Int, res: Iterable[String]): Boolean = {
     assert(ret == 0, s"We expect btormc to always return 0, not $ret. Maybe there was an error:\n" + res.mkString("\n"))
     super.isFail(ret, res)
   }
@@ -43,7 +43,7 @@ class Cosa2ModelChecker extends Btor2ModelChecker {
   private val Unknown = 2
   private val Sat = 1
   private val Unsat = 0
-  override protected def isFail(ret: Int, res: Seq[String]): Boolean = {
+  override protected def isFail(ret: Int, res: Iterable[String]): Boolean = {
     assert(ret != WrongUsage, "There was an error trying to call cosa2:\n"+res.mkString("\n"))
     val fail = super.isFail(ret, res)
     if(fail) { assert(ret == Sat) } else { assert(ret == Unknown) /* bmc only returns unknown because it cannot prove unsat */}
@@ -65,7 +65,7 @@ abstract class Btor2ModelChecker extends IsModelChecker {
   }
 
   /* called to check the results of the solver */
-  protected def isFail(ret: Int, res: Seq[String]): Boolean = res.nonEmpty && res.head.startsWith("sat")
+  protected def isFail(ret: Int, res: Iterable[String]): Boolean = res.nonEmpty && res.head.startsWith("sat")
 
   private def checkWithFile(fileName: String, sys: TransitionSystem, kMax: Int): ModelCheckResult = {
     val btorWrite = new PrintWriter(fileName)
@@ -81,7 +81,7 @@ abstract class Btor2ModelChecker extends IsModelChecker {
     if(stderr.nonEmpty) { println(s"ERROR: ${stderr.mkString("\n")}") }
 
     // write stdout to file for debugging
-    val res: Seq[String] = stdout
+    val res = stdout
     val resultFileName = fileName + ".out"
     val stdoutWrite = new PrintWriter(resultFileName)
     res.foreach(l => stdoutWrite.println(l))

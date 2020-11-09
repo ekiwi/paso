@@ -51,7 +51,7 @@ object Btor2WitnessParser {
       //print(state)
 
       def finishWitness(): State = {
-        witnesses.append(Witness(failedBad=failedBad, regInit=regInit.toMap, memInit=memInit.toMap, inputs=allInputs))
+        witnesses.append(Witness(failedBad=failedBad, regInit=regInit.toMap, memInit=memInit.toMap, inputs=allInputs.toSeq))
         regInit.clear()
         memInit.clear()
         inputs.clear()
@@ -66,7 +66,7 @@ object Btor2WitnessParser {
         val ii = uintStartingAt(1)
         States(ii)
       }
-      def finishInputFrame() {
+      def finishInputFrame(): Unit = {
         allInputs.append(inputs.toMap)
         inputs.clear()
       }
@@ -119,9 +119,9 @@ object Btor2WitnessParser {
     breakable { lines.foreach{ ll =>
       //println(ll.trim)
       parse_line(ll.trim)
-      if(done) break
+      if(done) break()
     }}
 
-    witnesses
+    witnesses.toSeq
   }
 }
