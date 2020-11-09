@@ -55,7 +55,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     val cmd = s"(get-value (${serialize(e)}))"
     writeCommand(cmd)
     readResponse() match {
-      case Some(strModel) => Some(parseValue(strModel.trim))
+      case Some(strModel) => Some(SMTLibResponseParser.parseValue(strModel.trim))
       case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
     }
   }
@@ -63,8 +63,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     val cmd = s"(get-value (${serialize(e)}))"
     writeCommand(cmd)
     readResponse() match {
-      case Some(strModel) =>
-        throw new NotImplementedError(s"TODO:\n$strModel")
+      case Some(strModel) => SMTLibResponseParser.parseMemValue(strModel.trim)
       case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
     }
   }
@@ -98,22 +97,6 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
         }
       case None =>
         throw new RuntimeException("Unexpected EOF result from SMT solver.")
-    }
-  }
-
-  private def parseValue(v: String): BigInt = {
-    require(v.startsWith("((("))
-    require(v.endsWith("))"))
-    val bare = v.drop(3).dropRight(2)
-    val parts = v.split(')')
-    require(parts.length == 2)
-    val valueStr = parts.last.trim
-    if(valueStr == "true") { BigInt(1) }
-    else if(valueStr == "false") { BigInt(0) }
-    else if(valueStr.startsWith("#b")) { BigInt(valueStr.drop(2), 2) }
-    else if(valueStr.startsWith("#x")) { BigInt(valueStr.drop(2), 16) }
-    else {
-      throw new NotImplementedError(s"Unsupported number format: $valueStr")
     }
   }
 
