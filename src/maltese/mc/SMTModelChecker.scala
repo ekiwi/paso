@@ -91,16 +91,18 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
   }
 
   private def getWitness(sys: TransitionSystem, enc: SMTEncoding, kMax: Int, failedBad: Seq[Int]): Witness = {
-    val (bvStates, arrayStates) = sys.states.partition(_.sym.isInstanceOf[smt.BVExpr])
-    val regInit = bvStates.zipWithIndex.map { case (state, i) =>
-      val value = solver.getValue(enc.getSignalAt(state.sym.asInstanceOf[smt.BVSymbol], 0)).get
-      i -> value
-    }.toMap
+    // btor2 numbers states in the order that they are declared in starting at zero
+    val stateInit = sys.states.zipWithIndex.map {
+      case (State(sym: smt.BVSymbol, _, _), ii) =>
+        val value = solver.getValue(enc.getSignalAt(sym, 0)).get
+        (Some(ii -> value), None)
+      case (State(sym: smt.ArraySymbol, _, _), ii) =>
+        val value = solver.getValue(enc.getSignalAt(sym, 0))
+        (None, Some(ii -> value))
+    }
 
-    val memInit = arrayStates.zipWithIndex.map { case (state, i) =>
-      val values = solver.getValue(enc.getSignalAt(state.sym.asInstanceOf[smt.ArraySymbol], 0))
-      i -> values
-    }.toMap
+    val regInit = stateInit.flatMap(_._1).toMap
+    val memInit = stateInit.flatMap(_._2).toMap
 
     val inputs = (0 to kMax).map { k =>
       sys.inputs.zipWithIndex.map { case (input, i) =>
