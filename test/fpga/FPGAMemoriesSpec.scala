@@ -46,11 +46,12 @@ class Mem1W1RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed1W1RMem
     dut.write.head.addr.set(in.writeAddr)
     dut.write.head.data.set(in.writeData)
     dut.read.head.addr.set(in.readAddr)
-    clock.step()
+    clock.stepAndFork()
     dut.write.head.addr.set(DontCare)
     dut.write.head.data.set(DontCare)
     dut.read.head.addr.set(DontCare)
     dut.read.head.data.expect(readData)
+    clock.step()
   }
 }
 
@@ -135,7 +136,7 @@ class Mem2W4RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed2W4RMem
     dut.read(2).addr.set(in.readAddr2)
     dut.read(3).addr.set(in.readAddr3)
 
-    clock.step()
+    clock.stepAndFork()
 
     // invalidate inputs (TODO: add option to make pokes not stick!)
     dut.write(0).addr.set(DontCare)
@@ -152,6 +153,8 @@ class Mem2W4RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed2W4RMem
     dut.read(1).data.expect(out.readData1)
     dut.read(2).data.expect(out.readData2)
     dut.read(3).data.expect(out.readData3)
+
+    clock.step()
   }
 }
 
@@ -222,7 +225,7 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
 class FPGAMemoriesSpec extends AnyFlatSpec {
   "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).proof(Paso.MCCVC4, new ProofCollateral(_, _){
+    Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).proof(Paso.MCZ3, new ProofCollateral(_, _){
       mapping { (impl, spec) =>
         forall(0 until impl.d.size.depth.toInt){ ii =>
           when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
