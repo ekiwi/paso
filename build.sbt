@@ -29,9 +29,6 @@ val otherDependencySettings = Seq(
   libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0" % "test",
   // treadle is used for concrete exectuion of untimed modules
   libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.3.0",
-  // required for uclid files
-  libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.0",
-  libraryDependencies += "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.1" withSources(),
   // JNA for SMT Solver bindings
   libraryDependencies += "net.java.dev.jna" % "jna" % "5.4.0",
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
