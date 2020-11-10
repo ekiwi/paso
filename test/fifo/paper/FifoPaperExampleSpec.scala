@@ -41,13 +41,6 @@ class Fifo(val depth: Int) extends Module {
   }
 }
 
-class Valid[D <: Data](gen: D)  extends Bundle {
-  val valid = Output(Bool())
-  val data = Output(gen)
-  override def cloneType: this.type = new Valid(gen).asInstanceOf[this.type]
-}
-object Valid { def apply[D <: Data](dataType: D) = new Valid(dataType) }
-
 class FifoT(val depth: Int) extends UntimedModule {
   val mem = Mem(depth, UInt(32.W))
   val count = RegInit(0.U((log2Ceil(depth) + 1).W))
@@ -64,7 +57,7 @@ class FifoT(val depth: Int) extends UntimedModule {
     when(empty) {
       out.valid := false.B
     } .otherwise {
-      out.data := mem(read)
+      out.bits := mem(read)
       out.valid := true.B
       count := count - 1.U
       read := read + 1.U
@@ -89,7 +82,7 @@ class FifoP(impl: Fifo) extends ProtocolSpec[FifoT] {
     duv.valid.set(true.B)
     clock.stepAndFork()
     when(out.valid) {
-      duv.dataOut.expect(out.data)
+      duv.dataOut.expect(out.bits)
     }
     clock.step()
   }
