@@ -26,13 +26,16 @@ class Untimed1W1RMemory(size: MemSize) extends UntimedModule {
     val writeAddr = UInt(log2Ceil(depth).W)
     val writeData = UInt(w.W)
   }
-  val rw = fun("rw").in(new In(size.depth, size.dataType.getWidth)).out(size.dataType) { (in, readData) =>
+  val rw = fun("rw").in(new In(size.depth, size.dataType.getWidth)).out(Valid(size.dataType)) { (in, readData) =>
     when(in.readAddr === in.writeAddr) {
-      readData := in.writeData
+      readData.bits := in.writeData
+      readData.valid := true.B
     } .elsewhen(valid(in.readAddr)) {
-      readData := mem(in.readAddr)
+      readData.bits := mem(in.readAddr)
+      readData.valid := false.B
     } .otherwise {
-      readData := DontCare
+      readData.bits := 0.U
+      readData.valid := false.B
     }
     mem(in.writeAddr) := in.writeData
     valid(in.writeAddr) := true.B
@@ -50,7 +53,9 @@ class Mem1W1RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed1W1RMem
     dut.write.head.addr.set(DontCare)
     dut.write.head.data.set(DontCare)
     dut.read.head.addr.set(DontCare)
-    dut.read.head.data.expect(readData)
+    when(readData.valid) {
+      dut.read.head.data.expect(readData.bits)
+    }
     clock.step()
   }
 }
@@ -77,26 +82,31 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
     val writeData1 = UInt(dataWidth.W)
   }
   class Out(val dataWidth: Int) extends Bundle {
-    val readData0 = UInt(dataWidth.W)
-    val readData1 = UInt(dataWidth.W)
-    val readData2 = UInt(dataWidth.W)
-    val readData3 = UInt(dataWidth.W)
+    val readData0 = Valid(UInt(dataWidth.W))
+    val readData1 = Valid(UInt(dataWidth.W))
+    val readData2 = Valid(UInt(dataWidth.W))
+    val readData3 = Valid(UInt(dataWidth.W))
   }
 
-  def read(addr: UInt, data: UInt, in: In): Unit = {
+  def read(addr: UInt, data: Valid[UInt], in: In): Unit = {
     when(addr === in.writeAddr0) {
       // if there is a write-write collision, the result is undefined
       when(in.writeAddr0 === in.writeAddr1) {
-        data := DontCare
+        data.bits := 0.U
+        data.valid := false.B
       } .otherwise {
-        data := in.writeData0
+        data.bits := in.writeData0
+        data.valid := true.B
       }
     } .elsewhen(addr === in.writeAddr1) {
-      data := in.writeData1
+      data.bits := in.writeData1
+      data.valid := true.B
     } .elsewhen(valid(addr)) {
-      data := mem(addr)
+      data.bits := mem(addr)
+      data.valid := true.B
     } .otherwise {
-      data := DontCare
+      data.bits := 0.U
+      data.valid := false.B
     }
   }
 
@@ -149,10 +159,10 @@ class Mem2W4RProtocol[F <: FPGAMem](impl: F) extends ProtocolSpec[Untimed2W4RMem
     dut.read(3).addr.set(DontCare)
 
     // verify read data
-    dut.read(0).data.expect(out.readData0)
-    dut.read(1).data.expect(out.readData1)
-    dut.read(2).data.expect(out.readData2)
-    dut.read(3).data.expect(out.readData3)
+    when(out.readData0.valid) { dut.read(0).data.expect(out.readData0.bits) }
+    when(out.readData1.valid) { dut.read(1).data.expect(out.readData1.bits) }
+    when(out.readData2.valid) { dut.read(2).data.expect(out.readData2.bits) }
+    when(out.readData3.valid) { dut.read(3).data.expect(out.readData3.bits) }
 
     clock.step()
   }
