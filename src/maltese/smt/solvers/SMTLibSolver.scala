@@ -38,7 +38,7 @@ class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
 
 /** provides basic facilities to interact with any SMT solver that supports a SMTLib base textual interface */
 abstract class SMTLibSolver(cmd: List[String]) extends Solver {
-  private val debug: Boolean = true
+  protected val debug: Boolean = false
 
   override def push(): Unit = {
     writeCommand("(push 1)")
