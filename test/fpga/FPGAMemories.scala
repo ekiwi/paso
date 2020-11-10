@@ -122,7 +122,7 @@ class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem
 
 class SimulationMem(data: MemData) extends FPGAMem {
   val io = IO(new MemoryIO(data))
-  val mem = SyncReadMem(data.size.depth, data.size.dataType)
+  val mem = SyncReadMem(data.size.depth, data.size.dataType, SyncReadMem.WriteFirst)
   io.read.foreach(r => r.data := mem.read(r.addr))
   io.write.foreach(w => mem.write(w.addr, w.data))
 }
