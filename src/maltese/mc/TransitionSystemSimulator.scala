@@ -37,7 +37,7 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private val badNameToIndex: Map[String, Int] = sys.signals.filter(_.lbl == IsBad).map(_.name).zipWithIndex.toMap
 
 
-  private case class Memory(data: Seq[BigInt]) {
+  private case class Memory(data: Seq[BigInt]) extends smt.ArrayValue {
     def depth: Int = data.size
     def write(index: Option[BigInt], value: BigInt): Memory = {
       index match {
@@ -51,6 +51,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
       assert(index >= 0 && index < depth, s"index ($index) needs to be non-negative smaller than the depth ($depth)!")
       data(index.toInt)
     }
+    def ==(other: smt.ArrayValue): Boolean = {
+      assert(other.isInstanceOf[Memory])
+      other.asInstanceOf[Memory].data == this.data
+    }
   }
   private def randomBits(bits: Int): BigInt = BigInt(bits, scala.util.Random)
   private def randomSeq(depth: Int): Seq[BigInt] = {
@@ -60,64 +64,33 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
   private def writesToMemory(depth: Int, writes: Iterable[(Option[BigInt], BigInt)]): Memory =
     writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
 
-  private def eval(expr: smt.BVExpr): BigInt = {
-    val value = expr match {
-      case smt.BVLiteral(value, _) => value
-      case smt.BVSymbol(name, _) =>
-        val value = bvNameToIndex.get(name) match {
-          case Some(index) => data(index)
-          case None => varData(name)
-        }
-        assert(value != null, s"Trying to read uninitialized symbol $name!")
-        value
-      case smt.BVExtend(e, by, signed) => smt.SMTExprEval.doBVExtend(eval(e), e.width, by, signed)
-      case smt.BVSlice(e, hi, lo) => smt.SMTExprEval.doBVSlice(eval(e), hi, lo)
-      case smt.BVNot(e) => smt.SMTExprEval.doBVNot(eval(e), e.width)
-      case smt.BVNegate(e) => smt.SMTExprEval.doBVNegate(eval(e), e.width)
-      case smt.BVImplies(a, b) => smt.SMTExprEval.doBVNot(eval(a), 1) | eval(b)
-      case smt.BVEqual(a, b) => smt.SMTExprEval.doBVEqual(eval(a), eval(b))
-      case smt.BVComparison(op, a, b, signed) => smt.SMTExprEval.doBVCompare(op, eval(a), eval(b), a.width, signed)
-      case smt.BVOp(op, a, b) => smt.SMTExprEval.doBVOp(op, eval(a), eval(b), a.width)
-      case smt.BVConcat(a, b) => smt.SMTExprEval.doBVConcat(eval(a), eval(b), bWidth = b.width)
-      case smt.ArrayRead(array, index) => evalArray(array).read(eval(index))
-      case smt.BVIte(cond, tru, fals) =>
-        val c = eval(cond)
-        assert(c == 0 || c == 1)
-        if(c == 1) { eval(tru) } else { eval(fals) }
-      case smt.BVSelect(_) => throw new NotImplementedError("BVSelect")
-      case smt.ArrayEqual(a, b) => if(evalArray(a).data == evalArray(b).data) BigInt(1) else BigInt(0)
-      case smt.BVForall(variable, e) =>
-        val maxValue = (BigInt(1) << variable.width) - 1
-        if(maxValue > 4096) {
-          throw new NotImplementedError(s"TODO: deal with forall of large ranges in witness simulator: $variable has ${variable.width} bits!")
-        }
-        assert(!varData.contains(variable.name))
-        val res = (0 to maxValue.toInt).iterator.forall { value =>
-          // store variable value in map
-          varData(variable.name) = value
-          // evaluate expression
-          eval(e) == 1
-        }
-        varData.remove(variable.name)
-        if(res) BigInt(1) else BigInt(0)
-      case _ : smt.BVFunctionCall => throw new NotImplementedError("function call")
+  private val evalCtx = new smt.SMTEvalCtx {
+    override def getBVSymbol(name: String): BigInt = {
+      val value = bvNameToIndex.get(name) match {
+        case Some(index) => data(index)
+        case None => varData(name)
+      }
+      assert(value != null, s"Trying to read uninitialized symbol $name!")
+      value
     }
-    value
+
+    override def getArraySymbol(name: String): Memory = memories(arrayNameToIndex(name))
+
+    override def startVariableScope(name: String, value: BigInt): Unit = {
+      assert(!varData.contains(name))
+      varData(name) = value
+    }
+    override def endVariableScope(name: String): Unit = {
+      varData.remove(name)
+    }
+
+    override def constArray(indexWidth: Int, value: BigInt) = {
+      Memory(Seq.fill(arrayDepth(indexWidth))(value))
+    }
   }
 
-  private def evalArray(expr: smt.ArrayExpr): Memory = expr match {
-    case s : smt.ArraySymbol => memories(arrayNameToIndex(s.name))
-    case smt.ArrayConstant(e, indexWidth) =>
-      val value = eval(e)
-      Memory(Seq.fill(arrayDepth(indexWidth))(value))
-    case smt.ArrayStore(array, index, data) =>
-      evalArray(array).write(Some(eval(index)), eval(data))
-    case smt.ArrayIte(cond, tru, fals) =>
-      val c = eval(cond)
-      assert(c == 0 || c == 1)
-      if(c == 1) { evalArray(tru) } else { evalArray(fals) }
-    case other => throw new RuntimeException(s"Unsupported array expression $other")
-  }
+  private def eval(expr: smt.BVExpr): BigInt = smt.SMTExprEval.eval(expr)(evalCtx)
+  private def evalArray(expr: smt.ArrayExpr): Memory = smt.SMTExprEval.evalArray(expr)(evalCtx).asInstanceOf[Memory]
 
   private def arrayDepth(indexWidth: Int): Int = (BigInt(1) << indexWidth).toInt
 
