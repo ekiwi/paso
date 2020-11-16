@@ -6,7 +6,7 @@ package paso.untimed
 
 import firrtl.{AnnotationSeq, CircuitState, PrimOps, ir}
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
-import firrtl.annotations.{CircuitTarget, ModuleTarget, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, SingleTargetAnnotation}
 import firrtl.ir.IntWidth
 import firrtl.passes.PassException
 import firrtl.stage.FirrtlCircuitAnnotation
@@ -29,8 +29,12 @@ case class UntimedModuleInfoAnnotation(target: ModuleTarget, module: UntimedModu
   override def duplicate(n: ModuleTarget) = copy(target = n)
 }
 
+case class AbstractModuleAnnotation(target: IsModule, prefix: String) extends SingleTargetAnnotation[IsModule] {
+  override def duplicate(n: IsModule) = copy(target = n)
+}
+
 object UntimedCompiler {
-  def run(state: CircuitState, abstracted: Set[String]): CircuitState = {
+  def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
     val fixedCalls = ConnectCalls.run(state, abstracted)
     // TODO: make ResetToZeroPass part of the firrtl compiler
     ResetToZeroPass.runTransform(FirrtlCompiler.toLowFirrtl(fixedCalls))
@@ -50,15 +54,17 @@ object UntimedCompiler {
  * */
 object ConnectCalls {
 
-  def run(state: CircuitState, abstracted: Set[String]): CircuitState = {
-    assert(abstracted.isEmpty, "TODO: allow submodules to be abstracted!")
+  def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
+    if(abstracted.nonEmpty) {
+      println("WARN: TODO: allow submodules to be abstracted!")
+    }
     val (newModules, mainInfo) = run(state.circuit.main, state, abstracted)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
     val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
     state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
   }
 
-  private def run(name: String, state: CircuitState, abstracted: Set[String]): (Seq[ir.Module], UntimedModuleInfo) = {
+  private def run(name: String, state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): (Seq[ir.Module], UntimedModuleInfo) = {
     val mod = state.circuit.modules.collectFirst{ case m: ir.Module if m.name == name => m }.get
     val calls = state.annotations.collect { case  a: MethodCallAnnotation if a.callIO.module == mod.name => a}
 

@@ -12,14 +12,15 @@ import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{CircuitState, ir}
 import logger.LogLevel
-import maltese.mc.{IsOutput, Signal, TransitionSystem}
-import maltese.passes.{AddForallQuantifiers, PassManager, QuantifiedVariable, Simplify, Inline, DeadCodeElimination}
+import maltese.mc.{IsOutput, TransitionSystem}
+import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
 import paso.chisel.passes._
 import paso.{ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
-import paso.verification.{Spec, Subspec, UntimedModel, VerificationProblem}
+import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
+import paso.untimed.AbstractModuleAnnotation
 
 case class Elaboration() {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
@@ -140,9 +141,9 @@ case class Elaboration() {
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
-  private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = ""): Untimed = {
-    // connect all calls inside the module (TODO: support for bindings with UFs)
-    val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, Set())
+  private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()): Untimed = {
+    // connect all calls inside the module
+    val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, abstracted)
     // make sure that all state is initialized to its reset value or zero
     val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal
@@ -189,9 +190,10 @@ case class Elaboration() {
   private def simplifyTransitionSystem(sys: TransitionSystem): TransitionSystem =
     simplificationPasses.run(sys, trace = false)
 
-  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference], prefix: String = ""):
+  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference],
+    prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()):
   (Spec, Seq[ExposedSignalAnnotation]) = {
-    val ut = compileUntimed(spec, externalRefs, prefix = prefix)
+    val ut = compileUntimed(spec, externalRefs, prefix = prefix, abstracted = abstracted)
     val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
     (Spec(ut.model, pt), ut.exposedSignals)
   }
@@ -238,16 +240,25 @@ case class Elaboration() {
 
     // Firrtl Compilation
     val implementation = compileImpl(implChisel, subspecList, invChisel.externalRefs)
-    val (spec, specExposedSignals) = compileSpec(specChisel, implementation.model.name, invChisel.externalRefs)
+    // find submodules the methods of which will be replaced with uninterpreted functions
+    val abstractModules = subspecList.flatMap(_.getBinding).map{ target =>
+      val prefix = (target.module +: target.asPath.map(_._1.value)).mkString(".")
+      AbstractModuleAnnotation(target, prefix)
+    }
+    val (spec, specExposedSignals) = compileSpec(specChisel, implementation.model.name, invChisel.externalRefs, abstracted=abstractModules)
 
     // elaborate + compile subspecs
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
       val prefix = implementation.model.name + "." + instance
-      val (spec, _) = compileSpec(elaborated, prefix, List(), prefix = prefix + ".")
-      val binding = s.getBinding.map(_.instance)
-      Subspec(spec, binding)
+      // if teh submodule is bound, we need to replace method implementations with uninterpreted functions
+      val abstractModules = s.getBinding.map { bound =>
+        val prefix = (bound.module +: bound.asPath.map(_._1.value)).mkString(".")
+        val target = CircuitTarget(elaborated.untimed.name).module(elaborated.untimed.name)
+        AbstractModuleAnnotation(target, prefix)
+      }
+      compileSpec(elaborated, prefix, List(), prefix = prefix + ".", abstracted = abstractModules)._1
     }
 
     // elaborate the proof collateral

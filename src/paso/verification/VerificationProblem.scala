@@ -15,8 +15,7 @@ case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInf
   def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
 }
 case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
-case class Subspec(spec: Spec, binding: Option[String])
-case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Subspec], invariants: TransitionSystem)
+case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Spec], invariants: TransitionSystem)
 
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
@@ -27,9 +26,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn subspecs into monitoring automatons
-    val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.spec.untimed, s.spec.protocols, solver, true)._1)
-    problem.subspecs.foreach(s => assert(s.binding.isEmpty, "TODO: support bindings"))
-    // TODO: assert that when the spec is in a start state, all subspecs are in a start state
+    val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols, solver, true)._1)
 
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
