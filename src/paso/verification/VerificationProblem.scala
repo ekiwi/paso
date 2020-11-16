@@ -81,7 +81,11 @@ object VerificationProblem {
     case paso.Btormc => new mc.BtormcModelChecker()
     case paso.CVC4 => new mc.SMTModelChecker(new smt.solvers.CVC4SMTLib())
     case paso.Z3 => new mc.SMTModelChecker(new smt.solvers.Z3SMTLib())
-    case paso.Yices2 => new mc.SMTModelChecker(smt.solvers.Yices2())
+    case paso.Yices2 =>
+      println("WARN: using the SMTLib interface to yices atm.")
+      println("      println(The native bindings are still missing some features.")
+      new mc.SMTModelChecker(new smt.solvers.Yices2SMTLib())
+      //new mc.SMTModelChecker(smt.solvers.Yices2())
   }
 
   private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
