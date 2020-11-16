@@ -83,7 +83,7 @@ object VerificationProblem {
     case paso.Z3 => new mc.SMTModelChecker(new smt.solvers.Z3SMTLib())
     case paso.Yices2 =>
       println("WARN: using the SMTLib interface to yices atm.")
-      println("      println(The native bindings are still missing some features.")
+      println("      The native bindings are still missing some features.")
       new mc.SMTModelChecker(new smt.solvers.Yices2SMTLib())
       //new mc.SMTModelChecker(smt.solvers.Yices2())
   }
