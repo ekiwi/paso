@@ -4,7 +4,7 @@
 
 package paso.untimed
 
-import firrtl.{AnnotationSeq, CircuitState, PrimOps, ir}
+import firrtl.{AnnotationSeq, CircuitState, Namespace, PrimOps, ir}
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
 import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, SingleTargetAnnotation}
 import firrtl.ir.IntWidth
@@ -58,7 +58,13 @@ object ConnectCalls {
     if(abstracted.nonEmpty) {
       println("WARN: TODO: allow submodules to be abstracted!")
     }
-    val (newModules, mainInfo) = run(state.circuit.main, state, abstracted)
+    // filter out duplicates for modules that need to be abstracted
+    val nonDuplicateAbstracted = abstracted.groupBy(_.target.serialize).map { case (_, annos) =>
+      val first = annos.head
+      annos.tail.foreach(a => assert(a.prefix == first.prefix, s"Non matching prefix: ${a.prefix} != ${first.prefix}"))
+      first
+    }
+    val (newModules, mainInfo) = run(state.circuit.main, state, nonDuplicateAbstracted)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
     val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
     state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
@@ -72,8 +78,16 @@ object ConnectCalls {
     val (instances, mod1) = removeInstances(mod)
     val submods = instances.map(s => run(s.module, state, abstracted))
 
-    // collect metadata: state (regs + mems) + analyze methods
+    // collect metadata: state (regs + mems)
     val localState = findState(mod1)
+
+    // check to see if this module should be abstracted
+    val isAbstracted = abstracted.exists(_.target.module == name)
+    if(isAbstracted) {
+      assert(localState.isEmpty, "Currently abstracting state-full specifications is not supported!")
+    }
+
+    // analyze methods
     val (methods, mod2) = analyzeMethods(mod1, calls, state.annotations)
     val info = UntimedModuleInfo(name, localState, methods, submods.map(_._2))
 
@@ -81,8 +95,15 @@ object ConnectCalls {
     val nameToModule = info.submodules.map(s => s.name -> s).toMap
     verifyMethodCalls(name, methods, nameToModule)
 
+    val namespace = Namespace(mod) // important: make a namespace of the original module in order to include the original instance name
+    val newMod = connectSubmodules(namespace, mod2, info, instances, methods, nameToModule, calls)
+    (submods.flatMap(_._1) :+ newMod, info)
+  }
+
+  private def connectSubmodules(namespace: Namespace, mod2: ir.Module, info: UntimedModuleInfo,
+    instances: Seq[InstanceKey], methods: Seq[MethodInfo], nameToModule: Map[String, UntimedModuleInfo],
+    calls: Iterable[MethodCallAnnotation]): ir.Module = {
     // calculate the number of instances for each submodule
-    val namespace = firrtl.Namespace(mod) // important: make a namespace of the original module in order to include the original instance name
     val finalInstances = info.submodules.flatMap { s =>
       val instanceName = instances.find(_.module == s.name).map(_.name).get
       // stateful modules only ever have a single instance since we need one "true" copy of the state
@@ -143,12 +164,10 @@ object ConnectCalls {
     val callIOWires = callPorts.map(p => ir.DefWire(p.info, p.name, p.tpe))
 
     val body = ir.Block((callIOWires ++ instanceStatements ++ connectCallStmts ++ connectMethodInputs ++ List(mod2.body)).toSeq)
-    val newMod = mod2.copy(body=body, ports = nonCallPorts)
-
-    (submods.flatMap(_._1) :+ newMod, info)
+    mod2.copy(body=body, ports = nonCallPorts)
   }
 
-  def connectCallToInstanceAndDefaults(call: CallInfo, instanceName: String, info: ir.Info = ir.NoInfo): List[ir.Statement] = List(
+  private def connectCallToInstanceAndDefaults(call: CallInfo, instanceName: String, info: ir.Info = ir.NoInfo): List[ir.Statement] = List(
     // by default the call is disabled and the arg is DontCare
     ir.Connect(info, ir.SubField(ir.Reference(call.ioName), "enabled"), ir.UIntLiteral(0, IntWidth(1))),
     ir.IsInvalid(info, ir.SubField(ir.Reference(call.ioName), "arg")),
@@ -158,7 +177,7 @@ object ConnectCalls {
   )
 
 
-  def makeInstance(name: String, module: String, methods: Iterable[String], info: ir.Info = ir.NoInfo): List[ir.Statement] = List(
+  private def makeInstance(name: String, module: String, methods: Iterable[String], info: ir.Info = ir.NoInfo): List[ir.Statement] = List(
     ir.DefInstance(info, name, module),
     ir.Connect(info, ir.SubField(ir.Reference(name), "reset"), ir.Reference("reset")),
     ir.Connect(info, ir.SubField(ir.Reference(name), "clock"), ir.Reference("clock"))
@@ -171,7 +190,7 @@ object ConnectCalls {
     )
   }
 
-  def verifyMethodCalls(name: String, methods: Iterable[MethodInfo], nameToModule: Map[String, UntimedModuleInfo]): Unit = {
+  private def verifyMethodCalls(name: String, methods: Iterable[MethodInfo], nameToModule: Map[String, UntimedModuleInfo]): Unit = {
     methods.foreach { m =>
       val callsByParent = m.calls.groupBy(_.parent)
       callsByParent.foreach { case (parent, calls) =>
@@ -196,7 +215,7 @@ object ConnectCalls {
     }
   }
 
-  def removeInstances(m: ir.Module): (Seq[InstanceKey], ir.Module) = {
+  private def removeInstances(m: ir.Module): (Seq[InstanceKey], ir.Module) = {
     val instances = mutable.ArrayBuffer[InstanceKey]()
 
     def onStmt(s: ir.Statement): ir.Statement = s match {
@@ -233,7 +252,7 @@ object ConnectCalls {
     state.toSeq
   }
 
-  def analyzeMethods(mod: ir.Module, calls: Iterable[MethodCallAnnotation], annos: AnnotationSeq): (Seq[MethodInfo], ir.Module) = {
+  private def analyzeMethods(mod: ir.Module, calls: Iterable[MethodCallAnnotation], annos: AnnotationSeq): (Seq[MethodInfo], ir.Module) = {
     val callIO = calls.map { c => c.callIO.ref -> CallInfo(c.calleeParent.module, c.calleeName, c.callIO.ref, ir.NoInfo) }.toMap
 
     // method are of the following general pattern:
@@ -282,7 +301,7 @@ object ConnectCalls {
    * - what state it writes to
    * - what calls it makes
    */
-  def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo]): (MethodInfo, ir.Statement) = {
+  private def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo]): (MethodInfo, ir.Statement) = {
     val locals = mutable.HashSet[String]()
     val writes = mutable.HashSet[String]()
     val localCalls = mutable.HashMap[String, ir.Info]()
