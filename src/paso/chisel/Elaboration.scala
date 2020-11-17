@@ -142,8 +142,10 @@ case class Elaboration() {
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
   private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()): Untimed = {
+    // abstract any methods
+    val abstracedMethods = untimed.UninterpretedMethods.run(spec.untimed.getChirrtl, abstracted)
     // connect all calls inside the module
-    val fixedCalls = untimed.ConnectCalls.run(spec.untimed.getChirrtl, abstracted)
+    val fixedCalls = untimed.ConnectCalls.run(abstracedMethods)
     // make sure that all state is initialized to its reset value or zero
     val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal

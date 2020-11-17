@@ -5,7 +5,9 @@
 
 package paso.untimed
 
-import firrtl.{AnnotationSeq, CircuitState, ir}
+import firrtl.analyses.InstanceKeyGraph
+import firrtl.analyses.InstanceKeyGraph.InstanceKey
+import firrtl.{AnnotationSeq, CircuitState, Namespace, ir}
 import firrtl.annotations._
 
 import scala.collection.mutable
@@ -23,21 +25,91 @@ object UninterpretedMethods {
       val first = annos.head
       annos.tail.foreach(a => assert(a.prefix == first.prefix, s"Non matching prefix: ${a.prefix} != ${first.prefix}"))
       // we assume that module names uniquely identify instances (modules are not deduplicatd!)
-      val mod = first.target match {
-        case m: ModuleTarget => m.module
-        case i: InstanceTarget => i.ofModule
-      }
-      mod -> first.prefix
+      first.target -> first.prefix
     }.toMap
-    val (newModules, mainInfo) = run(state.circuit.main, state, nonDuplicateAbstracted)
-    val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
-    val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
-    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
+
+    // find modules to be abstracted and replace their method implementations
+    val main = CircuitTarget(state.circuit.main).module(state.circuit.main)
+    val callMap = new CallMap()
+    val (changedModules, calls) = run(main, state, callMap, nonDuplicateAbstracted)
+
+    // add ExtModule
+    val newModules = changedModules ++ callMap.values
+
+    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = state.annotations ++ calls)
+  }
+
+  private def get(target: IsModule, state: CircuitState): ir.DefModule = {
+    val name = moduleName(target)
+    state.circuit.modules.find(_.name == name).get
+  }
+
+  private def moduleName(target: IsModule): String = {
+    target match {
+      case m: ModuleTarget => m.module
+      case i: InstanceTarget => i.ofModule
+    }
+  }
+
+  /** Visit modules top down through the hierarchy to check if they need to be abstracted. */
+  private def run(target: IsModule, state: CircuitState, map: CallMap, abstracted: Map[IsModule, String]): (Seq[ir.DefModule], AnnotationSeq) = {
+    abstracted.get(target) match {
+      case Some(prefix) => abstractModule(target, state, map, prefix)
+      case None =>
+        val mod = get(target, state)
+        // find all submodules and check if they are abstract
+        val submodules = InstanceKeyGraph.collectInstances(mod)
+        val r = submodules.map(i => run(target.instOf(i.name, i.module), state, map, abstracted))
+        val modules = r.flatMap(_._1) :+ mod
+        (modules, r.flatMap(_._2))
+    }
+  }
+
+  private def abstractModule(target: IsModule, state: CircuitState, map: CallMap, prefix: String): (Seq[ir.Module], AnnotationSeq) = {
+    val mod = get(target, state).asInstanceOf[ir.Module]
+    // we need to ensure that this module has no state since abstraction is only supported for state-less modules
+    assert(!hasState(mod), f"$target: Only state-less modules can be abstracted!")
+
+    // remove all submodules as they will no longer be needed
+    val (_, modWithoutInstances) = ConnectCalls.removeInstances(mod)
+
+    // find method types and determine ext module names
+    val namespace = Namespace(mod)
+    val methods = state.annotations.collect{ case a: MethodIOAnnotation if a.target.module == mod.name => a }.map { m =>
+      val ioName = m.target.ref
+      val argTarget = target.ref(ioName).field("arg")
+      val retTarget = target.ref(ioName).field("ret")
+      val functionName = prefix + "." + m.name
+      val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
+      val methodIO = mod.ports.find(_.name == ioName).get
+      val argTpe = methodIO.tpe.asInstanceOf[ir.BundleType].fields.find(_.name == "arg").get.tpe
+      val retTpe = methodIO.tpe.asInstanceOf[ir.BundleType].fields.find(_.name == "ret").get.tpe
+      val extModule = getFunctionModule(map, functionName, argTpe, retTpe)
+      val instanceName = namespace.newName(m.name + "_ext")
+      MInfo(m.name, anno, ioName, argTpe, retTpe, functionName, instanceName, extModule)
+    }
+
+    // change method bodies to use ExtModules
+    val newBodies = abstractMethods(mod, methods)
+
+    // filter out ports that do not belong to methods (this is trying to get rid of port for calls to submodules
+    val allowedPorts = Set("reset", "clock") ++ methods.map(_.ioName)
+    val filteredPorts = newBodies.ports.filter(p => allowedPorts(p.name))
+
+    (List(newBodies.copy(ports = filteredPorts)), methods.map(_.anno))
+  }
+
+  private case class MInfo(name: String, anno: FunctionCallAnnotation, ioName: String, argTpe: ir.Type, retTpe: ir.Type,
+    functionName: String, instanceName: String, extName: String)
+
+  private def hasState(mod: ir.DefModule): Boolean = mod match {
+    case _: ir.ExtModule => false
+    case m: ir.Module => ???
   }
 
 
   /** replaces methods with calls to uninterpreted functions which are modelled as ExtModules */
-  private def abstractMethods(mod: ir.Module, annos: AnnotationSeq, ufPrefix: String) = {
+  private def abstractMethods(mod: ir.Module, infos: Iterable[MInfo]): ir.Module = {
     // method are of the following general pattern:
     // ```
     // method.guard <= UInt<1>("h1")
@@ -45,24 +117,24 @@ object UninterpretedMethods {
     // when method.enabled :
     //   ; method body
     // ```
-    // we know all the method names, so we can just search for a Conditionally that checks the `method_name.enabled` signal
-    val ioToName = annos.collect{ case a: MethodIOAnnotation if a.target.module == mod.name => a.target.ref -> a.name }.toMap
 
-    val calls = mutable.ArrayBuffer[UFCallInfo]()
+    val ioNames = infos.map(m => m.ioName -> m).toMap
 
     def onStmt(s: ir.Statement): ir.Statement = s match {
       case c : ir.Conditionally => c.pred match {
-        case ir.SubField(ir.Reference(ioName, _, _, _), "enabled", _, _) if ioToName.contains(ioName) =>
+        case ir.SubField(ir.Reference(ioName, _, _, _), "enabled", _, _) if ioNames.contains(ioName) =>
           assert(c.alt == ir.EmptyStmt)
-          val (call, newBody) = abstractMethod(ioToName(ioName), ioName, ufPrefix, c.conseq)
-          calls.append(call)
-          // the guard will be moved into the method to solely guard the state updates
-          c.copy(pred = ir.UIntLiteral(1), conseq = newBody)
+          val m = ioNames(ioName)
+          val newBody = ir.Block(List(
+            ir.Connect(ir.NoInfo, ir.SubField(ir.Reference(m.instanceName), "arg"), ir.SubField(ir.Reference(ioName), "arg")),
+            ir.Connect(ir.NoInfo, ir.SubField(ir.Reference(ioName), "ret"), ir.SubField(ir.Reference(m.instanceName), "ret")),
+          ))
+          c.copy(conseq = newBody)
         case _ => c // methods should not be enclosed in other when blocks!
       }
       case c : ir.Connect => c.loc match {
         // we only support abstracting methods for state-less modules, thus the guard should always be true!
-        case ir.SubField(ir.Reference(ioName, _, _, _), "guard", _, _) if ioToName.contains(ioName) =>
+        case ir.SubField(ir.Reference(ioName, _, _, _), "guard", _, _) if ioNames.contains(ioName) =>
           assert(c.expr match { case ir.UIntLiteral(v, _) if v == 1 => true case _ => false },
             s"Guard expected to be true, not: ${c.serialize}")
           c
@@ -70,23 +142,25 @@ object UninterpretedMethods {
       }
       case other => other.mapStmt(onStmt)
     }
-    val newMod = mod.mapStmt(onStmt).asInstanceOf[ir.Module]
+    val newBody = mod.body.mapStmt(onStmt)
+    val instances = infos.map(m => ir.DefInstance(m.instanceName, m.extName))
 
-    (calls.toSeq, newMod)
+    mod.copy(body = ir.Block(instances.toList :+ newBody))
   }
 
-  private def abstractMethod(parent: ModuleTarget, name: String, ioName: String, ufPrefix: String, body: ir.Statement): (UFCallInfo, ir.Statement) = {
-    val argTarget = parent.ref(ioName).field("arg")
-    val retTarget = parent.ref(ioName).field("ret")
-    val functionName = ufPrefix + "." + name
-    val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
-
-    // find types
-    var argTpe = ir.UIntType(ir.IntWidth(0))
-    var retTpe = ir.UIntType(ir.IntWidth(0))
-
+  private type CallMap = mutable.HashMap[String, ir.ExtModule]
+  private def getFunctionModule(map: CallMap, name: String, argTpe: ir.Type, retTpe: ir.Type): String = {
+    val mod = map.getOrElseUpdate(name, {
+      val namespace = Namespace(map.values.map(_.name).toSeq)
+      val modName = namespace.newName(name.replace('.', '_'))
+      val ports = List(ir.Port(ir.NoInfo, "arg", ir.Input, argTpe), ir.Port(ir.NoInfo, "ret", ir.Output, retTpe))
+      ir.ExtModule(ir.NoInfo, name = modName, ports=ports, defname=name, Seq())
+    })
+    assert(mod.defname == name)
+    assert(mod.ports.find(_.name == "arg").exists(_.tpe == argTpe))
+    assert(mod.ports.find(_.name == "ret").exists(_.tpe == retTpe))
+    mod.name
   }
-
 
 }
 
@@ -103,5 +177,3 @@ case class FunctionCallAnnotation(args: Seq[ReferenceTarget], rets: Seq[Referenc
     FunctionCallAnnotation(args=a, rets=r, name=name)
   }
 }
-
-case class UFCallInfo(anno: FunctionCallAnnotation, argTpe: ir.Type, retTpe: ir.Type)

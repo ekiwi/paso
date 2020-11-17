@@ -29,8 +29,9 @@ case class UntimedModuleInfoAnnotation(target: ModuleTarget, module: UntimedModu
 }
 
 object UntimedCompiler {
-  def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
-    val fixedCalls = ConnectCalls.run(state, abstracted)
+  def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation] = List()): CircuitState = {
+    val afterAbstraction = if(abstracted.nonEmpty) { UninterpretedMethods.run(state, abstracted) } else { state }
+    val fixedCalls = ConnectCalls.run(afterAbstraction)
     // TODO: make ResetToZeroPass part of the firrtl compiler
     ResetToZeroPass.runTransform(FirrtlCompiler.toLowFirrtl(fixedCalls))
   }
@@ -197,7 +198,7 @@ object ConnectCalls {
     }
   }
 
-  private def removeInstances(m: ir.Module): (Seq[InstanceKey], ir.Module) = {
+  def removeInstances(m: ir.Module): (Seq[InstanceKey], ir.Module) = {
     val instances = mutable.ArrayBuffer[InstanceKey]()
 
     def onStmt(s: ir.Statement): ir.Statement = s match {
