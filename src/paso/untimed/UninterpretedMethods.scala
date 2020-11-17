@@ -145,7 +145,10 @@ object UninterpretedMethods {
       case other => other.mapStmt(onStmt)
     }
     val newBody = mod.body.mapStmt(onStmt)
-    val instances = infos.map(m => ir.DefInstance(m.instanceName, m.extName))
+    val instances = infos.flatMap{ m => List(
+      ir.DefInstance(m.instanceName, m.extName),
+      ir.IsInvalid(ir.NoInfo, ir.SubField(ir.Reference(m.instanceName), "arg"))
+    )}
 
     mod.copy(body = ir.Block(instances.toList :+ newBody))
   }
