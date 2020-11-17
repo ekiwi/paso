@@ -51,11 +51,11 @@ object UntimedCompiler {
 object ConnectCalls {
 
   def run(state: CircuitState): CircuitState = {
-    val isExt = state.circuit.modules.collect { case m: ir.ExtModule => m.name }.toSet
-    val (newModules, mainInfo) = run(state.circuit.main, state, isExt)
+    val extMods = state.circuit.modules.collect { case m: ir.ExtModule => m }
+    val (newModules, mainInfo) = run(state.circuit.main, state, extMods.map(_.name).toSet)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
     val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
-    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
+    state.copy(circuit = state.circuit.copy(modules = newModules ++ extMods), annotations = annos :+ infoAnno)
   }
 
   private def run(name: String, state: CircuitState, isExt: String => Boolean): (Seq[ir.Module], UntimedModuleInfo) = {
