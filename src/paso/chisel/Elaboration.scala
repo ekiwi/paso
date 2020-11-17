@@ -143,13 +143,17 @@ case class Elaboration() {
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
   private def compileUntimed(spec: ChiselSpec[UntimedModule], externalRefs: Iterable[ExternalReference], prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()): Untimed = {
     // abstract any methods
-    val abstracedMethods = untimed.UninterpretedMethods.run(spec.untimed.getChirrtl, abstracted)
+    val abstractedMethods = untimed.UninterpretedMethods.run(spec.untimed.getChirrtl, abstracted)
     // connect all calls inside the module
-    val fixedCalls = untimed.ConnectCalls.run(abstracedMethods)
+    val fixedCalls = untimed.ConnectCalls.run(abstractedMethods)
+
+    // ext modules are used to model UFs and thus should not be inlined
+    val circuit = CircuitTarget(fixedCalls.circuit.main)
+    val noInlineAnnos = fixedCalls.circuit.modules.collect{ case m: ir.ExtModule => DoNotInlineAnnotation(circuit.module(m.name)) }
     // make sure that all state is initialized to its reset value or zero
     val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal
-    val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos)
+    val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos ++ noInlineAnnos)
     val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
 
     // Extract information about all methods
