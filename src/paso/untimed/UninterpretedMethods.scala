@@ -71,7 +71,7 @@ object UninterpretedMethods {
     assert(!hasState(mod), f"$target: Only state-less modules can be abstracted!")
 
     // remove all submodules as they will no longer be needed
-    val (_, modWithoutInstances) = ConnectCalls.removeInstances(mod)
+    val (_, modWithoutInstances) = ConnectCalls.removeInstances(mod, _ => false)
 
     // find method types and determine ext module names
     val namespace = Namespace(mod)
@@ -104,7 +104,9 @@ object UninterpretedMethods {
 
   private def hasState(mod: ir.DefModule): Boolean = mod match {
     case _: ir.ExtModule => false
-    case m: ir.Module => ???
+    case m: ir.Module =>
+      println("TODO: implement hasState in UninterpretedMethods")
+      false
   }
 
 

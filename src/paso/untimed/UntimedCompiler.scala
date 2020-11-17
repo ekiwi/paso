@@ -51,19 +51,22 @@ object UntimedCompiler {
 object ConnectCalls {
 
   def run(state: CircuitState): CircuitState = {
-    val (newModules, mainInfo) = run(state.circuit.main, state)
+    val isExt = state.circuit.modules.collect { case m: ir.ExtModule => m.name }.toSet
+    val (newModules, mainInfo) = run(state.circuit.main, state, isExt)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
     val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
     state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
   }
 
-  private def run(name: String, state: CircuitState): (Seq[ir.Module], UntimedModuleInfo) = {
-    val mod = state.circuit.modules.collectFirst{ case m: ir.Module if m.name == name => m }.get
+  private def run(name: String, state: CircuitState, isExt: String => Boolean): (Seq[ir.Module], UntimedModuleInfo) = {
+    val mod = state.circuit.modules.collectFirst{ case m: ir.Module if m.name == name => m }.getOrElse(
+      throw new RuntimeException(s"Could not find $name! ${state.circuit.modules.map(_.name)}")
+    )
     val calls = state.annotations.collect { case  a: MethodCallAnnotation if a.callIO.module == mod.name => a}
 
     // analyze submodules first
-    val (instances, mod1) = removeInstances(mod)
-    val submods = instances.map(s => run(s.module, state))
+    val (instances, mod1) = removeInstances(mod, isExt)
+    val submods = instances.map(s => run(s.module, state, isExt))
 
     // collect metadata: state (regs + mems)
     val localState = findState(mod1)
@@ -198,11 +201,11 @@ object ConnectCalls {
     }
   }
 
-  def removeInstances(m: ir.Module): (Seq[InstanceKey], ir.Module) = {
+  def removeInstances(m: ir.Module, doIgnore: String => Boolean): (Seq[InstanceKey], ir.Module) = {
     val instances = mutable.ArrayBuffer[InstanceKey]()
 
     def onStmt(s: ir.Statement): ir.Statement = s match {
-      case ir.DefInstance(_, name, module, _) =>
+      case ir.DefInstance(_, name, module, _) if !doIgnore(module) =>
         // remove the instance definition
         instances += InstanceKey(name, module) ; ir.EmptyStmt
       case _: firrtl.WDefInstanceConnector =>
