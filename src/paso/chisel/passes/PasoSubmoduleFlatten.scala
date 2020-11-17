@@ -48,17 +48,19 @@ object PasoSubmoduleFlatten extends Transform with DependencyAPIMigration {
     val submoduleAnnos = doNotInline.flatMap { name =>
       // find out where this module is instantiated
       val instances = iGraph.findInstancesInHierarchy(name)
-      assert(instances.length == 1, "We expect there to be exactly one instance per module!")
-      val instanceName = instances.head.last.name
-      val parentModule = instances.head.dropRight(1).last.module
 
-      val iRef = cRef.module(parentModule).instOf(instanceName, name)
-      val instAnno = SubmoduleInstanceAnnotation(iRef, name)
+      val instAnnos = instances.map { in =>
+        val instanceName = in.last.name
+        val parentModule = in.dropRight(1).last.module
+
+        val iRef = cRef.module(parentModule).instOf(instanceName, name)
+        SubmoduleInstanceAnnotation(iRef, name)
+      }
 
       // we also want to insure that all I/O of the submodule is kept around
       val mRef = cRef.module(name)
       val dontTouchIO = iGraph.moduleMap(name).ports.map(p => DontTouchAnnotation(mRef.ref(p.name)))
-      instAnno +: dontTouchIO
+      instAnnos ++ dontTouchIO
     }
 
     val annos = state.annotations.filterNot(_.isInstanceOf[DoNotInlineAnnotation]) ++ inlineAnnos ++ submoduleAnnos
