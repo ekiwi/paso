@@ -171,11 +171,11 @@ case class AbstractModuleAnnotation(target: IsModule, prefix: String) extends Si
 }
 
 case class FunctionCallAnnotation(args: Seq[ReferenceTarget], rets: Seq[ReferenceTarget], name: String) extends MultiTargetAnnotation {
-  override val targets = Seq(rets ++ args)
+  override val targets = List(rets, args)
   override def duplicate(n: Seq[Seq[Target]]) = {
-    assert(n.size == rets.size + args.size)
-    val r = n.take(rets.size).flatten.map(_.asInstanceOf[ReferenceTarget])
-    val a = n.drop(rets.size).flatten.map(_.asInstanceOf[ReferenceTarget])
+    assert(n.size == 2)
+    val r = n.head.map(_.asInstanceOf[ReferenceTarget])
+    val a = n(1).map(_.asInstanceOf[ReferenceTarget])
     FunctionCallAnnotation(args=a, rets=r, name=name)
   }
 }
