@@ -6,7 +6,7 @@ package paso.untimed
 
 import firrtl.{AnnotationSeq, CircuitState, Namespace, PrimOps, ir}
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
-import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, MultiTargetAnnotation, ReferenceTarget, SingleTargetAnnotation, Target}
 import firrtl.ir.IntWidth
 import firrtl.passes.PassException
 import firrtl.stage.FirrtlCircuitAnnotation
@@ -14,7 +14,6 @@ import paso.chisel.FirrtlCompiler
 import treadle.TreadleTester
 
 import scala.collection.mutable
-
 
 case class MethodInfo(name: String, parent: String, ioName: String, writes: Set[String], calls: Seq[CallInfo], args: Seq[(String, Int)] = List(), ret: Seq[(String, Int)] = List()) {
   def fullName: String = s"$parent.$name"
@@ -27,10 +26,6 @@ case class UntimedModuleInfo(name: String, state: Seq[ir.Reference], methods: Se
 
 case class UntimedModuleInfoAnnotation(target: ModuleTarget, module: UntimedModuleInfo) extends SingleTargetAnnotation[ModuleTarget] {
   override def duplicate(n: ModuleTarget) = copy(target = n)
-}
-
-case class AbstractModuleAnnotation(target: IsModule, prefix: String) extends SingleTargetAnnotation[IsModule] {
-  override def duplicate(n: IsModule) = copy(target = n)
 }
 
 object UntimedCompiler {
@@ -54,38 +49,23 @@ object UntimedCompiler {
  * */
 object ConnectCalls {
 
-  def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
-    if(abstracted.nonEmpty) {
-      println("WARN: TODO: allow submodules to be abstracted!")
-    }
-    // filter out duplicates for modules that need to be abstracted
-    val nonDuplicateAbstracted = abstracted.groupBy(_.target.serialize).map { case (_, annos) =>
-      val first = annos.head
-      annos.tail.foreach(a => assert(a.prefix == first.prefix, s"Non matching prefix: ${a.prefix} != ${first.prefix}"))
-      first
-    }
-    val (newModules, mainInfo) = run(state.circuit.main, state, nonDuplicateAbstracted)
+  def run(state: CircuitState): CircuitState = {
+    val (newModules, mainInfo) = run(state.circuit.main, state)
     val annos = state.annotations.filterNot(a => a.isInstanceOf[MethodIOAnnotation] || a.isInstanceOf[MethodCallAnnotation])
     val infoAnno = UntimedModuleInfoAnnotation(CircuitTarget(state.circuit.main).module(mainInfo.name), mainInfo)
     state.copy(circuit = state.circuit.copy(modules = newModules), annotations = annos :+ infoAnno)
   }
 
-  private def run(name: String, state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): (Seq[ir.Module], UntimedModuleInfo) = {
+  private def run(name: String, state: CircuitState): (Seq[ir.Module], UntimedModuleInfo) = {
     val mod = state.circuit.modules.collectFirst{ case m: ir.Module if m.name == name => m }.get
     val calls = state.annotations.collect { case  a: MethodCallAnnotation if a.callIO.module == mod.name => a}
 
     // analyze submodules first
     val (instances, mod1) = removeInstances(mod)
-    val submods = instances.map(s => run(s.module, state, abstracted))
+    val submods = instances.map(s => run(s.module, state))
 
     // collect metadata: state (regs + mems)
     val localState = findState(mod1)
-
-    // check to see if this module should be abstracted
-    val isAbstracted = abstracted.exists(_.target.module == name)
-    if(isAbstracted) {
-      assert(localState.isEmpty, "Currently abstracting state-full specifications is not supported!")
-    }
 
     // analyze methods
     val (methods, mod2) = analyzeMethods(mod1, calls, state.annotations)
@@ -95,8 +75,10 @@ object ConnectCalls {
     val nameToModule = info.submodules.map(s => s.name -> s).toMap
     verifyMethodCalls(name, methods, nameToModule)
 
+    // connect submodules and instantiate them correctly
     val namespace = Namespace(mod) // important: make a namespace of the original module in order to include the original instance name
     val newMod = connectSubmodules(namespace, mod2, info, instances, methods, nameToModule, calls)
+
     (submods.flatMap(_._1) :+ newMod, info)
   }
 
@@ -355,9 +337,6 @@ object ConnectCalls {
 
     (MethodInfo(name, parent, ioName, writes.toSet, callInfos.toSeq), newBody)
   }
-
-
-
 }
 
 class UntimedError(s: String) extends PassException(s)
