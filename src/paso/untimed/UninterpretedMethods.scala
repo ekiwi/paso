@@ -77,15 +77,16 @@ object UninterpretedMethods {
     val namespace = Namespace(mod)
     val methods = state.annotations.collect{ case a: MethodIOAnnotation if a.target.module == mod.name => a }.map { m =>
       val ioName = m.target.ref
-      val argTarget = target.ref(ioName).field("arg")
-      val retTarget = target.ref(ioName).field("ret")
       val functionName = prefix + "." + m.name
-      val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
       val methodIO = mod.ports.find(_.name == ioName).get
       val argTpe = methodIO.tpe.asInstanceOf[ir.BundleType].fields.find(_.name == "arg").get.tpe
       val retTpe = methodIO.tpe.asInstanceOf[ir.BundleType].fields.find(_.name == "ret").get.tpe
       val extModule = getFunctionModule(map, functionName, argTpe, retTpe)
       val instanceName = namespace.newName(m.name + "_ext")
+      // we annotate the ports of the ext module instance b/c these will be exposed by the firrtl backend
+      val argTarget = target.ref(instanceName).field("arg")
+      val retTarget = target.ref(instanceName).field("ret")
+      val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
       MInfo(m.name, anno, ioName, argTpe, retTpe, functionName, instanceName, extModule)
     }
 
