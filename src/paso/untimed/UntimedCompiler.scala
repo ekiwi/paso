@@ -72,7 +72,7 @@ object ConnectCalls {
     val localState = findState(mod1)
 
     // analyze methods
-    val (methods, mod2) = analyzeMethods(mod1, calls, state.annotations)
+    val (methods, mod2) = analyzeMethods(mod1, calls, state.annotations, localState.map(_.name).toSet)
     val info = UntimedModuleInfo(name, localState, methods, submods.map(_._2))
 
     // verify that all method calls are correct
@@ -238,7 +238,7 @@ object ConnectCalls {
     state.toSeq
   }
 
-  private def analyzeMethods(mod: ir.Module, calls: Iterable[MethodCallAnnotation], annos: AnnotationSeq): (Seq[MethodInfo], ir.Module) = {
+  private def analyzeMethods(mod: ir.Module, calls: Iterable[MethodCallAnnotation], annos: AnnotationSeq, state: Set[String]): (Seq[MethodInfo], ir.Module) = {
     val callIO = calls.map { c => c.callIO.ref -> CallInfo(c.calleeParent.module, c.calleeName, c.callIO.ref, ir.NoInfo) }.toMap
 
     // method are of the following general pattern:
@@ -257,7 +257,7 @@ object ConnectCalls {
       case c : ir.Conditionally => c.pred match {
         case ir.SubField(ir.Reference(ioName, _, _, _), "enabled", _, _) if ioToName.contains(ioName) =>
           assert(c.alt == ir.EmptyStmt)
-          val (info, newBody) = analyzeMethod(ioToName(ioName), mod.name, ioName, c.conseq, callIO)
+          val (info, newBody) = analyzeMethod(ioToName(ioName), mod.name, ioName, c.conseq, callIO, state)
           methods.append(info)
           // the guard will be moved into the method to solely guard the state updates
           c.copy(pred = ir.UIntLiteral(1), conseq = newBody)
@@ -287,14 +287,14 @@ object ConnectCalls {
    * - what state it writes to
    * - what calls it makes
    */
-  private def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo]): (MethodInfo, ir.Statement) = {
+  private def analyzeMethod(name: String, parent: String, ioName: String, body: ir.Statement, calls: Map[String, CallInfo], state: Set[String]): (MethodInfo, ir.Statement) = {
     val locals = mutable.HashSet[String]()
     val writes = mutable.HashSet[String]()
     val localCalls = mutable.HashMap[String, ir.Info]()
 
     def isWrite(loc: ir.Expression): Boolean = {
       val signal = loc.serialize.split('.').head
-      if(!locals.contains(signal) && signal != ioName && !calls.contains(signal)) {
+      if(state.contains(signal)) {
         writes.add(signal)
         true
       } else { false }
