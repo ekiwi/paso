@@ -128,7 +128,9 @@ object UninterpretedMethods {
           assert(c.alt == ir.EmptyStmt)
           val m = ioNames(ioName)
           val newBody = ir.Block(List(
+            // connect inputs first
             ir.Connect(ir.NoInfo, ir.SubField(ir.Reference(m.instanceName), "arg"), ir.SubField(ir.Reference(ioName), "arg")),
+            // outputs second in order to maintain data flow order
             ir.Connect(ir.NoInfo, ir.SubField(ir.Reference(ioName), "ret"), ir.SubField(ir.Reference(m.instanceName), "ret")),
           ))
           c.copy(conseq = newBody)
