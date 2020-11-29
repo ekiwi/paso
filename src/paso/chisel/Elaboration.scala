@@ -10,7 +10,7 @@ import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
-import firrtl.{CircuitState, ir}
+import firrtl.{AnnotationSeq, CircuitState, ir}
 import logger.LogLevel
 import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
@@ -20,7 +20,7 @@ import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
-import paso.untimed.AbstractModuleAnnotation
+import paso.untimed.{AbstractModuleAnnotation, FunctionCallAnnotation}
 
 case class Elaboration() {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
@@ -108,7 +108,7 @@ case class Elaboration() {
   }
 
   /** used for both: RTL implementation and untimed module spec */
-  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Seq[ExposedSignalAnnotation])
+  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Seq[ExposedSignalAnnotation], annos: AnnotationSeq)
   private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], prefix: String, ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
@@ -137,7 +137,7 @@ case class Elaboration() {
     // namespace the transition system
     val namespaced = mc.TransitionSystem.prefixSignals(withPrefix)
 
-    FormalSys(namespaced, submoduleNames, exposed)
+    FormalSys(namespaced, submoduleNames, exposed, resAnnos)
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
@@ -156,21 +156,24 @@ case class Elaboration() {
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos ++ noInlineAnnos)
     val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
 
+    // add uninterpreted functions to transition system
+    val sysWithUF = untimed.UninterpretedMethods.connectUFs(formal.model, formal.annos)
+
     // Extract information about all methods
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
-    assert(formal.model.name == prefix + info.name)
+    assert(sysWithUF.name == prefix + info.name)
     val methods = info.methods.map { m =>
-      val mWithPrefix = m.copy(parent = formal.model.name)
+      val mWithPrefix = m.copy(parent = sysWithUF.name)
       val fullIoName = mWithPrefix.fullIoName
-      val args = formal.model.inputs.filter(_.name.startsWith(fullIoName + "_arg")).map(s => s.name -> s.width)
-      val ret = formal.model.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(fullIoName + "_ret"))
+      val args = sysWithUF.inputs.filter(_.name.startsWith(fullIoName + "_arg")).map(s => s.name -> s.width)
+      val ret = sysWithUF.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       mWithPrefix.copy(args=args, ret=ret)
     }
 
     // Memories in Firrtl cannot have a synchronous reset, we thus need to convert the reset after the fact
-    val reset = smt.BVSymbol(formal.model.name + "." + "reset", 1)
-    val states = formal.model.states.map {
+    val reset = smt.BVSymbol(sysWithUF.name + "." + "reset", 1)
+    val states = sysWithUF.states.map {
       case s @ mc.State(sym: smt.BVSymbol, init, Some(next)) =>
         assert(init.isEmpty)
         s
@@ -178,7 +181,7 @@ case class Elaboration() {
         mc.State(sym, None, Some(smt.ArrayIte(reset, init, next)))
       case other => throw new RuntimeException(s"Unexpected state: $other")
     }
-    val sysWithSynchronousMemInit = formal.model.copy(states = states)
+    val sysWithSynchronousMemInit = sysWithUF.copy(states = states)
 
     // Simplify Transition System
     val simplifiedSys = simplifyTransitionSystem(sysWithSynchronousMemInit)

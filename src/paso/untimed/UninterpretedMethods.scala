@@ -9,6 +9,7 @@ import firrtl.analyses.InstanceKeyGraph
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
 import firrtl.{AnnotationSeq, CircuitState, Namespace, ir}
 import firrtl.annotations._
+import maltese.mc
 
 import scala.collection.mutable
 
@@ -17,6 +18,28 @@ import scala.collection.mutable
  *  - only works for module that do not have state (not even transitively)!
  *  */
 object UninterpretedMethods {
+
+  /** adds UFs to replace connections to function call modules, use after generating transitions system */
+  def connectUFs(sys: mc.TransitionSystem, annos: AnnotationSeq): mc.TransitionSystem = {
+    val calls = annos.collect{ case a: FunctionCallAnnotation => a }
+    if(calls.isEmpty) { return sys }
+
+    val cons = calls.map { c =>
+      val call = c.args.map(toName).mkString(c.name + "(", ", ", ")")
+      val result = c.rets.map(toName).mkString("(", ", ", ")")
+      println(s"$result := $call")
+    }
+
+    // TODO
+    sys
+  }
+
+  private def toName(target: ReferenceTarget): String = {
+    val path = target.module +: target.path.map(_._1.value)
+    path.mkString(".")
+  }
+
+
   def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
     if(abstracted.isEmpty) { return state }
 
