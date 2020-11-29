@@ -157,7 +157,7 @@ case class Elaboration() {
     val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
 
     // add uninterpreted functions to transition system
-    val sysWithUF = untimed.UninterpretedMethods.connectUFs(formal.model, formal.annos)
+    val sysWithUF = untimed.UninterpretedMethods.connectUFs(formal.model, formal.annos, prefix)
 
     // Extract information about all methods
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get

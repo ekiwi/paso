@@ -10,6 +10,8 @@ import firrtl.analyses.InstanceKeyGraph.InstanceKey
 import firrtl.{AnnotationSeq, CircuitState, Namespace, ir}
 import firrtl.annotations._
 import maltese.mc
+import maltese.smt
+import paso.verification.TopologicalSort
 
 import scala.collection.mutable
 
@@ -20,22 +22,35 @@ import scala.collection.mutable
 object UninterpretedMethods {
 
   /** adds UFs to replace connections to function call modules, use after generating transitions system */
-  def connectUFs(sys: mc.TransitionSystem, annos: AnnotationSeq): mc.TransitionSystem = {
+  def connectUFs(sys: mc.TransitionSystem, annos: AnnotationSeq, prefix: String): mc.TransitionSystem = {
     val calls = annos.collect{ case a: FunctionCallAnnotation => a }
     if(calls.isEmpty) { return sys }
 
-    val cons = calls.map { c =>
-      val call = c.args.map(toName).mkString(c.name + "(", ", ", ")")
-      val result = c.rets.map(toName).mkString("(", ", ", ")")
-      println(s"$result := $call")
+    val cons = calls.flatMap { c =>
+      val isArg = c.args.map(toName).map(prefix + _).toSet
+      val argSymbols = sys.signals.filter(s => isArg(s.name)).map(_.toSymbol)
+      assert(c.args.length == argSymbols.length, s"Missing arguments! ${c.args} vs. ${argSymbols}\n${sys.serialize}")
+
+      val isRet = c.rets.map(toName).map(prefix + _).toSet
+      val retSymbols = sys.inputs.filter(s => isRet(s.name))
+      assert(c.rets.length == retSymbols.length, s"Missing arguments! ${c.rets} vs. ${retSymbols}\n${sys.serialize}")
+
+      c.rets.zip(retSymbols).map { case (r, sym) =>
+        sym.name -> smt.BVFunctionCall(c.name + "." + r.ref, argSymbols, sym.width)
+      }
     }
 
-    // TODO
-    sys
+    val connectedSys = mc.TransitionSystem.connect(sys, cons.toMap)
+
+    // because the inputs are connected to internal (output) signals through the UF, we need to resort the system
+    val sortedSys = TopologicalSort.run(connectedSys)
+
+    sortedSys
   }
 
   private def toName(target: ReferenceTarget): String = {
-    val path = target.module +: target.path.map(_._1.value)
+    val path = target.module +: target.path.map(_._1.value) :+ target.ref
+    assert(target.component.isEmpty, "TODO: deal with non empty component!")
     path.mkString(".")
   }
 
