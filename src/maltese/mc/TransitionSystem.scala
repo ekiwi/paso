@@ -101,6 +101,23 @@ object TransitionSystem {
   def systemExpressions(sys: TransitionSystem): Iterable[smt.SMTExpr] =
     sys.signals.map(_.e) ++ sys.states.flatMap(s => s.init ++ s.next)
 
+  def findUFs(sys: TransitionSystem): Iterable[smt.DeclareFunction] = {
+    val calls = systemExpressions(sys).flatMap(findUFCalls)
+    // find unique functions
+    calls.groupBy(_.sym.name).map(_._2.head)
+  }
+
+  private def findUFCalls(e: smt.SMTExpr): List[smt.DeclareFunction] = {
+    val f = e match {
+      case smt.BVFunctionCall(name, args, width) =>
+        Some(smt.DeclareFunction(smt.BVSymbol(name, width), args))
+      case smt.ArrayFunctionCall(name, args, indexWidth, dataWidth) =>
+        Some(smt.DeclareFunction(smt.ArraySymbol(name, indexWidth, dataWidth), args))
+      case _ => None
+    }
+    f.toList ++ e.children.flatMap(findUFCalls)
+  }
+
   def analyzeFeatures(sys: TransitionSystem): TransitionSystemFeatures =
     systemExpressions(sys).map(analyzeFeatures).reduce((a,b) => a | b)
 
@@ -108,16 +125,18 @@ object TransitionSystem {
     val info = e match {
       case fa: smt.BVForall => Some(HasQuantifier)
       case a: smt.ArrayExpr => Some(HasArrays)
+      case _: smt.BVFunctionCall | _: smt.ArrayFunctionCall => Some(HasUF)
       case _ => None
     }
     (e.children.map(analyzeFeatures) ++ info).foldLeft(Base)((a,b) => a | b)
   }
-  private val HasQuantifier = TransitionSystemFeatures(true, false)
-  private val HasArrays = TransitionSystemFeatures(false, true)
-  private val Base = TransitionSystemFeatures(false, false)
+  private val HasQuantifier = TransitionSystemFeatures(true, false, false)
+  private val HasArrays = TransitionSystemFeatures(false, true, false)
+  private val HasUF = TransitionSystemFeatures(false, false, true)
+  private val Base = TransitionSystemFeatures(false, false, false)
 }
 
-case class TransitionSystemFeatures(hasQuantifiers: Boolean, hasArrays: Boolean) {
+case class TransitionSystemFeatures(hasQuantifiers: Boolean, hasArrays: Boolean, hasUF: Boolean) {
   def |(other: TransitionSystemFeatures): TransitionSystemFeatures =
-    TransitionSystemFeatures(hasQuantifiers | other.hasQuantifiers, hasArrays | other.hasArrays)
+    TransitionSystemFeatures(hasQuantifiers | other.hasQuantifiers, hasArrays | other.hasArrays, hasUF | other.hasUF)
 }

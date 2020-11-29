@@ -5,8 +5,7 @@
 package maltese.mc
 
 import maltese.smt
-import maltese.smt.solvers
-import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, SetLogic}
+import maltese.smt.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, solvers}
 
 import scala.collection.mutable
 
@@ -26,9 +25,17 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     require(kMax > 0 && kMax <= 2000, s"unreasonable kMax=$kMax")
     if(fileName.nonEmpty) println("WARN: dumping to file is not supported at the moment.")
 
+    val features = TransitionSystem.analyzeFeatures(sys)
     // set correct logic for solver
-    val logic = SMTTransitionSystemEncoder.determineLogic(sys)
+    val logic = SMTTransitionSystemEncoder.determineLogic(features)
     solver.setLogic(logic)
+
+    // declare UFs if necessary
+    if(features.hasUF) {
+      val foos = TransitionSystem.findUFs(sys)
+      assert(foos.nonEmpty)
+      foos.foreach(solver.runCommand(_))
+    }
 
     // create new context
     solver.push()
@@ -261,7 +268,7 @@ object SMTTransitionSystemEncoder {
     }
     // the transition relation is over two states
     val transitionExpr = replaceSymbols(SignalSuffix, State)(smt.BVAnd(transitionRelations))
-    cmds += solvers.DefineFunction(name + "_t", List(State, StateNext), transitionExpr)
+    cmds += DefineFunction(name + "_t", List(State, StateNext), transitionExpr)
 
     // The init relation just asserts that all init function hold
     val initRelations = sys.states.filter(_.init.isDefined).map { state =>
@@ -296,9 +303,9 @@ object SMTTransitionSystemEncoder {
   }
   private def toDescription(sym: smt.SMTSymbol, kind: String, comments: String => Option[String]): List[Comment] = {
     List(sym match {
-      case smt.BVSymbol(name, width) => solvers.Comment(s"firrtl-smt2-$kind $name $width")
-      case smt.ArraySymbol(name, indexWidth, dataWidth) => solvers.Comment(s"firrtl-smt2-$kind $name $indexWidth $dataWidth")
-    }) ++ comments(sym.name).map(solvers.Comment)
+      case smt.BVSymbol(name, width) => Comment(s"firrtl-smt2-$kind $name $width")
+      case smt.ArraySymbol(name, indexWidth, dataWidth) => smt.Comment(s"firrtl-smt2-$kind $name $indexWidth $dataWidth")
+    }) ++ comments(sym.name).map(smt.Comment)
   }
 
   // All signals are modelled with functions that need to be called with the state as argument,
@@ -310,8 +317,7 @@ object SMTTransitionSystemEncoder {
     case other => other.mapExpr(replaceSymbols(suffix, arg, vars))
   }
 
-  def determineLogic(sys: TransitionSystem): smt.Logic = {
-    val features = TransitionSystem.analyzeFeatures(sys)
+  def determineLogic(features: TransitionSystemFeatures): smt.Logic = {
     val base = smt.SMTFeature.BitVector + smt.SMTFeature.UninterpretedFunctions
     val withArrays = if(features.hasArrays) base + smt.SMTFeature.Array else base
     val withQuantifiers = if(features.hasQuantifiers) withArrays else withArrays + smt.SMTFeature.QuantifierFree

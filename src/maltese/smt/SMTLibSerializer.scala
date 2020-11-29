@@ -5,8 +5,6 @@
 
 package maltese.smt
 
-import maltese.smt.solvers.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, SetLogic}
-
 import scala.util.matching.Regex
 
 /** Converts STM Expressions to a SMTLib compatible string representation.

@@ -5,6 +5,7 @@
 package maltese.smt.solvers
 
 import maltese.smt
+import maltese.smt.{Comment, DeclareFunction, DeclareUninterpretedSort, DeclareUninterpretedSymbol, DefineFunction, SMTCommand, SetLogic}
 import maltese.smt.solvers.Solver.Logic
 import maltese.smt.solvers.uclid.InteractiveProcess
 
@@ -83,7 +84,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     proc.kill()
   }
   override protected def doSetLogic(logic: Logic): Unit = getLogic match {
-    case None => writeCommand(serialize(SetLogic(logic)))
+    case None => writeCommand(serialize(smt.SetLogic(logic)))
     case Some(old) => require(logic == old, s"Cannot change logic from $old to $logic")
   }
   override protected def doCheck(produceModel: Boolean): SolverResult = {
