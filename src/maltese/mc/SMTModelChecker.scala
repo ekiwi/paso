@@ -30,15 +30,15 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     val logic = SMTTransitionSystemEncoder.determineLogic(features)
     solver.setLogic(logic)
 
+    // create new context
+    solver.push()
+
     // declare UFs if necessary
     if(features.hasUF) {
       val foos = TransitionSystem.findUFs(sys)
       assert(foos.nonEmpty)
       foos.foreach(solver.runCommand(_))
     }
-
-    // create new context
-    solver.push()
 
     // declare/define functions and encode the transition system
     val enc: SMTEncoding = new CompactEncoding(sys)
