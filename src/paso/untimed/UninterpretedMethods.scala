@@ -84,8 +84,8 @@ object UninterpretedMethods {
       val extModule = getFunctionModule(map, functionName, argTpe, retTpe)
       val instanceName = namespace.newName(m.name + "_ext")
       // we annotate the ports of the ext module instance b/c these will be exposed by the firrtl backend
-      val argTarget = target.ref(instanceName).field("arg")
-      val retTarget = target.ref(instanceName).field("ret")
+      val argTarget = target.instOf(instanceName, extModule).ref("arg")
+      val retTarget = target.instOf(instanceName, extModule).ref("ret")
       val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
       MInfo(m.name, anno, ioName, argTpe, retTpe, functionName, instanceName, extModule)
     }
