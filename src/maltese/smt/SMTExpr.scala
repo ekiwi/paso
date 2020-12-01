@@ -148,9 +148,6 @@ case class BVSelect(choices: List[(BVExpr, BVExpr)]) extends BVExpr {
   override def children: List[SMTExpr] = choices.flatMap(c => List(c._1, c._2))
 }
 
-// uninterpreted functions over bitvectors
-case class BVFunctionSymbol(name: String, domainWidth: List[Int], width: Int)
-
 sealed trait ArrayExpr extends SMTExpr {
   val indexWidth: Int
   val dataWidth: Int
