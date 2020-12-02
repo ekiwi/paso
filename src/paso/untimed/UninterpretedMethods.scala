@@ -21,40 +21,6 @@ import scala.collection.mutable
  *  */
 object UninterpretedMethods {
 
-  /** adds UFs to replace connections to function call modules, use after generating transitions system */
-  def connectUFs(sys: mc.TransitionSystem, annos: AnnotationSeq, prefix: String): mc.TransitionSystem = {
-    val calls = annos.collect{ case a: FunctionCallAnnotation => a }
-    if(calls.isEmpty) { return sys }
-
-    val cons = calls.flatMap { c =>
-      val isArg = c.args.map(toName).map(prefix + _).toSet
-      val argSymbols = sys.signals.filter(s => isArg(s.name)).map(_.toSymbol)
-      assert(c.args.length == argSymbols.length, s"Missing arguments! ${c.args} vs. ${argSymbols}\n${sys.serialize}")
-
-      val isRet = c.rets.map(toName).map(prefix + _).toSet
-      val retSymbols = sys.inputs.filter(s => isRet(s.name))
-      assert(c.rets.length == retSymbols.length, s"Missing arguments! ${c.rets} vs. ${retSymbols}\n${sys.serialize}")
-
-      c.rets.zip(retSymbols).map { case (r, sym) =>
-        sym.name -> smt.BVFunctionCall(c.name + "." + r.ref, argSymbols, sym.width)
-      }
-    }
-
-    val connectedSys = mc.TransitionSystem.connect(sys, cons.toMap)
-
-    // because the inputs are connected to internal (output) signals through the UF, we need to resort the system
-    val sortedSys = TopologicalSort.run(connectedSys)
-
-    sortedSys
-  }
-
-  private def toName(target: ReferenceTarget): String = {
-    val path = target.module +: target.path.map(_._1.value) :+ target.ref
-    assert(target.component.isEmpty, "TODO: deal with non empty component!")
-    path.mkString(".")
-  }
-
-
   def run(state: CircuitState, abstracted: Iterable[AbstractModuleAnnotation]): CircuitState = {
     if(abstracted.isEmpty) { return state }
 
@@ -69,12 +35,14 @@ object UninterpretedMethods {
     // find modules to be abstracted and replace their method implementations
     val main = CircuitTarget(state.circuit.main).module(state.circuit.main)
     val callMap = new CallMap()
-    val (changedModules, calls) = run(main, state, callMap, nonDuplicateAbstracted)
+    val changedModules = run(main, state, callMap, nonDuplicateAbstracted)
 
     // add ExtModule
     val newModules = changedModules ++ callMap.values
+    // TODO: add UninterpretedModuleAnnotation from latest firrtl!
+    val uninterpretedAnnos = List()
 
-    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = state.annotations ++ calls)
+    state.copy(circuit = state.circuit.copy(modules = newModules), annotations = state.annotations ++ uninterpretedAnnos)
   }
 
   private def get(target: IsModule, state: CircuitState): ir.DefModule = {
@@ -90,20 +58,18 @@ object UninterpretedMethods {
   }
 
   /** Visit modules top down through the hierarchy to check if they need to be abstracted. */
-  private def run(target: IsModule, state: CircuitState, map: CallMap, abstracted: Map[IsModule, String]): (Seq[ir.DefModule], AnnotationSeq) = {
+  private def run(target: IsModule, state: CircuitState, map: CallMap, abstracted: Map[IsModule, String]): Seq[ir.DefModule] = {
     abstracted.get(target) match {
       case Some(prefix) => abstractModule(target, state, map, prefix)
       case None =>
         val mod = get(target, state)
         // find all submodules and check if they are abstract
         val submodules = InstanceKeyGraph.collectInstances(mod)
-        val r = submodules.map(i => run(target.instOf(i.name, i.module), state, map, abstracted))
-        val modules = r.flatMap(_._1) :+ mod
-        (modules, r.flatMap(_._2))
+        submodules.flatMap(i => run(target.instOf(i.name, i.module), state, map, abstracted))
     }
   }
 
-  private def abstractModule(target: IsModule, state: CircuitState, map: CallMap, prefix: String): (Seq[ir.Module], AnnotationSeq) = {
+  private def abstractModule(target: IsModule, state: CircuitState, map: CallMap, prefix: String): Seq[ir.Module] = {
     val mod = get(target, state).asInstanceOf[ir.Module]
     // we need to ensure that this module has no state since abstraction is only supported for state-less modules
     assert(!hasState(mod), f"$target: Only state-less modules can be abstracted!")
@@ -121,11 +87,7 @@ object UninterpretedMethods {
       val retTpe = methodIO.tpe.asInstanceOf[ir.BundleType].fields.find(_.name == "ret").get.tpe
       val extModule = getFunctionModule(map, functionName, argTpe, retTpe)
       val instanceName = namespace.newName(m.name + "_ext")
-      // we annotate the ports of the ext module instance b/c these will be exposed by the firrtl backend
-      val argTarget = target.instOf(instanceName, extModule).ref("arg")
-      val retTarget = target.instOf(instanceName, extModule).ref("ret")
-      val anno = FunctionCallAnnotation(List(argTarget), List(retTarget), functionName)
-      MInfo(m.name, anno, ioName, argTpe, retTpe, functionName, instanceName, extModule)
+      MInfo(m.name, ioName, argTpe, retTpe, functionName, instanceName, extModule)
     }
 
     // change method bodies to use ExtModules
@@ -135,10 +97,10 @@ object UninterpretedMethods {
     val allowedPorts = Set("reset", "clock") ++ methods.map(_.ioName)
     val filteredPorts = newBodies.ports.filter(p => allowedPorts(p.name))
 
-    (List(newBodies.copy(ports = filteredPorts)), methods.map(_.anno))
+    List(newBodies.copy(ports = filteredPorts))
   }
 
-  private case class MInfo(name: String, anno: FunctionCallAnnotation, ioName: String, argTpe: ir.Type, retTpe: ir.Type,
+  private case class MInfo(name: String, ioName: String, argTpe: ir.Type, retTpe: ir.Type,
     functionName: String, instanceName: String, extName: String)
 
   private def hasState(mod: ir.DefModule): Boolean = mod match {
@@ -212,14 +174,4 @@ object UninterpretedMethods {
 
 case class AbstractModuleAnnotation(target: IsModule, prefix: String) extends SingleTargetAnnotation[IsModule] {
   override def duplicate(n: IsModule) = copy(target = n)
-}
-
-case class FunctionCallAnnotation(args: Seq[ReferenceTarget], rets: Seq[ReferenceTarget], name: String) extends MultiTargetAnnotation {
-  override val targets = List(rets, args)
-  override def duplicate(n: Seq[Seq[Target]]) = {
-    assert(n.size == 2)
-    val r = n.head.map(_.asInstanceOf[ReferenceTarget])
-    val a = n(1).map(_.asInstanceOf[ReferenceTarget])
-    FunctionCallAnnotation(args=a, rets=r, name=name)
-  }
 }

@@ -20,7 +20,7 @@ import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
-import paso.untimed.{AbstractModuleAnnotation, FunctionCallAnnotation}
+import paso.untimed.AbstractModuleAnnotation
 
 case class Elaboration() {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
@@ -155,25 +155,23 @@ case class Elaboration() {
     // convert to formal
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos ++ noInlineAnnos)
     val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
-
-    // add uninterpreted functions to transition system
-    val sysWithUF = untimed.UninterpretedMethods.connectUFs(formal.model, formal.annos, prefix)
+    val sys = formal.model
 
     // Extract information about all methods
     val info = fixedCalls.annotations.collectFirst{ case untimed.UntimedModuleInfoAnnotation(_, i) => i }.get
-    assert(sysWithUF.name == prefix + info.name)
+    assert(sys.name == prefix + info.name)
     val methods = info.methods.map { m =>
-      val mWithPrefix = m.copy(parent = sysWithUF.name)
+      val mWithPrefix = m.copy(parent = sys.name)
       val fullIoName = mWithPrefix.fullIoName
-      val args = sysWithUF.inputs.filter(_.name.startsWith(fullIoName + "_arg")).map(s => s.name -> s.width)
-      val ret = sysWithUF.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(fullIoName + "_ret"))
+      val args = sys.inputs.filter(_.name.startsWith(fullIoName + "_arg")).map(s => s.name -> s.width)
+      val ret = sys.signals.filter(s => s.lbl == IsOutput && s.name.startsWith(fullIoName + "_ret"))
         .map(s => s.name -> s.e.asInstanceOf[smt.BVExpr].width)
       mWithPrefix.copy(args=args, ret=ret)
     }
 
     // Memories in Firrtl cannot have a synchronous reset, we thus need to convert the reset after the fact
-    val reset = smt.BVSymbol(sysWithUF.name + "." + "reset", 1)
-    val states = sysWithUF.states.map {
+    val reset = smt.BVSymbol(sys.name + "." + "reset", 1)
+    val states = sys.states.map {
       case s @ mc.State(sym: smt.BVSymbol, init, Some(next)) =>
         assert(init.isEmpty)
         s
@@ -181,7 +179,7 @@ case class Elaboration() {
         mc.State(sym, None, Some(smt.ArrayIte(reset, init, next)))
       case other => throw new RuntimeException(s"Unexpected state: $other")
     }
-    val sysWithSynchronousMemInit = sysWithUF.copy(states = states)
+    val sysWithSynchronousMemInit = sys.copy(states = states)
 
     // Simplify Transition System
     val simplifiedSys = simplifyTransitionSystem(sysWithSynchronousMemInit)
