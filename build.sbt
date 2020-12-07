@@ -21,14 +21,14 @@ val versionSettings = Seq(
 val chiselSettings = Seq(
   // for structural bundles
   scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
-  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4.0",
+  libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.4.1",
 )
 
 val otherDependencySettings = Seq(
   libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test",
-  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.0" % "test",
+  libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.3.1" % "test",
   // treadle is used for concrete exectuion of untimed modules
-  libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.3.0",
+  libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.3.1",
   // JNA for SMT Solver bindings
   libraryDependencies += "net.java.dev.jna" % "jna" % "5.4.0",
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
