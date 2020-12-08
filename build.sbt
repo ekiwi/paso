@@ -57,7 +57,6 @@ lazy val pubSettings = Seq(
   // releases for source and docs:
   // https://github.community/t5/GitHub-API-Development-and/Github-Package-snapshot-build-number-not-updating/td-p/49012
   packageDoc / publishArtifact := false,
-  packageSrc / publishArtifact := false,
 
   // derrived from looking at:
   // https://github.com/djspiewak/sbt-github-packages/blob/master/src/main/scala/sbtghpackages/GitHubPackagesPlugin.scala
