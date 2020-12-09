@@ -82,9 +82,8 @@ class MemProof(impl: ChiselMem, spec: UntimedMem) extends ProofCollateral(impl, 
 class InvariantSpec extends AnyFlatSpec {
   behavior of "Paso invariants"
 
-  it should "work for bmc ...." in {
-    Paso(new ChiselMem)(new MemProtocol(_)).bmc(5)
-  }
+  // small sanity check
+  it should "work for bmc ...." in { Paso(new ChiselMem)(new MemProtocol(_)).bmc(5) }
 
   it should "be able to refer to a memory" in {
     Paso(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProof(_, _))
