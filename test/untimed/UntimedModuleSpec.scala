@@ -86,6 +86,13 @@ class InternalMethodCallModule extends UntimedModule {
   val foo = fun("foo").out(UInt(32.W)) { o => o := bar() }
 }
 
+// SyncReadMem should never be used since we require all outputs of a transaction to be
+// combinatorial, i.e. "instantaneously" available without a clock transition.
+// A SyncReadMem would incur a read latency of 1.
+class SyncReadMemModule extends UntimedModule {
+  val mem = SyncReadMem(32, UInt(8.W))
+}
+
 class UntimedModuleSpec extends AnyFlatSpec {
   "a simple UntimedModule" should "be elaborated with UntimedModule(new ...)" in {
     val m = UntimedModule(new UntimedInc)
@@ -183,5 +190,12 @@ class UntimedModuleExceptionSpec extends AnyFlatSpec {
       UntimedModule(new InternalMethodCallModule).getFirrtl
     }
     assert(err.getMessage.contains("currently, only calls to submodules are supported"))
+  }
+
+  "creating a SyncReadMem" should "lead to an exception" in {
+    val err = intercept[UntimedError] {
+      UntimedModule(new SyncReadMemModule).getFirrtl
+    }
+    assert(err.getMessage.contains("need to use a combinatorial Mem instead"))
   }
 }

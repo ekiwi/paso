@@ -223,17 +223,26 @@ object ConnectCalls {
   }
 
 
-  def findState(m: ir.Module): Seq[ir.Reference] = {
+  private val useMem = "you need to use a combinatorial Mem instead."
+  def findState(mod: ir.Module): Seq[ir.Reference] = {
     val state = mutable.ArrayBuffer[ir.Reference]()
 
     def onStmt(s: ir.Statement): Unit = s match {
       case r : ir.DefRegister => state.append(ir.Reference(r.name, r.tpe))
       case m : ir.DefMemory =>
+        if(m.readLatency > 0) {
+          throw new UntimedError(s"[${mod.name}] memory ${m.name} has read latency ${m.readLatency} > 0. $useMem")
+        }
         val arrayTpe = ir.VectorType(m.dataType, m.depth.toInt)
+        state.append(ir.Reference(m.name, arrayTpe))
+      case m : firrtl.CDefMemory if m.seq =>
+        throw new UntimedError(s"[${mod.name}] memory ${m.name} is a SyncReadMem, for untimed modules $useMem")
+      case m : firrtl.CDefMemory =>
+        val arrayTpe = ir.VectorType(m.tpe, m.size.toInt)
         state.append(ir.Reference(m.name, arrayTpe))
       case other => other.foreachStmt(onStmt)
     }
-    m.foreachStmt(onStmt)
+    mod.foreachStmt(onStmt)
 
     state.toSeq
   }
