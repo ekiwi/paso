@@ -34,6 +34,13 @@ class ChiselMem extends Module with HasIO[MemIO] {
   when(doWrite) { mem.write(addr, io.writeData) }
 }
 
+// wrapper class to test referring to state in a submodule
+class ChiselMemWrapper extends Module with HasIO[MemIO] {
+  val io = IO(new MemIO)
+  val sub = Module(new ChiselMem)
+  io <> sub.io
+}
+
 class UntimedMem extends UntimedModule {
   val mem = Mem(32, UInt(32.W))
   val read = fun("read").in(UInt(5.W)).out(UInt(32.W)) { (in, out) =>
@@ -73,7 +80,15 @@ class MemProtocol[M <: HasIO[MemIO]](impl: M) extends ProtocolSpec[UntimedMem] {
 class MemProof(impl: ChiselMem, spec: UntimedMem) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
     forall(0 until 32) { ii =>
-       assert(impl.mem.read(ii) === spec.mem.read(ii))
+      assert(impl.mem.read(ii) === spec.mem.read(ii))
+    }
+  }
+}
+
+class MemWrapperProof(impl: ChiselMemWrapper, spec: UntimedMem) extends ProofCollateral(impl, spec) {
+  mapping { (impl, spec) =>
+    forall(0 until 32) { ii =>
+      assert(impl.sub.mem.read(ii) === spec.mem.read(ii))
     }
   }
 }
@@ -87,5 +102,9 @@ class InvariantSpec extends AnyFlatSpec {
 
   it should "be able to refer to a memory" in {
     Paso(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProof(_, _))
+  }
+
+  it should "be able to refer to a memory in a submodule" in {
+    Paso(new ChiselMemWrapper)(new MemProtocol(_)).proof(Paso.MCZ3, new MemWrapperProof(_, _))
   }
 }
