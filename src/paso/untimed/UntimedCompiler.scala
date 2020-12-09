@@ -4,7 +4,7 @@
 
 package paso.untimed
 
-import firrtl.{AnnotationSeq, CircuitState, Namespace, PrimOps, ir}
+import firrtl.{AnnotationSeq, CircuitState, MInfer, MRead, MReadWrite, MWrite, Namespace, PrimOps, ir}
 import firrtl.analyses.InstanceKeyGraph.InstanceKey
 import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, MultiTargetAnnotation, ReferenceTarget, SingleTargetAnnotation, Target}
 import firrtl.ir.IntWidth
@@ -341,6 +341,18 @@ object ConnectCalls {
         if(isWrite(loc)) {
           ir.Conditionally(info, guard, c, ir.EmptyStmt)
         } else { c }
+      case m : firrtl.CDefMPort =>
+        m.direction match {
+          case MInfer => throw new UntimedError(s"[name] ${m.mem}.${m.name}: inferred mem ports are not supported, use read or write directly!")
+          case MReadWrite => throw new UntimedError(s"[name] ${m.mem}.${m.name}: combined read/write mem ports are not supported, use read or write!")
+          case MRead => m
+          case MWrite =>
+            assert(state.contains(m.mem))
+            writes.add(m.mem)
+            // guard state update
+            ir.Conditionally(m.info, guard, m, ir.EmptyStmt)
+        }
+
       case other => other.mapStmt(onStmt)
     }
     val newBody = onStmt(body)
