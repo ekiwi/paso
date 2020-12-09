@@ -26,6 +26,9 @@ object SMTLibResponseParser {
     case SExprNode(List(SExprNode(List(SExprLeaf("as"), SExprLeaf("const"), tpe)), SExprLeaf(valueStr))) =>
       // initialize complete memory to value
       List((None, parseBVLiteral(valueStr)))
+    case SExprNode(List(SExprLeaf("store"), array, SExprLeaf(indexStr), SExprLeaf(valueStr))) =>
+      val (index, value) = (parseBVLiteral(indexStr), parseBVLiteral(valueStr))
+      parseMem(array) :+ (Some(index), value)
     case other => throw new NotImplementedError(s"TODO: $value")
   }
 
