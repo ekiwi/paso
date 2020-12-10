@@ -25,7 +25,7 @@ class ChiselMem extends Module with HasIO[MemIO] {
 
   val mem = SyncReadMem(32, UInt(32.W), SyncReadMem.Undefined)
   annotate(new ChiselAnnotation {
-    override def toFirrtl = MemoryScalarInitAnnotation(mem.toTarget, 0)
+    override def toFirrtl = MemoryScalarInitAnnotation(mem.toAbsoluteTarget, 0)
   })
 
   val addr = io.addr
