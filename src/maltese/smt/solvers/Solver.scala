@@ -28,6 +28,7 @@ trait Solver {
     pLogic = Some(logic)
   }
   def getLogic: Option[Logic] = pLogic
+  def stackDepth: Int // returns the size of the push/pop stack
   def push(): Unit
   def pop(): Unit
   def assert(expr: BVExpr): Unit

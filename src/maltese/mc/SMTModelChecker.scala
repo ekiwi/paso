@@ -69,6 +69,7 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
           if(res.isSat) {
             val w = getWitness(sys, enc, k, Seq(bi))
             solver.pop()
+            assert(solver.stackDepth == 0, s"Expected solver stack to be empty, not: ${solver.stackDepth}")
             return ModelCheckFail(w)
           }
           solver.pop()
@@ -83,6 +84,7 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
         if(res.isSat) {
           val w = getWitness(sys, enc, k, bads.indices.toSeq)
           solver.pop()
+          assert(solver.stackDepth == 0, s"Expected solver stack to be empty, not: ${solver.stackDepth}")
           return ModelCheckFail(w)
         }
         solver.pop()
@@ -94,6 +96,7 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
 
     // clean up
     solver.pop()
+    assert(solver.stackDepth == 0, s"Expected solver stack to be empty, not: ${solver.stackDepth}")
     ModelCheckSuccess()
   }
 

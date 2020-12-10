@@ -41,11 +41,15 @@ class Z3SMTLib extends SMTLibSolver(List("z3", "-in")) {
 abstract class SMTLibSolver(cmd: List[String]) extends Solver {
   protected val debug: Boolean = false
 
+  private var _stackDepth: Int = 0
+  override def stackDepth = _stackDepth
   override def push(): Unit = {
     writeCommand("(push 1)")
+    _stackDepth += 1
   }
   override def pop(): Unit = {
     writeCommand("(pop 1)")
+    _stackDepth -= 1
   }
   override def assert(expr: smt.BVExpr): Unit = {
     // TODO: println("TODO: declare free variables automatically")
@@ -106,7 +110,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
 
   private val proc = new InteractiveProcess(cmd, true)
   protected def writeCommand(str : String): Unit = {
-    if(debug) println(s"-> $str")
+    if(debug) println(s"$str")
     proc.writeInput(str + "\n")
   }
   protected def readResponse() : Option[String] = {

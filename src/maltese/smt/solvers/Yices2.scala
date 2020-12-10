@@ -30,8 +30,10 @@ class Yices2 private(lib: Yices2Api, conf: Yices2Api.ConfigT, ctx: Yices2Api.Con
 
   import Yices2.{assertNoError, bitArrayToBigInt}
 
-  override def push(): Unit = assertNoError(lib.yices_push(ctx))
-  override def pop(): Unit = assertNoError(lib.yices_pop(ctx))
+  private var _stackDepth: Int = 0
+  override def stackDepth = _stackDepth
+  override def push(): Unit = { assertNoError(lib.yices_push(ctx)) ;  _stackDepth += 1 }
+  override def pop(): Unit = { assertNoError(lib.yices_pop(ctx)) ;  _stackDepth -= 1 }
   override def assert(expr: BVExpr): Unit = assertNoError(lib.yices_assert_formula(ctx, convert(expr)))
   override def queryModel(e: BVSymbol): Option[BigInt] = model match {
     case None => None
