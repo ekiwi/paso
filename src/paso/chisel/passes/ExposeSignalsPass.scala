@@ -55,7 +55,7 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
           (None, List(exposed))
         } else {
           val field = ir.Field(name = name, flip = ir.Default, tpe = info.tpe)
-          val src = SourceAnnotation(signal.toNamed, name)
+          val src = SourceAnnotation(signal.pathlessTarget.toNamed, name)
           val sinkRef = signalPortRef.field(name)
           val sink = SinkAnnotation(sinkRef.toNamed, name)
           val exposed = ExposedSignalAnnotation(sinkRef, name, false, info.depth, info.tpe)
