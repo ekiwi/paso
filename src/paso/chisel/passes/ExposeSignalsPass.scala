@@ -83,17 +83,12 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
   private val symbolTables = scala.collection.mutable.HashMap[String, LocalSymbolTable]()
 
   private def findSignal(modules: Map[String, ir.DefModule], target: ReferenceTarget): SignalInfo = {
-    val module = containingModule(target)
+    val module = target.encapsulatingModule
     val symbols = symbolTables.getOrElseUpdate(module, {
       firrtl.analyses.SymbolTable.scanModule(modules(module), new LocalSymbolTable)
     })
     assert(target.component.isEmpty, "TODO: support field/index references")
     symbols.nameToType(target.ref)
-  }
-
-  private def containingModule(target: ReferenceTarget): String = target.path.lastOption match {
-    case Some((_, module)) => module.value
-    case None => target.module
   }
 }
 
