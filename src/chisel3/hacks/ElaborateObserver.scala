@@ -64,7 +64,7 @@ class FixNamings(val topLevelModules: Set[String], namespace: Namespace) {
         if(isCrossModuleRef) {
           // create a unique name inside the observer module
           val nameInObserver = getInternalName(path)
-          val ref = node.id.toTarget.asInstanceOf[ReferenceTarget]
+          val ref = node.id.toAbsoluteTarget.asInstanceOf[ReferenceTarget]
           externalReferences.add(ExternalReference(ref, nameInObserver))
           Node(FakeId(Ref(nameInObserver)))
         } else { r }

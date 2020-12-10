@@ -4,7 +4,7 @@
 
 package paso.chisel.passes
 
-import firrtl.annotations.{CircuitTarget, NoTargetAnnotation, ReferenceTarget, SingleTargetAnnotation}
+import firrtl.annotations.{CircuitTarget, InstanceTarget, IsModule, ModuleTarget, NoTargetAnnotation, ReferenceTarget, SingleTargetAnnotation}
 import firrtl.ir.DefMemory
 import firrtl.options.Dependency
 import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation}
@@ -83,11 +83,17 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
   private val symbolTables = scala.collection.mutable.HashMap[String, LocalSymbolTable]()
 
   private def findSignal(modules: Map[String, ir.DefModule], target: ReferenceTarget): SignalInfo = {
-    val symbols = symbolTables.getOrElseUpdate(target.module, {
-      firrtl.analyses.SymbolTable.scanModule(modules(target.module), new LocalSymbolTable)
+    val module = containingModule(target)
+    val symbols = symbolTables.getOrElseUpdate(module, {
+      firrtl.analyses.SymbolTable.scanModule(modules(module), new LocalSymbolTable)
     })
     assert(target.component.isEmpty, "TODO: support field/index references")
     symbols.nameToType(target.ref)
+  }
+
+  private def containingModule(target: ReferenceTarget): String = target.path.lastOption match {
+    case Some((_, module)) => module.value
+    case None => target.module
   }
 }
 
