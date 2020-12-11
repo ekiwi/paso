@@ -92,7 +92,7 @@ jobs:
     - name: Add Binaries To Path
       run: |
        ls $GITHUB_WORKSPACE/ext/bin/
-       echo "::add-path::$GITHUB_WORKSPACE/ext/bin/"
+       echo "$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_PATH
 
     - name: Print Dependency Versions and Paths
       run: |
