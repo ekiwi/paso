@@ -47,10 +47,13 @@ case class PasoImpl[I <: RawModule](impl: () => I) {
 case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S]) {
   def proof(): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _))
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), inv)
+  def proof(opt: ProofOptions, dbg: DebugOptions): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _), opt, dbg)
   def proof(opt: ProofOptions): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _), opt)
   def proof(opt: ProofOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), inv, opt)
+  def proof(opt: ProofOptions, dbg: DebugOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), inv, opt, dbg)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt)
+  def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt, dbg)
   def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, new NoSubSpecs(_, _), k)
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
@@ -59,23 +62,26 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
   def proof(): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _))
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv)
   def proof(opt: ProofOptions): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _), opt)
+  def proof(opt: ProofOptions, dbg: DebugOptions): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _), opt, dbg)
   def proof(opt: ProofOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv, opt)
+  def proof(opt: ProofOptions, dbg: DebugOptions, inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv, opt, dbg)
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k, opt)
+  def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k, opt, dbg)
   def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, subspecs, k)
 }
 
 object Paso {
   def apply[I <: RawModule](impl: => I): PasoImpl[I] = PasoImpl(() => impl)
 
-  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default): Boolean = {
-    val elaborated = Elaboration()[I, S](impl, spec, subspecs, inv)
-    VerificationProblem.verify(elaborated, opt)
+  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
+    val elaborated = Elaboration(dbg)[I, S](impl, spec, subspecs, inv)
+    VerificationProblem.verify(elaborated, opt, dbg)
     true
   }
-  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default): Boolean = {
-    val elaborated = Elaboration()[I, S](impl, spec, subspecs, NoProofCollateral(_, _))
-    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax)
+  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
+    val elaborated = Elaboration(dbg)[I, S](impl, spec, subspecs, NoProofCollateral(_, _))
+    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
     true
   }
   private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???
@@ -85,6 +91,7 @@ object Paso {
   val MCCVC4 = ProofOptions(CVC4)
   val MCZ3 = ProofOptions(Z3)
   val Default = MCBotr
+  val NoDebug = DebugOptions()
 }
 
 sealed trait SolverName
@@ -93,4 +100,18 @@ case object Yices2 extends SolverName
 case object Btormc extends SolverName
 case object Z3 extends SolverName
 
-case class ProofOptions(modelChecker: SolverName, oneMethodAtATime: Boolean = true, checkSimplifications: Boolean = false)
+case class ProofOptions(
+  modelChecker: SolverName,
+  oneMethodAtATime: Boolean = true,
+  checkSimplifications: Boolean = false)
+
+case class DebugOptions(
+  // elaboration
+  traceInvariantElaboration: Boolean = false,
+  traceImplElaboration: Boolean = false,
+  // verification
+  printMCProgress: Boolean = false,
+  printBaseSys: Boolean = false,
+  printInductionSys: Boolean = false,
+  printBmcSys: Boolean = false
+)

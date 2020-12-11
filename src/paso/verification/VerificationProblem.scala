@@ -8,7 +8,7 @@ import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
-import paso.untimed
+import paso.{DebugOptions, untimed}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
@@ -18,8 +18,8 @@ case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Spec], invariants: TransitionSystem)
 
 object VerificationProblem {
-  def verify(problem: VerificationProblem, opt: paso.ProofOptions): Unit = {
-    val checker = makeChecker(opt.modelChecker)
+  def verify(problem: VerificationProblem, opt: paso.ProofOptions, dbg: DebugOptions): Unit = {
+    val checker = makeChecker(opt.modelChecker, dbg.printMCProgress)
     val solver = new smt.solvers.Yices2SMTLib()
 
     // connect the implementation to the global reset
@@ -37,14 +37,14 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
       List(generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
-    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = false)
+    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = dbg.printBaseSys)
 
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)), nonCommittedInInitState(spec.name, subspecs.map(_.name)))
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
-    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength)
+    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength, printSys = dbg.printInductionSys)
 
     // check results
     assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
@@ -54,9 +54,9 @@ object VerificationProblem {
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
   }
 
-  def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int): Unit = {
+  def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int, dbg: DebugOptions): Unit = {
     val resetLength = 1
-    val checker = makeChecker(modelChecker)
+    val checker = makeChecker(modelChecker, dbg.printMCProgress)
     val solver = new smt.solvers.Yices2SMTLib()
 
     // connect the implementation to the global reset
@@ -73,18 +73,18 @@ object VerificationProblem {
       List(generateBmcConditions(resetLength), impl, spec, invariants))
 
     // call checker
-    val success = check(checker, bmcSys, kMax + resetLength, printSys = false)
+    val success = check(checker, bmcSys, kMax + resetLength, printSys = dbg.printBmcSys)
     assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
-  private def makeChecker(name: paso.SolverName): IsModelChecker = name match {
+  private def makeChecker(name: paso.SolverName, printProgress: Boolean): IsModelChecker = name match {
     case paso.Btormc => new mc.BtormcModelChecker()
-    case paso.CVC4 => new mc.SMTModelChecker(new smt.solvers.CVC4SMTLib())
-    case paso.Z3 => new mc.SMTModelChecker(new smt.solvers.Z3SMTLib())
+    case paso.CVC4 => new mc.SMTModelChecker(new smt.solvers.CVC4SMTLib(), printProgress = printProgress)
+    case paso.Z3 => new mc.SMTModelChecker(new smt.solvers.Z3SMTLib(), printProgress = printProgress)
     case paso.Yices2 =>
       println("WARN: using the SMTLib interface to yices atm.")
       println("      The native bindings are still missing some features.")
-      new mc.SMTModelChecker(new smt.solvers.Yices2SMTLib())
+      new mc.SMTModelChecker(new smt.solvers.Yices2SMTLib(), printProgress = printProgress)
       //new mc.SMTModelChecker(smt.solvers.Yices2())
   }
 

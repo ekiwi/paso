@@ -15,14 +15,14 @@ import logger.LogLevel
 import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
 import paso.chisel.passes._
-import paso.{ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
+import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
 import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2SMTLib
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 import paso.untimed.AbstractModuleAnnotation
 
-case class Elaboration() {
+case class Elaboration(dbg: DebugOptions) {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
     val res = ChiselCompiler.elaborate(gen)
     res
@@ -46,7 +46,8 @@ case class Elaboration() {
     Seq(RunFirrtlTransformAnnotation(Dependency(passes.InvertAssertPass)))
 
     // convert invariant module to SMT
-    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, LogLevel.Error)
+    val ll = if(dbg.traceInvariantElaboration) LogLevel.Trace else LogLevel.Error
+    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, ll)
     val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     // connect cross module reference inputs
@@ -105,7 +106,8 @@ case class Elaboration() {
     // We mark the ones that we want to expose as outputs as DoNotInline and then run the PasoFlatten pass to do the rest.
     val doNotInlineAnnos = subspecs.map(s => DoNotInlineAnnotation(s.module))
     val state = CircuitState(impl.circuit, impl.annos ++ doNotInlineAnnos)
-    compileToFormal(state, externalRefs, prefix = "")
+    val ll = if(dbg.traceImplElaboration) LogLevel.Trace else LogLevel.Error
+    compileToFormal(state, externalRefs, prefix = "", ll)
   }
 
   /** used for both: RTL implementation and untimed module spec */
