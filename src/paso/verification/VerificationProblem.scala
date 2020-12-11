@@ -20,7 +20,7 @@ case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq
 object VerificationProblem {
   def verify(problem: VerificationProblem, opt: paso.ProofOptions, dbg: DebugOptions): Unit = {
     val checker = makeChecker(opt.modelChecker, dbg.printMCProgress)
-    val solver = new smt.solvers.Yices2SMTLib()
+    val solver = smt.solvers.Yices2()
 
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
@@ -57,7 +57,7 @@ object VerificationProblem {
   def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int, dbg: DebugOptions): Unit = {
     val resetLength = 1
     val checker = makeChecker(modelChecker, dbg.printMCProgress)
-    val solver = new smt.solvers.Yices2SMTLib()
+    val solver = smt.solvers.Yices2()
 
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
