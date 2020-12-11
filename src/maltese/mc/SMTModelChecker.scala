@@ -49,6 +49,8 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     val bads = sys.signals.filter(_.lbl == IsBad).map(_.name)
 
     (0 to kMax).foreach { k =>
+      if(printProgress) println(s"Step #$k")
+
       // assume all constraints hold in this step
       constraints.foreach(c => solver.assert(enc.getConstraint(c)))
 
@@ -61,17 +63,22 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
       if(options.checkBadStatesIndividually) {
         // check each bad state individually
         bads.zipWithIndex.foreach { case (b, bi) =>
+          if(printProgress) print(s"- b$bi? ")
+
           solver.push()
           solver.assert(enc.getBadState(b))
           val res = solver.check(produceModel = false)
 
           // did we find an assignment for which the bad state is true?
           if(res.isSat) {
+            if(printProgress) println("❌")
             val w = getWitness(sys, enc, k, Seq(bi))
             solver.pop()
             solver.pop()
             assert(solver.stackDepth == 0, s"Expected solver stack to be empty, not: ${solver.stackDepth}")
             return ModelCheckFail(w)
+          } else {
+            if(printProgress) println("✅")
           }
           solver.pop()
         }
