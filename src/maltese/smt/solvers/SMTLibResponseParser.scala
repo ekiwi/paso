@@ -14,21 +14,29 @@ object SMTLibResponseParser {
     }
   }
 
-  def parseMemValue(v: String): Seq[(Option[BigInt], BigInt)] = {
+  type MemInit = Seq[(Option[BigInt], BigInt)]
+
+  def parseMemValue(v: String): MemInit = {
     val tree = SExprParser.parse(v)
     tree match {
-      case SExprNode(List(SExprNode(List(_, value)))) => parseMem(value)
+      case SExprNode(List(SExprNode(List(_, value)))) => parseMem(value, Map())
       case _ => throw new NotImplementedError(s"Unexpected response: $v")
     }
   }
 
-  private def parseMem(value: SExpr): Seq[(Option[BigInt], BigInt)] = value match {
+  private def parseMem(value: SExpr, ctx: Map[String, MemInit]): MemInit = value match {
     case SExprNode(List(SExprNode(List(SExprLeaf("as"), SExprLeaf("const"), tpe)), SExprLeaf(valueStr))) =>
       // initialize complete memory to value
       List((None, parseBVLiteral(valueStr)))
     case SExprNode(List(SExprLeaf("store"), array, SExprLeaf(indexStr), SExprLeaf(valueStr))) =>
       val (index, value) = (parseBVLiteral(indexStr), parseBVLiteral(valueStr))
-      parseMem(array) :+ (Some(index), value)
+      parseMem(array, ctx) :+ (Some(index), value)
+    case SExprNode(List(SExprLeaf("let"), SExprNode(List(SExprNode(List(SExprLeaf(variable), array0)))), array1)) =>
+      val newCtx = ctx ++ Seq(variable -> parseMem(array0, ctx))
+      parseMem(array1, newCtx)
+    case SExprLeaf(variable) =>
+      assert(ctx.contains(variable), s"Undefined variable: $variable. " + ctx.keys.mkString(", "))
+      ctx(variable)
     case other => throw new NotImplementedError(s"TODO: $value")
   }
 
