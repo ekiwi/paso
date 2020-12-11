@@ -25,20 +25,27 @@ object InvertAssertPass extends Transform with DependencyAPIMigration {
     val namespace = Namespace(mod)
     val portName = namespace.newName(DefaultPortName)
     val port = ir.Port(ir.NoInfo, portName, ir.Input, Bool)
-    val doAssume = ir.Reference(portName, Bool, firrtl.PortKind, firrtl.SourceFlow)
-    val doAssert = not(doAssume)
-    val b = mod.body.mapStmt(onStmt(doAssume, doAssert))
+    val doAssumeNode = ir.DefNode(ir.NoInfo, namespace.newName("doAssume"),
+      ir.Reference(portName, Bool, firrtl.PortKind, firrtl.SourceFlow))
+    val doAssume = ir.Reference(doAssumeNode)
+    val doAssertNode = ir.DefNode(ir.NoInfo, namespace.newName("doAssert"), not(doAssume))
+    val doAssert = ir.Reference(doAssertNode)
+    val b = Seq(doAssumeNode, doAssertNode) :+ mod.body.mapStmt(onStmt(doAssume, doAssert, namespace))
     val p = mod.ports :+ port
-    mod.copy(ports=p, body=b)
+    mod.copy(ports=p, body=ir.Block(b))
   }
 
-  private def onStmt(doAssume: ir.Expression, doAssert: ir.Expression)(s: ir.Statement): ir.Statement = s match {
-    case a @ ir.Verification(ir.Formal.Assert, _, _, _, en, _) =>
-      ir.Block(List(
-        a.copy(en=and(doAssert, en)),
-        a.copy(op=ir.Formal.Assume, en=and(doAssume, en))
+  private def onStmt(doAssume: ir.Expression, doAssert: ir.Expression, namespace: Namespace)(s: ir.Statement): ir.Statement = s match {
+    case a @ ir.Verification(ir.Formal.Assert, info, _, pred, en, _) =>
+      val predNode = ir.DefNode(info, namespace.newName("_GEN_assert_pred"), pred)
+      val predRef = ir.Reference(predNode)
+      val enNode = ir.DefNode(info, namespace.newName("_GEN_assert_en"), en)
+      val enRef = ir.Reference(enNode)
+      ir.Block(List(predNode, enNode,
+        a.copy(pred=predRef, en=and(doAssert, enRef)),
+        a.copy(op=ir.Formal.Assume, pred=predRef, en=and(doAssume, enRef))
       ))
-    case other => other.mapStmt(onStmt(doAssume, doAssert))
+    case other => other.mapStmt(onStmt(doAssume, doAssert, namespace))
   }
 
   private def and(a: ir.Expression, b: ir.Expression): ir.Expression =
