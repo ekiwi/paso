@@ -18,7 +18,7 @@ import paso.chisel.passes._
 import paso.{ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
 import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
-import maltese.smt.solvers.Yices2
+import maltese.smt.solvers.Yices2SMTLib
 import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
 import paso.untimed.AbstractModuleAnnotation
 
@@ -96,7 +96,8 @@ case class Elaboration() {
       proto.generate(clock)
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
-    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
+    val solver = new Yices2SMTLib()
+    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, solver).run()
     ProtocolGraph.encode(paths)
   }
 
