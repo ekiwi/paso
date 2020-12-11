@@ -108,6 +108,7 @@ object VerificationProblem {
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: smt.Solver, invert: Boolean): (TransitionSystem, Int) = {
+    solver.setLogic(smt.SMTFeature.BitVector + smt.SMTFeature.UninterpretedFunctions + smt.SMTFeature.QuantifierFree)
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
     val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
     val longestPath = automaton.longestPath
