@@ -287,7 +287,7 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
     val fail = intercept[AssertionError] {
       Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).bmc(4)
     }
-    assert(fail.getMessage.contains("Failed to verify XorMemory against Untimed2W4RMemory"))
+    assert(fail.getMessage.contains("Found a disagreement between implementation and spec"))
   }
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
