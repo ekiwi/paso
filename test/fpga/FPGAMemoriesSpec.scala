@@ -220,6 +220,9 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
 
   mapping { (impl, spec) =>
     forall(0 until impl.d.size.depth.toInt){ addr =>
+      val data = impl.banks.map(_.banks(0).mem(addr)).reduce((a, b) => a ^ b)
+      assert(spec.mem(addr) === data)
+      /*
       when(spec.valid(addr)) {
         // if the address was recently written, the data is still in flight
         when(addr === impl.writeDelayed(0)._2) {
@@ -233,10 +236,9 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
           // TODO: support referring to output register of  SyncMems
           //assert(otherWriteBank.mem(addr) === otherWriteBank.io.read(0).data)
         } .otherwise {
-          val data = impl.banks.map(_.banks(0).mem(addr)).reduce((a, b) => a ^ b)
-          assert(spec.mem(addr) === data)
+
         }
-      }
+        */
     }
   }
 }
@@ -266,12 +268,12 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
     Paso(makeLVTMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
   }
 
-  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
+  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
     def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCBotr, new LaForest2W4RXorInductive(_, _))
+    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RXorInductive(_, _))
   }
 
   "Charles Eric LaForest XOR 2W4R memory" should "pass BMC" in {
