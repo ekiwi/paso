@@ -118,6 +118,14 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
     read(in.readAddr3, out.readData3, in)
 
     // write
+    // FIXME: this is a bit of a hack to work around the 2 write port limitation in the backend
+    valid.write(in.writeAddr0, in.writeAddr0 =/= in.writeAddr1)
+    when(in.writeAddr0 =/= in.writeAddr1) {
+      mem.write(in.writeAddr0, in.writeData0)
+      mem.write(in.writeAddr1, in.writeData1)
+      valid.write(in.writeAddr1, true.B)
+    }
+    /*
     when(in.writeAddr0 === in.writeAddr1) {
       valid.write(in.writeAddr0, false.B)
     } .otherwise {
@@ -126,6 +134,7 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
       mem.write(in.writeAddr1, in.writeData1)
       valid.write(in.writeAddr1, true.B)
     }
+    */
   }
 }
 
@@ -256,7 +265,7 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
     def makeSimMem(data: MemData) = new SimulationMem(data)
     def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
     def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
-    Paso(makeLVTMem(data.size))(new Mem2W4RProtocol(_)).proof(Paso.MCCVC4, new LaForest2W4RInductive(_, _))
+    Paso(makeLVTMem(data.size))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
   }
 
   "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
