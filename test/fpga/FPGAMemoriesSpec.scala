@@ -30,15 +30,15 @@ class Untimed1W1RMemory(size: MemSize) extends UntimedModule {
     when(in.readAddr === in.writeAddr) {
       readData.bits := in.writeData
       readData.valid := true.B
-    } .elsewhen(valid(in.readAddr)) {
-      readData.bits := mem(in.readAddr)
+    } .elsewhen(valid.read(in.readAddr)) {
+      readData.bits := mem.read(in.readAddr)
       readData.valid := false.B
     } .otherwise {
       readData.bits := 0.U
       readData.valid := false.B
     }
-    mem(in.writeAddr) := in.writeData
-    valid(in.writeAddr) := true.B
+    mem.write(in.writeAddr, in.writeData)
+    valid.write(in.writeAddr, true.B)
   }
 }
 
@@ -101,8 +101,8 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
     } .elsewhen(addr === in.writeAddr1) {
       data.bits := in.writeData1
       data.valid := true.B
-    } .elsewhen(valid(addr)) {
-      data.bits := mem(addr)
+    } .elsewhen(valid.read(addr)) {
+      data.bits := mem.read(addr)
       data.valid := true.B
     } .otherwise {
       data.bits := 0.U
@@ -119,12 +119,12 @@ class Untimed2W4RMemory(size: MemSize) extends UntimedModule {
 
     // write
     when(in.writeAddr0 === in.writeAddr1) {
-      valid(in.writeAddr0) := false.B
+      valid.write(in.writeAddr0, false.B)
     } .otherwise {
-      mem(in.writeAddr0) := in.writeData0
-      valid(in.writeAddr0) := true.B
-      mem(in.writeAddr1) := in.writeData1
-      valid(in.writeAddr1) := true.B
+      mem.write(in.writeAddr0, in.writeData0)
+      valid.write(in.writeAddr0, true.B)
+      mem.write(in.writeAddr1, in.writeData1)
+      valid.write(in.writeAddr1, true.B)
     }
   }
 }
