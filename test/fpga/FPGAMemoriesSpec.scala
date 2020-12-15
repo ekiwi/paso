@@ -274,16 +274,13 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
     Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCBotr, new LaForest2W4RXorInductive(_, _))
   }
 
-  "Charles Eric LaForest XOR 2W4R memory" should "fail BMC" in {
+  "Charles Eric LaForest XOR 2W4R memory" should "pass BMC" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
     def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
 
-    val fail = intercept[AssertionError] {
-      Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).bmc(4)
-    }
-    assert(fail.getMessage.contains("Found a disagreement between implementation and spec"))
+    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).bmc(4)
   }
 
   "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
