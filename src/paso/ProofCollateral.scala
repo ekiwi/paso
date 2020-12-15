@@ -38,6 +38,16 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
     }
   }
 
+  private val forallNames = mutable.HashSet[String]()
+  private val variableLetters = List("i", "j", "k", "l", "m", "n")
+  private def getUniqueForallIOName(range: Range): String = {
+    // s"ii_${range.start}_to_${range.end-1}"
+    val names = variableLetters
+    val name = names.iterator.filterNot(forallNames).next()
+    forallNames.add(name)
+    name
+  }
+
   def forall(range: Range)(block: UInt => Unit): Unit = {
     require(range.step == 1, s"Only step size 1 supported: $range")
     require(range.start >= 0 && range.end >= 0, s"Only positive ranges supported: $range")
@@ -46,7 +56,8 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
     // generate a wire to represent the universally quantified variable
     val bits = log2Ceil(range.end)
     // TODO: ensure unique name for the IO
-    val ii = IO(Input(UInt(bits.W))).suggestName(s"ii_${range.start}_to_${range.end-1}")
+
+    val ii = IO(Input(UInt(bits.W))).suggestName(getUniqueForallIOName(range))
     annotate(new ChiselAnnotation { override def toFirrtl = ForallAnnotation(ii.toTarget, bits, range.start, range.end) })
 
     // generate the block code once
