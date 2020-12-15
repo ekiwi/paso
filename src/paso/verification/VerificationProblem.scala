@@ -42,7 +42,7 @@ object VerificationProblem {
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)), nonCommittedInInitState(spec.name, subspecs.map(_.name)))
     val inductionStep = mc.TransitionSystem.combine("induction",
-      List(generateInductionConditions(), impl) ++ subspecs ++ List(spec, invariants) ++ startStates)
+      List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
     val inductionSuccess = check(checker, inductionStep, kMax = inductionLength, printSys = dbg.printInductionSys)
 
@@ -202,6 +202,9 @@ object VerificationProblem {
     val constraints = signals.map(s => mc.Signal(s.name + "$eq", smt.BVEqual(s, s.rename(s.name + "$o")), mc.IsConstraint))
     sys.copy(states = sys.states ++ oState, signals = sys.signals ++ constraints)
   }
+
+  private def removeInit(sys: TransitionSystem): TransitionSystem =
+    sys.copy(states = sys.states.map(_.copy(init = None)))
 
   private val reset = smt.BVSymbol("reset", 1)
   private val notReset = smt.BVSymbol("notReset", 1)
