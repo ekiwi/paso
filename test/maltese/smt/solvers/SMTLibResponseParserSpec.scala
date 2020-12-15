@@ -45,5 +45,11 @@ class SMTLibResponseParserSpec extends AnyFlatSpec {
     assert(SMTLibResponseParser.parseMemValue(in(letA1)) == expected)
   }
 
+  it should "parse a simple lambda" in {
+    val array = "(lambda ((x!1 (_ BitVec 5))) (= x!1 #b00000))"
+    val expected = Seq((None, BigInt(0)), (Some(BigInt(0)), BigInt(1)))
+    assert(SMTLibResponseParser.parseMemValue(in(array)) == expected)
+  }
+
 
 }

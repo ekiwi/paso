@@ -37,6 +37,10 @@ object SMTLibResponseParser {
     case SExprLeaf(variable) =>
       assert(ctx.contains(variable), s"Undefined variable: $variable. " + ctx.keys.mkString(", "))
       ctx(variable)
+    case SExprNode(List(SExprLeaf("lambda"), SExprNode(List(SExprNode(List(SExprLeaf(v0), indexTpe)))),
+    SExprNode(List(SExprLeaf("="), SExprLeaf(v1), SExprLeaf(indexStr))))) if v0 == v1 =>
+      // example: (lambda ((x!1 (_ BitVec 5))) (= x!1 #b00000))
+      List((None, BigInt(0)), (Some(parseBVLiteral(indexStr)), BigInt(1)))
     case other => throw new NotImplementedError(s"TODO: $value")
   }
 
