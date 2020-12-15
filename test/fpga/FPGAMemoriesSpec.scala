@@ -261,18 +261,15 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
   "Charles Eric LaForest LVT 2W4R memory" should "refine its spec" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = LVTMemory[ParallelWriteMem[SimulationMem], SimulationMem]
-    def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
-    def makeSimMem(data: MemData) = new SimulationMem(data)
-    def makeBanked(size: MemSize) = new ParallelWriteMem(size, makeSimMem1W1R, data.readPorts)
-    def makeLVTMem(size: MemSize) = new LVTMemory(size, makeBanked, makeSimMem, data.writePorts)
-    Paso(makeLVTMem(data.size))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
+    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
+    def makeLVTMem(data: MemData) = new LVTMemory(data, makeBanked, new SimulationMem(_))
+    Paso(makeLVTMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
   }
 
   "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
-    def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
-    def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
+    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
     Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCBotr, new LaForest2W4RXorInductive(_, _))
   }
@@ -280,8 +277,7 @@ class FPGAMemoriesSpec extends AnyFlatSpec {
   "Charles Eric LaForest XOR 2W4R memory" should "fail BMC" in {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
     type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
-    def makeSimMem1W1R(size: MemSize) = new SimulationMem(MemData(size, 1, 1))
-    def makeBanked(data: MemData) = new ParallelWriteMem(data.size, makeSimMem1W1R, data.readPorts)
+    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
     def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
 
     val fail = intercept[AssertionError] {

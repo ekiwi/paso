@@ -9,10 +9,15 @@
 package fpga
 
 import chisel3._
+import chisel3.experimental.{ChiselAnnotation, annotate}
 import chisel3.util._
+import firrtl.annotations.MemoryScalarInitAnnotation
 
 case class MemSize(dataType: UInt, depth: BigInt) { def addrType: UInt = UInt(log2Ceil(depth).W) }
-case class MemData(size: MemSize, readPorts: Int, writePorts: Int)
+case class MemData(size: MemSize, readPorts: Int, writePorts: Int, zeroInit: Boolean = false) {
+  require(readPorts > 0)
+  require(writePorts > 0)
+}
 class ReadPort(val d: MemSize) extends Bundle {
   val addr = Input(d.addrType)
   val data = Output(d.dataType)
@@ -28,10 +33,11 @@ class MemoryIO(val d: MemData) extends Bundle {
 abstract class FPGAMem extends Module { val io: MemoryIO ; def d: MemData = io.d }
 
 /** multiple read ports through banking */
-class ParallelWriteMem[B <: FPGAMem](size: MemSize, base: MemSize => B, factor: Int) extends FPGAMem {
-  require(factor > 0 && factor <= 32)
-  val banks = (0 until factor).map{ _ => Module(base(size)) }
-  val io = IO(new MemoryIO(MemData(size, banks.head.d.readPorts * factor, banks.head.d.writePorts)))
+class ParallelWriteMem[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem {
+  require(data.readPorts > 0 && data.readPorts <= 32)
+  val bankData = data.copy(readPorts = 1)
+  val banks = (0 until data.readPorts).map{ _ => Module(base(bankData)) }
+  val io = IO(new MemoryIO(data))
 
   // connect write ports
   banks.foreach(m => m.io.write.zip(io.write).foreach{case (a,b) => a <> b})
@@ -43,14 +49,15 @@ class ParallelWriteMem[B <: FPGAMem](size: MemSize, base: MemSize => B, factor: 
 /** Live-Value-Table based memory
  *  see: http://fpgacpu.ca/multiport/FPGA2010-LaForest-Paper.pdf
  * */
-class LVTMemory[B <: FPGAMem, L <: FPGAMem](size: MemSize, base: MemSize => B, makeLvt: MemData => L, factor: Int) extends FPGAMem {
-  require(factor > 0 && factor <= 32)
-  val banks = (0 until factor).map{ _ => Module(base(size)) }
-  val io = IO(new MemoryIO(MemData(size, banks.head.d.readPorts, banks.head.d.writePorts * factor)))
+class LVTMemory[B <: FPGAMem, L <: FPGAMem](data: MemData, base: MemData => B, makeLvt: MemData => L) extends FPGAMem {
+  val bankData = data.copy(writePorts = 1)
+  val factor = data.writePorts
+  val banks = (0 until factor).map{ _ => Module(base(bankData)) }
+  val io = IO(new MemoryIO(data))
 
   // create the live-value table
-  val lvtData = UInt(log2Ceil(factor).W)
-  val lvt = Module(makeLvt(d.copy(size=size.copy(dataType = lvtData))))
+  val lvtSize = MemSize(UInt(log2Ceil(factor).W), data.size.depth)
+  val lvt = Module(makeLvt(d.copy(size=lvtSize)))
 
   // remember addr -> bank mapping
   io.write.zip(lvt.io.write).zipWithIndex.foreach { case ((writeIn, lvtWrite), ii) =>
@@ -76,7 +83,7 @@ class LVTMemory[B <: FPGAMem, L <: FPGAMem](size: MemSize, base: MemSize => B, m
  */
 class XorMemory[B <: FPGAMem](data: MemData, base: MemData => B) extends FPGAMem {
   val readPortsPerBank = data.writePorts - 1 + data.readPorts
-  val banks = (0 until data.writePorts).map{_ => Module(base(MemData(data.size, readPortsPerBank, 1)))}
+  val banks = (0 until data.writePorts).map{_ => Module(base(MemData(data.size, readPortsPerBank, 1, zeroInit = true)))}
   val io = IO(new MemoryIO(data))
 
   // delay write ports (this is necessary because reading takes one cycle and is required for the xor to work)
@@ -125,6 +132,12 @@ class SimulationMem(data: MemData) extends FPGAMem {
   val mem = SyncReadMem(data.size.depth, data.size.dataType, SyncReadMem.WriteFirst)
   io.read.foreach(r => r.data := mem.read(r.addr))
   io.write.foreach(w => mem.write(w.addr, w.data))
+  if(data.zeroInit) {
+    annotate(new ChiselAnnotation {
+      override def toFirrtl = MemoryScalarInitAnnotation(mem.toAbsoluteTarget, 0)
+    })
+
+  }
 }
 
 object FPGAMemories {
