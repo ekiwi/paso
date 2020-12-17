@@ -81,9 +81,39 @@ object ConnectCalls {
 
     // connect submodules and instantiate them correctly
     val namespace = Namespace(mod) // important: make a namespace of the original module in order to include the original instance name
-    val newMod = connectSubmodules(namespace, mod2, info, instances, methods, nameToModule, calls)
+    val mod3 = connectSubmodules(namespace, mod2, info, instances, methods, nameToModule, calls)
+
+    // ensure that only when a single method is enabled can its state be updated
+    val newMod = exclusiveStateUpdates(namespace, mod3, info)
 
     (submods.flatMap(_._1) :+ newMod, info)
+  }
+
+  private def exclusiveStateUpdates(namespace: Namespace, mod: ir.Module, info: UntimedModuleInfo): ir.Module = {
+    // a method is enabled iff its enable signal is high while all other enable signals are low
+    def en(m: MethodInfo): ir.SubField = ir.SubField(ir.Reference(m.ioName), "enabled")
+    def not(e: ir.Expression): ir.Expression = ir.DoPrim(PrimOps.Not, List(e), List(), ir.UnknownType)
+    def and(a: ir.Expression, b: ir.Expression): ir.Expression = ir.DoPrim(PrimOps.And, List(a, b), List(), ir.UnknownType)
+    val enabledNodes = info.methods.map { m =>
+      val name = namespace.newName(m.name + "_enabled")
+      val conds = info.methods.map(m2 => if(m2.name == m.name) { en(m2) } else { not(en(m2)) })
+      ir.DefNode(ir.NoInfo, name, conds.reduce(and))
+    }
+
+    // replace references to method enables with their internal signal
+    val enMap = info.methods.zip(enabledNodes).map{ case (m, n) => m.name -> n.name }.toMap
+    val replaced = mod.mapStmt(replaceEnabled(_, enMap)).asInstanceOf[ir.Module]
+
+    val newBody = ir.Block(enabledNodes :+ replaced.body)
+    replaced.copy(body = newBody)
+  }
+
+  private def replaceEnabled(s: ir.Statement, enMap: Map[String, String]): ir.Statement =
+    s.mapExpr(replaceEnabled(_, enMap)).mapStmt(replaceEnabled(_, enMap))
+  private def replaceEnabled(e: ir.Expression, enMap: Map[String, String]): ir.Expression = e match {
+    case ir.SubField(ir.Reference(name, _, _, _), "enabled", _, _) if enMap.contains(name) =>
+      ir.Reference(enMap(name))
+    case other => other.mapExpr(replaceEnabled(_, enMap))
   }
 
   private def connectSubmodules(namespace: Namespace, mod2: ir.Module, info: UntimedModuleInfo,

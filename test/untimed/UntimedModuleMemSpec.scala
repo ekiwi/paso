@@ -52,8 +52,19 @@ class UntimedModuleMemSpec extends AnyFlatSpec {
     m.poke("read_arg", 31)
     assert(m.peek("read_ret") == 12345)
 
-    // if we have write_enabled set to 1, the values in memory should not change
+    // if we have write_enabled set to 0, the values in memory should not change
     m.poke("write_enabled", 0)
+    m.poke("write_arg_addr", 31)
+    m.poke("write_arg_data", 54321)
+    m.step()
+
+    (0 until 31).foreach{ ii => m.poke("read_arg", ii) ; assert(m.peek("read_ret") == 0) }
+    m.poke("read_arg", 31)
+    assert(m.peek("read_ret") == 12345)
+
+    // if we have write_enabled set to 1 and also read_enabled set to 1, the values in memory should not change
+    m.poke("write_enabled", 1)
+    m.poke("read_enabled", 1)
     m.poke("write_arg_addr", 31)
     m.poke("write_arg_data", 54321)
     m.step()
