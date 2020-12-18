@@ -253,6 +253,11 @@ class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean
 }
 
 class VariableLatencyExamplesSpec extends AnyFlatSpec {
+
+  "RandomLatency module" should "export to uclid" in {
+    Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(Paso.MCUclid5)
+  }
+
   "RandomLatency module" should "refine its spec" in {
     Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut => assert(!dut.running)  }

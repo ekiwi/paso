@@ -90,6 +90,7 @@ object Paso {
   val MCYices2 = ProofOptions(Yices2)
   val MCCVC4 = ProofOptions(CVC4)
   val MCZ3 = ProofOptions(Z3)
+  val MCUclid5 = ProofOptions(Uclid5)
   val Default = MCBotr
   val NoDebug = DebugOptions()
 }
@@ -99,6 +100,7 @@ case object CVC4 extends SolverName
 case object Yices2 extends SolverName
 case object Btormc extends SolverName
 case object Z3 extends SolverName
+case object Uclid5 extends SolverName
 
 case class ProofOptions(
   modelChecker: SolverName,

@@ -54,6 +54,7 @@ class Cosa2ModelChecker extends Btor2ModelChecker {
 
 abstract class Btor2ModelChecker extends IsModelChecker {
   override val name: String
+  override val fileExtension: String = ".btor2"
   protected def makeArgs(kMax: Int, inputFile: Option[String] = None): Seq[String]
   val supportsOutput: Boolean
   val supportsMultipleProperties: Boolean = true

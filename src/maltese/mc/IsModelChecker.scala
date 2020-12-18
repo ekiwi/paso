@@ -13,6 +13,7 @@ case class ModelCheckFail(witness: Witness) extends ModelCheckResult { override 
 
 trait IsModelChecker {
   val name: String
+  val fileExtension: String
   val supportsUF: Boolean = false
   val supportsQuantifiers: Boolean = false
   def check(sys: TransitionSystem, kMax: Int = -1, fileName: Option[String] = None): ModelCheckResult

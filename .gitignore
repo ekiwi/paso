@@ -23,3 +23,5 @@
 /*.btor.out
 /*.btor2.out
 /*.vcd
+/*.smt2
+/*.ucl

@@ -86,15 +86,16 @@ object VerificationProblem {
       println("      The native bindings are still missing some features.")
       new mc.SMTModelChecker(new smt.solvers.Yices2SMTLib(), printProgress = printProgress)
       //new mc.SMTModelChecker(smt.solvers.Yices2())
+    case paso.Uclid5 => mc.Uclid5PseudoMC
   }
 
   private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
-    val btorFile = sys.name + ".btor2"
+    val checkerFile = sys.name + checker.fileExtension
     val vcdFile = sys.name + ".vcd"
 
     val fullSys = if(debug.isEmpty) { sys } else { observe(sys, debug) }
     if(printSys) { println(fullSys.serialize) }
-    val res = checker.check(fullSys, kMax = kMax, fileName = Some(btorFile))
+    val res = checker.check(fullSys, kMax = kMax, fileName = Some(checkerFile))
     res match {
       case ModelCheckFail(witness) =>
         val sim = new TransitionSystemSimulator(fullSys)
