@@ -55,11 +55,13 @@ class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]
     dut.empty.expect(false.B)
     if(readDelay == 0) {
       dut.data_out.expect(out)
-      clock.step()
     } else {
-      (0 until readDelay).foreach(_ => clock.step())
+      require(readDelay >= 1)
+      clock.stepAndFork()
+      (1 until readDelay).foreach(_ => clock.step())
       dut.data_out.expect(out)
     }
+    clock.step()
   }
 
   protocol(spec.push_pop)(impl.io) { (clock, dut, in, out) =>
@@ -69,11 +71,14 @@ class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]
     dut.empty.expect(false.B)
     if(readDelay == 0) {
       dut.data_out.expect(out)
-      clock.step()
     } else {
-      (0 until readDelay).foreach(_ => clock.step())
+      require(readDelay >= 1)
+      clock.stepAndFork()
+      (1 until readDelay).foreach(_ => clock.step())
       dut.data_out.expect(out)
-    }  }
+    }
+    clock.step()
+  }
 
   protocol(spec.idle)(impl.io) { (clock, dut) =>
     dut.pop.set(false.B)
