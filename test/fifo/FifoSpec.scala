@@ -39,6 +39,7 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
 class FifoProtocols[F <: IsFifo](impl: F) extends ProtocolSpec[UntimedFifo[UInt]] {
   val spec = new UntimedFifo[UInt](impl.depth, UInt(impl.width.W))
   val readDelay = impl.readDelay
+  override val stickyInputs = false
 
   // alternative which might be nicer as it would allow us to keep all of spec constant
   protocol(spec.push)(impl.io) { (clock, dut, in) =>
