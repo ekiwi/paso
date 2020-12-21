@@ -8,57 +8,41 @@ on:
 
 jobs:
 
-  build-dependencies:
-    runs-on: ubuntu-latest
+  build-solvers:
+    runs-on: ubuntu-20.04
 
     steps:
     - uses: actions/checkout@v2
 
-    - name: cache yices
-      id: cache-yices
+    - name: Cache Solvers
+      id: cache
       uses: actions/cache@v2
       with:
-        path: ext/bin-yices
-        key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}-4
+        path: ext/bin
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/*.sh') }}-0
+
     - name: yices
-      if: steps.cache-yices.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ext
       run: ./yices.sh
 
-    - name: cache cvc4
-      id: cache-cvc4
-      uses: actions/cache@v2
-      with:
-        path: ext/bin-cvc4
-        key: ${{ runner.os }}-build-${{ hashFiles('ext/cvc4.sh') }}-3
     - name: cvc4
-      if: steps.cache-cvc4.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ext
       run: ./cvc4.sh
 
-    - name: cache btor
-      id: cache-btor
-      uses: actions/cache@v2
-      with:
-        path: ext/bin-btor
-        key: ${{ runner.os }}-build-${{ hashFiles('ext/btor.sh') }}-3
     - name: btor
-      if: steps.cache-btor.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ext
       run: ./btor.sh
 
-    - name: cache z3
-      id: cache-z3
-      uses: actions/cache@v2
-      with:
-        path: ext/bin-z3
-        key: ${{ runner.os }}-build-${{ hashFiles('ext/z3.sh') }}-3
     - name: z3
-      if: steps.cache-z3.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-hit != 'true'
       working-directory: ext
       run: ./z3.sh
 
     - name: Move Binaries to Common Dir
+      if: steps.cache.outputs.cache-hit != 'true'
       run: |
        mkdir -p ext/bin
        cp ext/bin-yices/* ext/bin/
@@ -76,7 +60,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    needs: build-dependencies
+    needs: build-solvers
 
     steps:
     - uses: actions/checkout@v2
@@ -96,7 +80,7 @@ jobs:
        echo "$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_PATH
        echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_ENV
 
-    - name: Print Dependency Versions and Paths
+    - name: Print Solver Versions and Paths
       run: |
        echo "Yices"
        yices-smt2 --version
