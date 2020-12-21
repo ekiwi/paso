@@ -6,7 +6,7 @@
 package paso.untimed
 
 import firrtl.analyses.InstanceKeyGraph
-import firrtl.analyses.InstanceKeyGraph.InstanceKey
+import firrtl.backends.experimental.smt.UninterpretedModuleAnnotation
 import firrtl.{AnnotationSeq, CircuitState, Namespace, ir}
 import firrtl.annotations._
 import maltese.mc
@@ -33,14 +33,14 @@ object UninterpretedMethods {
     }.toMap
 
     // find modules to be abstracted and replace their method implementations
-    val main = CircuitTarget(state.circuit.main).module(state.circuit.main)
+    val cRef = CircuitTarget(state.circuit.main)
+    val main = cRef.module(state.circuit.main)
     val callMap = new CallMap()
     val changedModules = run(main, state, callMap, nonDuplicateAbstracted)
 
-    // add ExtModule
+    // add ExtModule and mark them as uninterpreted
     val newModules = changedModules ++ callMap.values
-    // TODO: add UninterpretedModuleAnnotation from latest firrtl!
-    val uninterpretedAnnos = List()
+    val uninterpretedAnnos = callMap.values.map(e => UninterpretedModuleAnnotation(cRef.module(e.name), e.defname))
 
     state.copy(circuit = state.circuit.copy(modules = newModules), annotations = state.annotations ++ uninterpretedAnnos)
   }
@@ -65,7 +65,7 @@ object UninterpretedMethods {
         val mod = get(target, state)
         // find all submodules and check if they are abstract
         val submodules = InstanceKeyGraph.collectInstances(mod)
-        submodules.flatMap(i => run(target.instOf(i.name, i.module), state, map, abstracted))
+        submodules.flatMap(i => run(target.instOf(i.name, i.module), state, map, abstracted)) :+ mod
     }
   }
 
