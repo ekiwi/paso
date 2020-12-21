@@ -88,3 +88,12 @@ jobs:
 
     - name: Compile Benchmarks
       run: sbt "project benchmarks ; compile"
+
+    - name: Fifo Proofs
+      run: sbt "project benchmarks ; testOnly benchmarks.fifo.**"
+
+    - name: FPGA Memory Proofs
+      run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
+
+    - name: AES Proofs
+      run: sbt "project benchmarks ; testOnly benchmarks.aes.**"
