@@ -94,6 +94,7 @@ jobs:
       run: |
        ls $GITHUB_WORKSPACE/ext/bin/
        echo "$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_PATH
+       echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_ENV
 
     - name: Print Dependency Versions and Paths
       run: |
