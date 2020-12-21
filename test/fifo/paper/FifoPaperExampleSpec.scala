@@ -50,14 +50,14 @@ class FifoT(val depth: Int) extends UntimedModule {
 
   val push = fun("push").in(UInt(32.W)).when(!full)
   { in =>
-    mem(read + count) := in
+    mem.write(read + count, in)
     count := count + 1.U
   }
   val pop = fun("pop").out(Valid(UInt(32.W))) { out =>
     when(empty) {
       out.valid := false.B
     } .otherwise {
-      out.bits := mem(read)
+      out.bits := mem.read(read)
       out.valid := true.B
       count := count - 1.U
       read := read + 1.U
@@ -117,7 +117,7 @@ class FifoPaperExampleSpec extends AnyFlatSpec {
     Paso(new Fifo(8))(new FifoP(_)).proof(Paso.MCZ3, new FifoI(_, _))
   }
 
-  "Fifo" should "bmc" in {
-    Paso(new Fifo(8))(new FifoP(_)).bmc(10)
+  "Fifo" should "pass bmc" in {
+    Paso(new Fifo(8))(new FifoP(_)).bmc(6)
   }
 }
