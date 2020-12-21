@@ -412,7 +412,8 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
   }
 
   "A pipelined 32-bit mac with abstract adder and subspec with bug" should "fail" in {
-    assertThrows[AssertionError] {
+    // TODO: once the witness generation for UFs is implemented, this should be changed to an AssertionError
+    assertThrows[NotImplementedError] {
       Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_, _) {
         replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
       }).proof(Paso.MCYices2)
