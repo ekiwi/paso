@@ -6,7 +6,7 @@ package maltese.smt.solvers
 
 
 object SMTLibResponseParser {
-  def parseValue(v: String): BigInt = {
+  def parseValue(v: String): Option[BigInt] = {
     val tree = SExprParser.parse(v)
     tree match {
       case SExprNode(List(SExprNode(List(_, SExprLeaf(valueStr))))) => parseBVLiteral(valueStr)
@@ -27,10 +27,10 @@ object SMTLibResponseParser {
   private def parseMem(value: SExpr, ctx: Map[String, MemInit]): MemInit = value match {
     case SExprNode(List(SExprNode(List(SExprLeaf("as"), SExprLeaf("const"), tpe)), SExprLeaf(valueStr))) =>
       // initialize complete memory to value
-      List((None, parseBVLiteral(valueStr)))
+      List((None, parseBVLiteral(valueStr).get))
     case SExprNode(List(SExprLeaf("store"), array, SExprLeaf(indexStr), SExprLeaf(valueStr))) =>
       val (index, value) = (parseBVLiteral(indexStr), parseBVLiteral(valueStr))
-      parseMem(array, ctx) :+ (Some(index), value)
+      parseMem(array, ctx) :+ (Some(index.get), value.get)
     case SExprNode(List(SExprLeaf("let"), SExprNode(List(SExprNode(List(SExprLeaf(variable), array0)))), array1)) =>
       val newCtx = ctx ++ Seq(variable -> parseMem(array0, ctx))
       parseMem(array1, newCtx)
@@ -40,15 +40,16 @@ object SMTLibResponseParser {
     case SExprNode(List(SExprLeaf("lambda"), SExprNode(List(SExprNode(List(SExprLeaf(v0), indexTpe)))),
     SExprNode(List(SExprLeaf("="), SExprLeaf(v1), SExprLeaf(indexStr))))) if v0 == v1 =>
       // example: (lambda ((x!1 (_ BitVec 5))) (= x!1 #b00000))
-      List((None, BigInt(0)), (Some(parseBVLiteral(indexStr)), BigInt(1)))
+      List((None, BigInt(0)), (Some(parseBVLiteral(indexStr).get), BigInt(1)))
     case other => throw new NotImplementedError(s"TODO: $value")
   }
 
-  private def parseBVLiteral(valueStr: String): BigInt = {
-    if(valueStr == "true") { BigInt(1) }
-    else if(valueStr == "false") { BigInt(0) }
-    else if(valueStr.startsWith("#b")) { BigInt(valueStr.drop(2), 2) }
-    else if(valueStr.startsWith("#x")) { BigInt(valueStr.drop(2), 16) }
+  private def parseBVLiteral(valueStr: String): Option[BigInt] = {
+    if(valueStr == "true") { Some(BigInt(1)) }
+    else if(valueStr == "false") { Some(BigInt(0)) }
+    else if(valueStr == "???") { None }
+    else if(valueStr.startsWith("#b")) { Some(BigInt(valueStr.drop(2), 2)) }
+    else if(valueStr.startsWith("#x")) { Some(BigInt(valueStr.drop(2), 16)) }
     else {
       throw new NotImplementedError(s"Unsupported number format: $valueStr")
     }

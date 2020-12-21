@@ -114,8 +114,10 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     // btor2 numbers states in the order that they are declared in starting at zero
     val stateInit = sys.states.zipWithIndex.map {
       case (State(sym: smt.BVSymbol, _, _), ii) =>
-        val value = solver.getValue(enc.getSignalAt(sym, 0)).get
-        (Some(ii -> value), None)
+        solver.getValue(enc.getSignalAt(sym, 0)) match {
+          case Some(value) => (Some(ii -> value), None)
+          case None => (None, None)
+        }
       case (State(sym: smt.ArraySymbol, _, _), ii) =>
         val value = solver.getValue(enc.getSignalAt(sym, 0))
         (None, Some(ii -> value))
@@ -125,9 +127,8 @@ class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = 
     val memInit = stateInit.flatMap(_._2).toMap
 
     val inputs = (0 to kMax).map { k =>
-      sys.inputs.zipWithIndex.map { case (input, i) =>
-        val value = solver.getValue(enc.getSignalAt(input, k)).get
-        i -> value
+      sys.inputs.zipWithIndex.flatMap { case (input, i) =>
+        solver.getValue(enc.getSignalAt(input, k)).map(value => i -> value)
       }.toMap
     }
 

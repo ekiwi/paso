@@ -5,7 +5,8 @@
 package maltese.mc
 
 import maltese.smt
-import treadle.vcd
+import maltese.smt.BVSymbol
+import treadle.{random, vcd}
 
 import scala.collection.mutable
 
@@ -135,7 +136,12 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         // init register
         val value = state.init match {
           case Some(init) => eval(init.asInstanceOf[smt.BVExpr])
-          case None => regInit(ii)
+          case None => regInit.get(ii) match {
+            case Some(value) => value
+            case None =>
+              println(s"WARN: Initial value for ${state.sym} ($ii) is missing!")
+              randomBits(state.sym.asInstanceOf[BVSymbol].width)
+          }
         }
         data(bvNameToIndex(state.name)) = value
       }

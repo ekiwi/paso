@@ -60,7 +60,7 @@ abstract class SMTLibSolver(cmd: List[String]) extends Solver {
     val cmd = s"(get-value (${serialize(e)}))"
     writeCommand(cmd)
     readResponse() match {
-      case Some(strModel) => Some(SMTLibResponseParser.parseValue(strModel.trim))
+      case Some(strModel) => SMTLibResponseParser.parseValue(strModel.trim)
       case None => throw new RuntimeException(s"Solver ${name} did not reply to $cmd")
     }
   }
