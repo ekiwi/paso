@@ -2,7 +2,11 @@ val basicSettings = Seq(
   name := "paso",
   organization := "edu.berkeley.cs",
   scalaVersion := "2.12.10",
+)
+
+val directoryLayout = Seq(
   scalaSource in Compile := baseDirectory.value / "src",
+  resourceDirectory in Compile := baseDirectory.value / "src" / "resources",
   scalaSource in Test := baseDirectory.value / "test",
   resourceDirectory in Test := baseDirectory.value / "test" / "resources",
 )
@@ -26,13 +30,16 @@ val chiselSettings = Seq(
 )
 
 val otherDependencySettings = Seq(
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test",
-  // libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.5-SNAPSHOT" % "test",
   // treadle is used for concrete exectuion of untimed modules
   libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.5-SNAPSHOT",
   // JNA for SMT Solver bindings
   libraryDependencies += "net.java.dev.jna" % "jna" % "5.4.0",
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
+)
+
+val testDependencySettings = Seq(
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test",
+  // libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.5-SNAPSHOT" % "test",
 )
 
 val ghrealm = "GitHub Package Registry"
@@ -67,8 +74,10 @@ lazy val pubSettings = Seq(
 
 lazy val paso = (project in file("."))
   .settings(basicSettings)
+  .settings(directoryLayout)
   .settings(versionSettings)
   .settings(chiselSettings)
+  .settings(testDependencySettings)
   .settings(otherDependencySettings)
   .settings(pubSettings)
   .settings(
@@ -78,9 +87,14 @@ lazy val paso = (project in file("."))
 
 lazy val benchmarks = (project in file("benchmarks"))
   .dependsOn(paso)
+  .settings(directoryLayout)
   .settings(chiselSettings)
+  .settings(testDependencySettings)
   .settings(
-    scalaSource in Compile := baseDirectory.value / "src",
     assemblyJarName in assembly := "paso-benchmarks.jar",
     test in assembly := {},
+  )
+  .settings(
+    // execute test in serial for now to avoid race conditions on shared files like test.btor
+    parallelExecution := false,
   )
