@@ -141,6 +141,7 @@ private class Btor2Serializer private () {
         line(s"init $tpeId $state $eId")
         state
       })
+    case f : ArrayFunctionCall => throw new RuntimeException(s"The btor2 format does not support uninterpreted functions that return arrays!: $f")
   }
   private val arrayConstants = mutable.HashMap[String, Int]()
 
