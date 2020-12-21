@@ -13,13 +13,15 @@ class AESTableLookup extends UntimedModule with AESHelperFunctions {
 }
 class TinyAESTableLookupProtocol(impl: TableLookup) extends ProtocolSpec[AESTableLookup] {
   val spec = new AESTableLookup
+  override val stickyInputs = false
   protocol(spec.lookup)(impl.io) { (clock, dut, in, out) =>
     dut.state.poke(in)
-    clock.step()
+    clock.stepAndFork()
     dut.p(0).expect(out(0))
     dut.p(1).expect(out(1))
     dut.p(2).expect(out(2))
     dut.p(3).expect(out(3))
+    clock.step()
   }
 }
 
@@ -53,6 +55,7 @@ class TinyAES128Debug extends Module {
 
 class TinyAESDebugProtocol(impl: TinyAES128Debug) extends ProtocolSpec[AES128DebugSpec] {
   val spec = new AES128DebugSpec
+  override val stickyInputs = false
 
   protocol(spec.aes128)(impl.io) { (clock, dut, in, out) =>
     // apply state and key for one cycle
@@ -66,6 +69,7 @@ class TinyAESDebugProtocol(impl: TinyAES128Debug) extends ProtocolSpec[AES128Deb
     clock.step()
 
     dut.out.expect(out)
+    clock.step()
   }
 }
 
@@ -87,6 +91,7 @@ class TinyAES128DebugJustOneRound extends Module {
 
 class TinyAESDebugJustOneRoundProtocol(impl: TinyAES128DebugJustOneRound) extends ProtocolSpec[AES128DebugJustOneRoundSpec] {
   val spec = new AES128DebugJustOneRoundSpec
+  override val stickyInputs = false
 
   protocol(spec.aes128)(impl.io) { (clock, dut, in, out) =>
     dut.state.poke(in.state)
@@ -96,6 +101,7 @@ class TinyAESDebugJustOneRoundProtocol(impl: TinyAES128DebugJustOneRound) extend
     clock.step()
     dut.key.poke(DontCare)
     dut.out.expect(out)
+    clock.step()
   }
 }
 
