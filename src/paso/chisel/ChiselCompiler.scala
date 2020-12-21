@@ -9,6 +9,7 @@ import chisel3.stage._
 import chisel3.stage.phases.Convert
 import firrtl.annotations.Annotation
 import firrtl.stage.{FirrtlCircuitAnnotation, Forms, TransformManager}
+import logger.{LogLevel, LogLevelAnnotation, Logger}
 
 /** Allows programmatic access to the Builder elaboration and the Converter to Firrtl */
 object ChiselCompiler {
@@ -16,7 +17,7 @@ object ChiselCompiler {
   def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
     // run Builder.build(Module(gen()))
     val genAnno = ChiselGeneratorAnnotation(gen)
-    val elaborationAnnos = genAnno.elaborate
+    val elaborationAnnos = Logger.makeScope(Seq(LogLevelAnnotation(LogLevel.Error))) { genAnno.elaborate }
 
     // extract elaborated module
     val dut = elaborationAnnos.collectFirst{ case DesignAnnotation(d) => d}.get

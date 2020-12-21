@@ -11,7 +11,7 @@ import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.{AnnotationSeq, CircuitState, ir}
-import logger.LogLevel
+import logger.{LogLevel, LogLevelAnnotation, Logger}
 import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
 import paso.chisel.passes._
@@ -29,7 +29,7 @@ case class Elaboration(dbg: DebugOptions) {
   }
 
   private def elaborateObserver(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference]) = {
-    val r = ElaborateObserver(observing, name, gen)
+    val r = Logger.makeScope(Seq(LogLevelAnnotation(LogLevel.Error))) { ElaborateObserver(observing, name, gen) }
     r
   }
 
