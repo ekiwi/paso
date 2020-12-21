@@ -25,8 +25,5 @@ make -j`nproc`
 
 # copy
 cd ..
-mv yices2-Yices-2.6.2/build/x86_64-pc-linux-gnu-release/bin/ bin-yices/
-
-# rename
-cd bin-yices
-mv yices_smt2 yices-smt2
+mv yices2-Yices-2.6.2/build/x86_64-pc-linux-gnu-release/dist/bin/ bin-yices/
+mv yices2-Yices-2.6.2/build/x86_64-pc-linux-gnu-release/dist/lib/ lib-yices/
