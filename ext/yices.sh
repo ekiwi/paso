@@ -27,3 +27,6 @@ make -j`nproc`
 cd ..
 mv yices2-Yices-2.6.2/build/x86_64-pc-linux-gnu-release/dist/bin/ bin-yices/
 mv yices2-Yices-2.6.2/build/x86_64-pc-linux-gnu-release/dist/lib/ lib-yices/
+
+# rename shared object
+mv lib-yices/libyices.so.2* lib-yices/libyices.so
