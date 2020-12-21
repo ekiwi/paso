@@ -73,39 +73,6 @@ class TinyAESDebugProtocol(impl: TinyAES128Debug) extends ProtocolSpec[AES128Deb
   }
 }
 
-
-class AES128DebugJustOneRoundSpec extends UntimedModule with AESHelperFunctions {
-  val round = UntimedModule(new AESRoundSpec)
-  val aes128 = fun("aes128").in(new RoundIn).out(UInt(128.W)) { (in, out) =>
-    out := round.round(in)
-  }
-}
-
-
-class TinyAES128DebugJustOneRound extends Module {
-  val io = IO(new TinyAES128IO)
-  val s1 = Wire(UInt(128.W))
-  val r1 = OneRound(io.state, io.key, s1)
-  io.out := s1
-}
-
-class TinyAESDebugJustOneRoundProtocol(impl: TinyAES128DebugJustOneRound) extends ProtocolSpec[AES128DebugJustOneRoundSpec] {
-  val spec = new AES128DebugJustOneRoundSpec
-  override val stickyInputs = false
-
-  protocol(spec.aes128)(impl.io) { (clock, dut, in, out) =>
-    dut.state.poke(in.state)
-    clock.stepAndFork()
-    dut.state.poke(DontCare)
-    dut.key.poke(in.key)
-    clock.step()
-    dut.key.poke(DontCare)
-    dut.out.expect(out)
-    clock.step()
-  }
-}
-
-
 class TinyAESOtherSpec extends AnyFlatSpec {
   // this was used to hunt down a bug in our spec by breaking it into smaller pieces
   "TinyAES TableLookup" should "refine its spec" in {
@@ -117,9 +84,5 @@ class TinyAESOtherSpec extends AnyFlatSpec {
       replace(impl.r1)(new TinyAESRoundProtocol(_)).bind(spec.round)
       replace(impl.a1)(new TinyAESExpandKeyProtocol(_)).bind(spec.expand)
     }).proof(Paso.MCYices2)
-  }
-
-  "TinyAES128DebugJustOneRound" should "correctly connect all submodules" in {
-    Paso(new TinyAES128DebugJustOneRound)(new TinyAESDebugJustOneRoundProtocol(_)).proof(Paso.MCYices2)
   }
 }
