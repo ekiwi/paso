@@ -17,19 +17,19 @@ class UntimedFifo[G <: Data](val depth: Int, val dataType: G) extends UntimedMod
   val empty = count === 0.U
 
   val push = fun("push").in(dataType).when(!full) { in =>
-    mem(read + count) := in
+    mem.write(read + count, in)
     count := count + 1.U
   }
 
   val pop = fun("pop").out(dataType).when(!empty) { out =>
-    out := mem(read)
+    out := mem.read(read)
     count := count - 1.U
     read := read + 1.U
   }
 
   val push_pop = fun("push_pop").in(dataType).out(dataType).when(!empty) { (in, out) =>
-    mem(read + count) :=  in
-    out := mem(read)
+    mem.write(read + count,  in)
+    out := mem.read(read)
     read := read + 1.U
   }
 
