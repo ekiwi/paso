@@ -16,7 +16,7 @@ jobs:
 
     - name: cache yices
       id: cache-yices
-      uses: actions/cache@v1
+      uses: actions/cache@v2
       with:
         path: ext/bin-yices
         key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}-4
@@ -27,7 +27,7 @@ jobs:
 
     - name: cache cvc4
       id: cache-cvc4
-      uses: actions/cache@v1
+      uses: actions/cache@v2
       with:
         path: ext/bin-cvc4
         key: ${{ runner.os }}-build-${{ hashFiles('ext/cvc4.sh') }}-3
@@ -38,7 +38,7 @@ jobs:
 
     - name: cache btor
       id: cache-btor
-      uses: actions/cache@v1
+      uses: actions/cache@v2
       with:
         path: ext/bin-btor
         key: ${{ runner.os }}-build-${{ hashFiles('ext/btor.sh') }}-3
@@ -49,7 +49,7 @@ jobs:
 
     - name: cache z3
       id: cache-z3
-      uses: actions/cache@v1
+      uses: actions/cache@v2
       with:
         path: ext/bin-z3
         key: ${{ runner.os }}-build-${{ hashFiles('ext/z3.sh') }}-3
