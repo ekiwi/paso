@@ -1,5 +1,6 @@
 package fifo.paper
 
+/*
 import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
@@ -221,3 +222,4 @@ class FifoPaperExampleUnitTest extends AnyFlatSpec with ChiselScalatestTester {
     choices(index)
   }
 }
+*/

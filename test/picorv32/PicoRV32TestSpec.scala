@@ -1,5 +1,6 @@
 package picorv32
 
+/*
 import chisel3._
 import chiseltest._
 import chiseltest.experimental.TestOptionBuilder._
@@ -138,3 +139,4 @@ class PicoRV32TestSpec extends AnyFlatSpec with ChiselScalatestTester {
   quickRegressionsTests.foreach(declareAndRunTest)
   // allTests.foreach(declareAndRunTest)
 }
+*/
