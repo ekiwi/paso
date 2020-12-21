@@ -19,7 +19,7 @@ jobs:
       uses: actions/cache@v1
       with:
         path: ext/bin-yices
-        key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}-3
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/yices.sh') }}-4
     - name: yices
       if: steps.cache-yices.outputs.cache-hit != 'true'
       working-directory: ext
