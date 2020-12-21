@@ -72,6 +72,7 @@ object ExpressionConverter {
     case BVIte(cond, tru, fals) => m.BVIte(toMaltese(cond), toMaltese(tru), toMaltese(fals))
     case ArrayEqual(a, b) => m.ArrayEqual(toMaltese(a), toMaltese(b))
     case BVRawExpr(serialized, _) => throw new NotImplementedError(s"Unsupported RawExpr: $serialized")
+    case BVFunctionCall(name, args, width) => m.BVFunctionCall(name, args.map(toMaltese), width)
   }
 
   private def implies(a: BVExpr, b: BVExpr): BVExpr = BVOp(Op.Or, BVNot(a), b)
