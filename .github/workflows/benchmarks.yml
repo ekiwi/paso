@@ -1,0 +1,90 @@
+name: Paso Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-20.04
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Cache Solvers
+      id: cache
+      uses: actions/cache@v2
+      with:
+        path: ext/bin
+        key: ${{ runner.os }}-build-${{ hashFiles('ext/*.sh') }}-0
+
+    - name: yices
+      if: steps.cache.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./yices.sh
+
+    - name: cvc4
+      if: steps.cache.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./cvc4.sh
+
+    - name: btor
+      if: steps.cache.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./btor.sh
+
+    - name: z3
+      if: steps.cache.outputs.cache-hit != 'true'
+      working-directory: ext
+      run: ./z3.sh
+
+    - name: Move Binaries to Common Dir
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+       mkdir -p ext/bin
+       cp ext/bin-yices/* ext/bin/
+       cp ext/lib-yices/* ext/bin/
+       cp ext/bin-cvc4/*  ext/bin/
+       cp ext/bin-btor/*  ext/bin/
+       cp ext/bin-z3/*    ext/bin/
+       ls ext/bin/
+
+    - name: Make Binaries Executable
+      run: chmod +x $GITHUB_WORKSPACE/ext/bin/*
+
+    - name: Add Binaries To Path
+      run: |
+       ls $GITHUB_WORKSPACE/ext/bin/
+       echo "$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_PATH
+       echo "LD_LIBRARY_PATH=$GITHUB_WORKSPACE/ext/bin/" >> $GITHUB_ENV
+
+    - name: Print Solver Versions and Paths
+      run: |
+       echo "Yices"
+       yices-smt2 --version
+       which yices-smt2
+       echo ""
+       echo "CVC4"
+       cvc4 --version
+       which cvc4
+       echo ""
+       echo "Btormc"
+       btormc --version --copyright
+       which btormc
+       echo ""
+       echo "Z3"
+       z3 --version
+       which z3
+
+    - name: Install Scala
+      uses: olafurpg/setup-scala@v10
+      with:
+        java-version: openjdk@1.11
+
+    - name: Compile Paso
+      run: sbt compile
+
+    - name: Compile Benchmarks
+      run: sbt "project benchmarks ; compile"
