@@ -6,8 +6,8 @@ rm -rf cvc4-*
 rm -f cvc4
 
 # download
-wget https://github.com/CVC4/CVC4/releases/download/1.7/cvc4-1.7-x86_64-linux-opt
-mv cvc4-1.7-x86_64-linux-opt cvc4
+wget https://github.com/CVC4/CVC4/releases/download/1.8/cvc4-1.8-x86_64-linux-opt
+mv cvc4-1.8-x86_64-linux-opt cvc4
 chmod +x cvc4
 
 # test
