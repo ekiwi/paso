@@ -90,10 +90,13 @@ jobs:
       run: sbt "project benchmarks ; compile"
 
     - name: Fifo Proofs
+      timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.fifo.**"
 
     - name: FPGA Memory Proofs
+      timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
 
     - name: AES Proofs
+      timeout-minutes: 15
       run: sbt "project benchmarks ; testOnly benchmarks.aes.**"

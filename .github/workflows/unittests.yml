@@ -83,5 +83,9 @@ jobs:
       with:
         java-version: openjdk@1.11
 
+    - name: Compile Paso
+      run: sbt compile
+
     - name: Run Unittests
+      timeout-minutes: 3
       run: sbt test
