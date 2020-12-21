@@ -2,11 +2,10 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package fpga
+package benchmarks.fpga
 
 import chisel3._
 import chisel3.util._
-import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 // NOTE: while the spec is currently hard coded for a certain number of read and write ports, one
@@ -240,60 +239,5 @@ class LaForest2W4RXorInductive(impl: XorMemory[ParallelWriteMem[SimulationMem]],
         }
         */
     }
-  }
-}
-
-class FPGAMemoriesSpec extends AnyFlatSpec {
-  "SimulationMemory with 1 Read, 1 Write Port" should "pass bmc" in {
-    val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).bmc(4)
-  }
-
-  "SimulationMemory with 1 Read, 1 Write Port" should "refine its spec" in {
-    val data = MemData(MemSize(UInt(32.W), 32), 1, 1)
-    Paso(new SimulationMem(data))(new Mem1W1RProtocol(_)).proof(Paso.MCZ3, new ProofCollateral(_, _){
-      mapping { (impl, spec) =>
-        forall(0 until impl.d.size.depth.toInt){ ii =>
-          when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
-        }
-      }
-    })
-  }
-
-  "Charles Eric LaForest LVT 2W4R memory" should "refine its spec" in {
-    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    type ImplMem = LVTMemory[ParallelWriteMem[SimulationMem], SimulationMem]
-    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
-    def makeLVTMem(data: MemData) = new LVTMemory(data, makeBanked, new SimulationMem(_))
-    Paso(makeLVTMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
-  }
-
-  // TODO: while we believe that the memory should be correct, we are missing the correct invariant
-  "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
-    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
-    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
-    def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RXorInductive(_, _))
-  }
-
-  "Charles Eric LaForest XOR 2W4R memory" should "pass BMC" in {
-    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    type ImplMem = XorMemory[ParallelWriteMem[SimulationMem]]
-    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
-    def makeXorMem(data: MemData) = new XorMemory(data, makeBanked)
-
-    Paso(makeXorMem(data))(new Mem2W4RProtocol(_)).bmc(4)
-  }
-
-  "SimulationMemory with 4 Read, 3 Write Port" should "refine its spec" in {
-    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
-    Paso(new SimulationMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCCVC4, new ProofCollateral(_, _){
-      mapping { (impl, spec) =>
-        forall(0 until impl.d.size.depth.toInt){ ii =>
-          when(spec.valid(ii)) { assert(spec.mem(ii) === impl.mem(ii)) }
-        }
-      }
-    })
   }
 }

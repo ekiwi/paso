@@ -1,7 +1,6 @@
-package picorv32
+package benchmarks.picorv32
 
 import chisel3._
-import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 
 
@@ -54,17 +53,4 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
   protocol(spec.mulh)(impl.io) { (clock, dut, in, out) =>   mulProtocol(dut, clock, MULH, in.a, in.b, out) }
   protocol(spec.mulhu)(impl.io) { (clock, dut, in, out) =>  mulProtocol(dut, clock, MULHU, in.a, in.b, out) }
   protocol(spec.mulhsu)(impl.io) { (clock, dut, in, out) => mulProtocol(dut, clock, MULHSU, in.a, in.b, out) }
-}
-
-class PicoRV32Spec extends AnyFlatSpec {
-  "PicoRV32Mul" should "refine its spec" in {
-    Paso(new PicoRV32Mul())(new MulProtocols(_)).proof(new ProofCollateral(_, _){
-      invariants { dut =>
-        assert(dut.mulWaiting)
-        assert(!dut.mulFinishDelay)
-        assert(!dut.mulFinish)
-        assert(!dut.doWait)
-      }
-    })
-  }
 }

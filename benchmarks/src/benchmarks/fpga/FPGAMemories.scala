@@ -6,7 +6,7 @@
 // as described by Charles Eric LaForest, University of Toronto.
 // see: http://fpgacpu.ca/multiport/ and http://fpgacpu.ca/multiport/Multiported-Memory-Example-Code/
 
-package fpga
+package benchmarks.fpga
 
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, annotate}

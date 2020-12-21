@@ -1,4 +1,4 @@
-package fifo.paper
+package benchmarks.fifo.paper
 
 /*
 import chisel3._

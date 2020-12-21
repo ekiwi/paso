@@ -1,4 +1,4 @@
-package picorv32
+package benchmarks.picorv32
 
 /*
 import chisel3._

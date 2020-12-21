@@ -3,7 +3,7 @@
 
 // source : https://github.com/freechipsproject/ip-contributions/blob/master/src/main/scala/chisel/lib/fifo/
 
-package fifo
+package benchmarks.fifo
 
 import chisel3._
 import chisel3.util._

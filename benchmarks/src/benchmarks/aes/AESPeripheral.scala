@@ -1,8 +1,8 @@
-package aes
+package benchmarks.aes
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental.ChiselEnum
+import chisel3.util._
 
 // this is a Chisel reimplementation of the `aes_top` module from the
 // following ILA example:

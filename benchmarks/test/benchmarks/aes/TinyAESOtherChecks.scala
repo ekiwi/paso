@@ -1,4 +1,4 @@
-package aes
+package benchmarks.aes
 
 import chisel3._
 import org.scalatest.flatspec.AnyFlatSpec

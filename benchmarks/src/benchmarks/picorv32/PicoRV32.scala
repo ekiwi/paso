@@ -1,7 +1,7 @@
 // rewrite of some parts of picorv32 in Chisel
 // the original project can be found at https://github.com/cliffordwolf/picorv32
 
-package picorv32
+package benchmarks.picorv32
 
 import chisel3._
 import chisel3.util._
