@@ -98,5 +98,5 @@ jobs:
       run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
 
     - name: AES Proofs
-      timeout-minutes: 15
+      timeout-minutes: 30
       run: sbt "project benchmarks ; testOnly benchmarks.aes.**"
