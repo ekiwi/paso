@@ -18,6 +18,7 @@ object SMTModelCheckerOptions {
 /** SMT based bounded model checking as an alternative to dispatching to a btor2 based external solver */
 class SMTModelChecker(val solver: smt.Solver, options: SMTModelCheckerOptions = SMTModelCheckerOptions.Performance, printProgress: Boolean = false) extends IsModelChecker {
   override val name: String = "SMTModelChecker with " + solver.name
+  override val prefix: String = solver.name
   override val fileExtension: String = ".smt2"
   override val supportsUF: Boolean = true
   override val supportsQuantifiers: Boolean = solver.supportsQuantifiers

@@ -13,6 +13,7 @@ import scala.sys.process._
 class BtormcModelChecker extends Btor2ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "btormc"
+  override val prefix: String = "btormc"
   override val supportsOutput: Boolean = false
   override protected def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {
     val prefix = if(kMax > 0) Seq("btormc", s"--kmax $kMax") else Seq("btormc")
@@ -30,6 +31,7 @@ class BtormcModelChecker extends Btor2ModelChecker {
 class Cosa2ModelChecker extends Btor2ModelChecker {
   // TODO: check to make sure binary exists
   override val name: String = "cosa2"
+  override val prefix: String = "btormc"
   override val supportsOutput: Boolean = true
   override val supportsMultipleProperties: Boolean = false
   override protected def makeArgs(kMax: Int, inputFile: Option[String]): Seq[String] = {

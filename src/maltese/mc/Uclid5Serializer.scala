@@ -22,6 +22,7 @@ object Uclid5Serializer {
 /** Doesn't actually call uclid, just generates the files. */
 object Uclid5PseudoMC extends IsModelChecker {
   override val name = "Uclid5 Backend"
+  override val prefix: String = "uclid"
   override val fileExtension: String = ".ucl"
 
   override def check(sys: TransitionSystem, kMax: Int, fileName: Option[String]): ModelCheckResult = {
