@@ -16,7 +16,7 @@ class ChiselQueueProofs extends AnyFlatSpec {
   }
 
   val defaultWidth = 8
-  val depths = List(1,2,4)
+  val depths = List(1,2,3,4)
   val configs =
     List(false, true).flatMap { pipe =>
       List(false, true).flatMap { flow =>

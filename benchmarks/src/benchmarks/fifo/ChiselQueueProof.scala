@@ -7,16 +7,20 @@ import paso._
 
 class UntimedQueue[G <: Data](val depth: Int, val dataType: G, val pushPopWhenEmpty: Boolean, val pushPopWhenFull: Boolean) extends UntimedModule {
   require(depth > 0)
-  require(isPow2(depth))
   val mem = Mem(depth, dataType)
   val count = RegInit(UInt((log2Ceil(depth) + 1).W), 0.U)
   val read = RegInit(UInt(log2Ceil(depth).W), 0.U)
   val full = count === depth.U
   val empty = count === 0.U
 
+  // counter wrapping logic
+  private def inc(c: UInt, max: Int = depth): Unit = { c := Mux(c === max.U, 0.U, c + 1.U) }
+  private def dec(c: UInt, max: Int = depth): Unit = { c := Mux(c === 0.U, max.U, c - 1.U) }
+  private def addWrap(a: UInt, b: UInt): UInt = Mux(a + b >= depth.U, (a + b - depth.U), a + b)
+
   val push = fun("push").in(dataType).out(new PushOut(chiselTypeOf(count))).when(!full) { (dataIn, out) =>
-    mem.write(read + count, dataIn)
-    count := count + 1.U
+    mem.write(addWrap(read, count), dataIn)
+    inc(count)
     out.count := count
     out.empty := empty
   }
@@ -25,8 +29,8 @@ class UntimedQueue[G <: Data](val depth: Int, val dataType: G, val pushPopWhenEm
     out.data := mem.read(read)
     out.count := count
     out.full := full
-    count := count - 1.U
-    read := read + 1.U
+    dec(count)
+    inc(read, max=depth - 1)
   }
 
   val pushPopGuard = (if(pushPopWhenEmpty) true.B else !empty) && (if(pushPopWhenFull) true.B else !full)
@@ -35,10 +39,10 @@ class UntimedQueue[G <: Data](val depth: Int, val dataType: G, val pushPopWhenEm
     when(empty) {
       out.data := in
     }.otherwise {
-      mem.write(read + count,  in)
+      mem.write(addWrap(read, count),  in)
       out.data := mem.read(read)
     }
-    read := read + 1.U
+    inc(read, max=depth - 1)
     out.count := count
     out.full := full
   }
