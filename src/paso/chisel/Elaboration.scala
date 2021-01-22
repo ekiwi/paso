@@ -19,7 +19,7 @@ import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, Proto
 import paso.verification.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter}
 import paso.untimed.AbstractModuleAnnotation
 
 case class Elaboration(dbg: DebugOptions) {
@@ -98,7 +98,9 @@ case class Elaboration(dbg: DebugOptions) {
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
     val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
-    ProtocolGraph.encode(paths)
+    val graph = ProtocolGraph.encode(paths)
+    // ProtocolVisualization.showDot(graph)
+    graph
   }
 
   private def compileImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
