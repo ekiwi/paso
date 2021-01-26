@@ -4,7 +4,7 @@
 
 package paso.chisel
 
-import chisel3.{MultiIOModule, RawModule}
+import chisel3.{Module, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
 import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.Dependency
@@ -91,7 +91,7 @@ case class Elaboration(dbg: DebugOptions) {
 
   private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
     //println(s"Protocol for: ${p.methodName}")
-    val (state, _) = elaborate(() => new MultiIOModule() {
+    val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
       override def desiredName: String = circuitName
       proto.generate(clock)

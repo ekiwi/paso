@@ -38,7 +38,7 @@ class VariableLatencyIO extends Bundle {
   val dataOut = Output(UInt(32.W))
 }
 
-abstract class VariableLatencyModule extends MultiIOModule {
+abstract class VariableLatencyModule extends Module {
   val io = IO(new VariableLatencyIO)
 }
 
@@ -143,10 +143,10 @@ class ConstLatencyIO extends Bundle {
   val dataOut = Output(UInt(64.W))
 }
 
-trait IsConstLatency extends MultiIOModule { val io : ConstLatencyIO ; val latency : Int }
+trait IsConstLatency extends Module { val io : ConstLatencyIO ; val latency : Int }
 
 // this module employs two buffers to save the results from the two variable latency units
-class VariableLatencyToConst extends MultiIOModule with IsConstLatency {
+class VariableLatencyToConst extends Module with IsConstLatency {
   val io = IO(new ConstLatencyIO)
   val latency = 4
 
@@ -172,7 +172,7 @@ class VariableLatencyToConst extends MultiIOModule with IsConstLatency {
 }
 
 // this module does not need any memory since it relies on its sub modules to keep their last output constant
-class VariableLatencyKeepToConst extends MultiIOModule with IsConstLatency {
+class VariableLatencyKeepToConst extends Module with IsConstLatency {
   val io = IO(new ConstLatencyIO)
   val latency = 4
 

@@ -103,7 +103,7 @@ class FixNamings(val topLevelModules: Set[String], namespace: Namespace) {
 }
 
 abstract class ObservingModule private[chisel3](observing: Iterable[RawModule], name: String)
-                                               (implicit moduleCompileOptions: CompileOptions) extends MultiIOModule {
+                                               (implicit moduleCompileOptions: CompileOptions) extends Module {
   // we want to be able to not only observe the top-level module, but also all of their child modules
   private def addAspect(m : BaseModule): Unit = {
     Builder.addAspect(m, this)
