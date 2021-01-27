@@ -55,25 +55,28 @@ object ProtocolVisualization {
       |""".stripMargin
   }
 
-  private def serialize(a: UAction): String = implies(a.guard, a.name)
+  private def serialize(a: UAction): String = {
+    val noQuotes = a.name.replace("\"", "")
+    implies(a.guard, noQuotes)
+  }
 
+  val SyncEdgeStyle = """color = "black:invis:black""""
   def toDot(g: UGraph): String = {
     val nodes = g.nodes.zipWithIndex.map { case (t, i) =>
-      val lines = List(t.name) ++ t.actions.map(serialize)
-      val label = lines.filter(_.nonEmpty).mkString("\\n")
-      s"""  $i [shape=$DefaultNodeShape,label="$label"]"""
+      s"""  $i [shape=$DefaultNodeShape,label="${t.name}"]"""
     }
     val edges = g.nodes.zipWithIndex.flatMap { case (t, from) =>
       t.next.map { n =>
-        val guard = if(n.guard.isEmpty) "" else BVAnd(n.guard).toString
-        val lbl = guard
-        val style = if(n.isSync) ",penwidth=2" else ""
+        val guard = if(n.guard.isEmpty) None else Some("[" + BVAnd(n.guard).toString + "]")
+        val lines = guard ++ n.actions.map(serialize)
+        val lbl = lines.filter(_.nonEmpty).mkString("\\n")
+        val style = if(n.isSync) "," + SyncEdgeStyle else ""
         s"""  $from -> ${n.to} [label="$lbl"$style]"""
       }
     }
 
     s"""digraph "${g.name}" {
-       |  rankdir="LR";
+       |
        |${nodes.map(_ + ";").mkString("\n")}
        |${edges.map(_ + ";").mkString("\n")}
        |}

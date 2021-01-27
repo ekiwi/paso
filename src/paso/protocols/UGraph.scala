@@ -12,9 +12,9 @@ import scala.collection.mutable
 
 /** This is an attempt at coming up with a unified graph representation for protocols */
 case class UGraph(name: String, nodes: IndexedSeq[UNode])
-case class UAction(name: String, guard: List[smt.BVExpr])
-case class UEdge(guard: List[smt.BVExpr], isSync: Boolean, to: Int)
-case class UNode(name: String, actions: List[UAction], next: List[UEdge])
+case class UAction(name: String, guard: List[smt.BVExpr] = List())
+case class UEdge(guard: List[smt.BVExpr], actions: List[UAction], isSync: Boolean, to: Int)
+case class UNode(name: String, next: List[UEdge])
 
 
 /** turns a GOTO program into a UGraph */
@@ -28,31 +28,37 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
     nodes.clear()
 
     // add a node for every target
-    nodes.append(UNode("start", List(), List()))
+    nodes.append(UNode("start", List()))
     (1 until blockCount).foreach { id =>
       assert(nodes.length == id)
-      nodes.append(UNode(s"block$id", List(), List()))
+      nodes.append(UNode(s"block$id", List()))
     }
-    nodes.append(UNode("end", List(), List()))
 
     // convert instructions
-    (0 until blockCount).foreach(convertBlock)
+    val finalNode = (0 until blockCount).map(convertBlock).filter(_ >= 0)
+
+    // rename final node to "end"
+    finalNode match {
+      case Seq(index) => nodes(index) = nodes(index).copy(name = "end")
+      case other => throw new RuntimeException(s"Expecting exactly one final node! $other")
+    }
 
     UGraph(name, nodes)
   }
 
-  private def convertBlock(id: Int): Unit = {
+  private def convertBlock(id: Int): Int = {
     val stmts = getBlock(id).map{ case (l, s) => parseStmt(s, l) }
     var head = id
     stmts.foreach {
       case s: DoStep => head = addAction(head, "step", isSync = true)
-      case s: DoSet => head = addAction(head, s"set(${s.loc} := ${s.expr})")
+      case s: DoSet => head = addAction(head, s"set(${s.loc} := ${s.expr.serialize})")
       case s: DoUnSet => head = addAction(head, s"unset(${s.loc})")
-      case s: DoAssert => head = addAction(head, s"assert(${s.expr})")
+      case s: DoAssert => head = addAction(head, s"assert(${s.expr.serialize})")
       case s: Goto =>
         addBranch(head, condToSmt(s.cond), s.getTargets)
         head = -1 // should be the end of the block
     }
+    head
   }
 
   private def condToSmt(e: ir.Expression): List[smt.BVExpr] = {
@@ -61,32 +67,31 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
 
   private def addBranch(startId: Int, cond: List[smt.BVExpr], targets: List[Int]): Unit = targets match {
     case List(to) =>
-      addToNode(startId, edges = List(UEdge(List(), isSync = false, to)))
+      addToNode(startId, edges = List(UEdge(List(), actions = List(), isSync = false, to)))
     case List(toTru, toFals) =>
       val truCond = Guards.normalize(cond)
       val falsCond = Guards.not(cond)
       val edges = List(
-        UEdge(truCond, isSync = false, to = toTru),
-        UEdge(falsCond, isSync = false, to = toFals),
+        UEdge(truCond, actions = List(), isSync = false, to = toTru),
+        UEdge(falsCond, actions = List(), isSync = false, to = toFals),
       )
       addToNode(startId, edges=edges)
   }
 
   private def addAction(startId: Int, name: String, isSync: Boolean = false): Int = {
-    val a = UAction(name, List())
-    val e = UEdge(List(), isSync = isSync, to = addNode())
-    addToNode(startId, List(a), List(e))
+    val e = UEdge(List(), actions = List(UAction(name)), isSync = isSync, to = addNode())
+    addToNode(startId, List(e))
     e.to
   }
 
-  private def addToNode(id: Int, actions: List[UAction] = List(), edges: List[UEdge] = List()): Unit = {
+  private def addToNode(id: Int, edges: List[UEdge] = List()): Unit = {
     val n = nodes(id)
-    nodes(id) = n.copy(actions = n.actions ++ actions, next = n.next ++ edges)
+    nodes(id) = n.copy(next = n.next ++ edges)
   }
 
   private def addNode(name: String = ""): Int = {
     val id = nodes.length
-    nodes.append(UNode(name, List(), List()))
+    nodes.append(UNode(name, List()))
     id
   }
 }
