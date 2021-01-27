@@ -55,6 +55,31 @@ object ProtocolVisualization {
       |""".stripMargin
   }
 
+  private def serialize(a: UAction): String = implies(a.guard, a.name)
+
+  def toDot(g: UGraph): String = {
+    val nodes = g.nodes.zipWithIndex.map { case (t, i) =>
+      val lines = List(t.name) ++ t.actions.map(serialize)
+      val label = lines.filter(_.nonEmpty).mkString("\\n")
+      s"""  $i [shape=$DefaultNodeShape,label="$label"]"""
+    }
+    val edges = g.nodes.zipWithIndex.flatMap { case (t, from) =>
+      t.next.map { n =>
+        val guard = if(n.guard.isEmpty) "" else BVAnd(n.guard).toString
+        val lbl = guard
+        val style = if(n.isSync) ",penwidth=2" else ""
+        s"""  $from -> ${n.to} [label="$lbl"$style]"""
+      }
+    }
+
+    s"""digraph "${g.name}" {
+       |  rankdir="LR";
+       |${nodes.map(_ + ";").mkString("\n")}
+       |${edges.map(_ + ";").mkString("\n")}
+       |}
+       |""".stripMargin
+  }
+
 
   def showDot(src: String, fileName: String = "test.dot"): Unit = {
     val ff = new FileWriter(fileName)
@@ -66,4 +91,5 @@ object ProtocolVisualization {
   }
 
   def showDot(graph: ProtocolGraph): Unit = showDot(toDot(graph))
+  def showDot(graph: UGraph): Unit = showDot(toDot(graph))
 }

@@ -22,6 +22,11 @@ case class Goto(info: ir.Info, cond: ir.Expression, conseq: Int, alt: Int) exten
     case u : ir.UIntLiteral if u.value == 0 => s"goto $alt"
     case other => s"when ${other.serialize} goto $conseq else goto $alt"
   }
+  def getTargets: List[Int] = cond match {
+    case u : ir.UIntLiteral if u.value == 1 => List(conseq)
+    case u : ir.UIntLiteral if u.value == 0 => List(alt)
+    case other => List(conseq, alt)
+  }
 }
 
 object Goto {

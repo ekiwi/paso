@@ -19,8 +19,9 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
 
   // The Protocol Compiler should make sure that the circuit is of a valid form!
   assert(protocol.circuit.modules.size == 1)
-  protected val module = protocol.circuit.modules.head.asInstanceOf[ir.Module]
-  protected val blocks = module.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block]).toArray
+  private val module = protocol.circuit.modules.head.asInstanceOf[ir.Module]
+  private val blocks = module.body.asInstanceOf[ir.Block].stmts.map(_.asInstanceOf[ir.Block]).toArray
+  protected def blockCount = blocks.length
   val prefixAnno = protocol.annotations.collectFirst{ case a : ProtocolPrefixAndNameAnnotation => a }.get
   val ioPrefix = prefixAnno.ioPrefix
   private val ioPorts = module.ports.filter(_.name.startsWith(ioPrefix))
