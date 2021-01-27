@@ -213,6 +213,7 @@ object BVAnd {
     val nonTriviallyTrue = exprs.filterNot(_ == True())
     if(nonTriviallyTrue.isEmpty) { True() } else { nonTriviallyTrue.reduce(apply) }
   }
+  def unapply(e: BVOp): Option[(BVExpr, BVExpr)] = if(e.op == Op.And) Some((e.a, e.b)) else None
 }
 object BVOr {
   def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.Or, a, b)
@@ -221,6 +222,7 @@ object BVOr {
     val nonTriviallyFalse = exprs.filterNot(_ == False())
     if(nonTriviallyFalse.isEmpty) { False() } else { nonTriviallyFalse.reduce(apply) }
   }
+  def unapply(e: BVOp): Option[(BVExpr, BVExpr)] = if(e.op == Op.Or) Some((e.a, e.b)) else None
 }
 
 object SMTEqual {
