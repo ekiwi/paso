@@ -31,6 +31,7 @@ case class IMethodBuilder[I <: Data](p: MethodParent, n : String, inputType: I, 
     val m = IMethod(n, g, inputType, impl, p) ; p.addMethod(m) ; m
   }
 }
+// TODO: switch to two different guard lists: state only and input guards
 case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inputType: I, outputType: O, guard: List[I => Bool] = List()) {
   def when(cond: => Bool): IOMethodBuilder[I,O] = { this.copy(guard = this.guard :+ ((_: I) => cond))}
   def when(cond: I => Bool): IOMethodBuilder[I,O] = { this.copy(guard = this.guard :+ cond)}
