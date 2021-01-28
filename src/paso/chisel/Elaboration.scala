@@ -6,11 +6,12 @@ package paso.chisel
 
 import chisel3.{Module, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
+import chisel3.stage.ChiselStage
 import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
-import firrtl.stage.RunFirrtlTransformAnnotation
-import firrtl.{AnnotationSeq, CircuitState, ir}
+import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, RunFirrtlTransformAnnotation}
+import firrtl.{AnnotationSeq, CircuitState, LowFirrtlEmitter, ir}
 import logger.{LogLevel, LogLevelAnnotation, Logger}
 import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
@@ -19,8 +20,11 @@ import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, Proto
 import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraphConverter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
+import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
+import treadle.TreadleTesterAnnotation
+import treadle.stage.TreadleTesterPhase
 
 case class Elaboration(dbg: DebugOptions) {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
@@ -89,7 +93,7 @@ case class Elaboration(dbg: DebugOptions) {
     withQuantifiers
   }
 
-  private def compileProtocol(proto: Protocol, implName: String, specName: String): ProtocolGraph = {
+  private def compileProtocol(proto: Protocol, implName: String, specName: String): (ProtocolGraph, UGraph) = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
@@ -101,9 +105,8 @@ case class Elaboration(dbg: DebugOptions) {
     val graph = ProtocolGraph.encode(paths)
 
     val uGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
-    // ProtocolVisualization.showDot(uGraph)
 
-    graph
+    (graph, uGraph)
   }
 
   private def compileImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
@@ -209,7 +212,8 @@ case class Elaboration(dbg: DebugOptions) {
   (Spec, Seq[ExposedSignalAnnotation]) = {
     val ut = compileUntimed(spec, externalRefs, prefix = prefix, abstracted = abstracted)
     val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
-    (Spec(ut.model, pt), ut.exposedSignals)
+    val sp = Spec(ut.model, pt.map(_._1), pt.map(_._2))
+    (sp, ut.exposedSignals)
   }
 
   case class ChiselImpl[M <: RawModule](instance: M, circuit: ir.Circuit, annos: Seq[Annotation])
@@ -283,5 +287,29 @@ case class Elaboration(dbg: DebugOptions) {
     val prob = VerificationProblem(implementation.model, spec, subspecs, inv)
 
     prob
+  }
+
+  private def toTester(state: firrtl.CircuitState): treadle.TreadleTester = {
+    val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
+    val lowFirrtl = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
+    (new TreadleTesterPhase).transform(lowFirrtl).collectFirst { case TreadleTesterAnnotation(t) => t }.getOrElse(
+      throw new RuntimeException("Failed to create a treadle tester for the implementation!")
+    )
+  }
+
+  def elaborateConcrete[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S]): TestingProblem = {
+    val implChisel = chiselElaborationImpl(impl)
+    val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
+
+    val implState = firrtl.CircuitState(implChisel.circuit, implChisel.annos)
+    val untimedName = specChisel.untimed.name
+    val protos = specChisel.protos
+      .map(compileProtocol(_, implState.circuit.main, untimedName))
+      .map(p => ProtocolDesc(p._1.info, p._2))
+      .toVector
+    val io = implState.circuit.modules.collectFirst{ case ir.Module(_, implState.circuit.main, ports, _) => ports }.get
+    val tester = toTester(implState)
+
+    TestingProblem(untimed = specChisel.untimed, protocols = protos, impl = tester, io = io)
   }
 }

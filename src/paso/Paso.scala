@@ -8,6 +8,7 @@ import chisel3.RawModule
 import firrtl.annotations.{InstanceTarget, ModuleTarget}
 import paso.chisel.Elaboration
 import paso.formal.VerificationProblem
+import paso.random.TestingProblem
 
 import scala.collection.mutable
 
@@ -54,7 +55,7 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, sp
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt)
   def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt, dbg)
-  def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, k)
+  def randomTest(k: Int, seed: Option[Long] = Some(0)): Boolean = Paso.runRandomTest[I,S](impl, spec, k, seed)
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
 
@@ -85,8 +86,9 @@ object Paso {
     VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
     true
   }
-  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], k: Int): Boolean = {
-    throw new NotImplementedError("TODO")
+  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], kMax: Int, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
+    val elaborated = Elaboration(dbg).elaborateConcrete(impl, spec)
+    TestingProblem.randomTest(elaborated, kMax, seed, dbg)
     true
   }
 

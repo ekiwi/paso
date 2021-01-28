@@ -7,14 +7,14 @@ package paso.formal
 import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
-import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph}
+import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph, UGraph}
 import paso.{DebugOptions, untimed}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
   def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
 }
-case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph])
+case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph], ugraphs: Seq[UGraph])
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Spec], invariants: TransitionSystem)
 
 object VerificationProblem {
