@@ -4,7 +4,7 @@
 
 package paso.protocols
 
-import paso.verification.UntimedModel
+import paso.formal.UntimedModel
 import maltese.smt
 import maltese.smt.solvers.Solver
 

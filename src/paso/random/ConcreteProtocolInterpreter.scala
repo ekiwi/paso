@@ -2,10 +2,12 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.protocols
+package paso.random
 
-import treadle.TreadleTester
 import maltese.smt
+import paso.protocols._
+import treadle.TreadleTester
+
 import scala.collection.mutable
 
 

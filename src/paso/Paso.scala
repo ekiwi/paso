@@ -7,7 +7,7 @@ package paso
 import chisel3.RawModule
 import firrtl.annotations.{InstanceTarget, ModuleTarget}
 import paso.chisel.Elaboration
-import paso.verification.VerificationProblem
+import paso.formal.VerificationProblem
 
 import scala.collection.mutable
 
@@ -54,7 +54,7 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, sp
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt)
   def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt, dbg)
-  def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, new NoSubSpecs(_, _), k)
+  def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, k)
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
 
@@ -68,7 +68,8 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k, opt)
   def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, subspecs, k, opt, dbg)
-  def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, subspecs, k)
+  // random tests do not support suspects ATM
+  //def randomTest(k: Int): Boolean = Paso.runRandomTest[I,S](impl, spec, subspecs, k)
 }
 
 object Paso {
@@ -84,7 +85,10 @@ object Paso {
     VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
     true
   }
-  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], k: Int): Boolean = ???
+  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], k: Int): Boolean = {
+    throw new NotImplementedError("TODO")
+    true
+  }
 
   val MCBotr = ProofOptions(Btormc)
   val MCYices2 = ProofOptions(Yices2)

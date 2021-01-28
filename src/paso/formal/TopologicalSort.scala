@@ -5,7 +5,7 @@
 // this file was originally written as part of the firrtl compiler and then translated to work on the maltese.smt
 // data structures
 
-package paso.verification
+package paso.formal
 
 import firrtl.graph.MutableDiGraph
 import maltese.mc.TransitionSystem

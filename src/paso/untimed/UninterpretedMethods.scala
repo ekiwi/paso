@@ -11,7 +11,7 @@ import firrtl.{AnnotationSeq, CircuitState, Namespace, ir}
 import firrtl.annotations._
 import maltese.mc
 import maltese.smt
-import paso.verification.TopologicalSort
+import paso.formal.TopologicalSort
 
 import scala.collection.mutable
 

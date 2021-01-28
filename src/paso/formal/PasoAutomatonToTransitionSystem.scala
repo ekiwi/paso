@@ -2,7 +2,7 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.verification
+package paso.formal
 
 import Chisel.log2Ceil
 import maltese.mc.{Signal, State, TransitionSystem}

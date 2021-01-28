@@ -16,10 +16,10 @@ import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
 import paso.chisel.passes._
 import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
-import paso.verification.{Spec, UntimedModel, VerificationProblem}
+import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraphConverter}
 import paso.untimed.AbstractModuleAnnotation
 
 case class Elaboration(dbg: DebugOptions) {
@@ -99,7 +99,10 @@ case class Elaboration(dbg: DebugOptions) {
     val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
     val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
     val graph = ProtocolGraph.encode(paths)
-    // ProtocolVisualization.showDot(graph)
+
+    val uGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
+    // ProtocolVisualization.showDot(uGraph)
+
     graph
   }
 
