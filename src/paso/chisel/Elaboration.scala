@@ -93,14 +93,14 @@ case class Elaboration(dbg: DebugOptions) {
     withQuantifiers
   }
 
-  private def compileProtocol(proto: Protocol, implName: String, specName: String): (ProtocolGraph, UGraph) = {
+  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String): (ProtocolGraph, UGraph) = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
       override def desiredName: String = circuitName
       proto.generate(clock)
     })
-    val normalized = ProtocolCompiler.run(state, ioPrefix = f"$implName.io", specName = specName, methodName = proto.methodName)
+    val normalized = ProtocolCompiler.run(state, ioPrefix = ioPrefix, specPrefix = specPrefix, methodName = proto.methodName)
     val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
     val graph = ProtocolGraph.encode(paths)
 
@@ -211,7 +211,9 @@ case class Elaboration(dbg: DebugOptions) {
     prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()):
   (Spec, Seq[ExposedSignalAnnotation]) = {
     val ut = compileUntimed(spec, externalRefs, prefix = prefix, abstracted = abstracted)
-    val pt = ut.protocols.map(compileProtocol(_, implName, ut.model.name))
+    val ioPrefix = f"$implName.io"
+    val specPrefix = f"${ut.model.name}."
+    val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix))
     val sp = Spec(ut.model, pt.map(_._1), pt.map(_._2))
     (sp, ut.exposedSignals)
   }
@@ -289,12 +291,15 @@ case class Elaboration(dbg: DebugOptions) {
     prob
   }
 
-  private def toTester(state: firrtl.CircuitState): treadle.TreadleTester = {
+  private def toTester(state: firrtl.CircuitState): (treadle.TreadleTester, Seq[ir.Port]) = {
     val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
     val lowFirrtl = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
-    (new TreadleTesterPhase).transform(lowFirrtl).collectFirst { case TreadleTesterAnnotation(t) => t }.getOrElse(
+    val tester = (new TreadleTesterPhase).transform(lowFirrtl).collectFirst { case TreadleTesterAnnotation(t) => t }.getOrElse(
       throw new RuntimeException("Failed to create a treadle tester for the implementation!")
     )
+    val lowCircuit = lowFirrtl.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get
+    val io = lowCircuit.modules.collectFirst{ case ir.Module(_, lowCircuit.main, ports, _) => ports }.get
+    (tester, io)
   }
 
   def elaborateConcrete[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S]): TestingProblem = {
@@ -304,11 +309,10 @@ case class Elaboration(dbg: DebugOptions) {
     val implState = firrtl.CircuitState(implChisel.circuit, implChisel.annos)
     val untimedName = specChisel.untimed.name
     val protos = specChisel.protos
-      .map(compileProtocol(_, implState.circuit.main, untimedName))
+      .map(compileProtocol(_, "io", ""))
       .map(p => ProtocolDesc(p._1.info, p._2))
       .toVector
-    val io = implState.circuit.modules.collectFirst{ case ir.Module(_, implState.circuit.main, ports, _) => ports }.get
-    val tester = toTester(implState)
+    val (tester, io) = toTester(implState)
 
     TestingProblem(untimed = specChisel.untimed, protocols = protos, impl = tester, io = io)
   }

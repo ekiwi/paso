@@ -117,8 +117,12 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
         a match {
           case ASignal("fork") => didFork = true
           case ASignal(name) => println(s"WARN: unhandled signal: $name")
-          case ASet(input, rhs) => assign(input, eval(rhs), assignments)
-          case AUnSet(input) => assign(input, guide.chooseInput(input, inputNameToBits(input)), assignments)
+          case ASet(input, rhs) =>
+            assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
+            assign(input, eval(rhs), assignments)
+          case AUnSet(input) =>
+            assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
+            assign(input, guide.chooseInput(input, inputNameToBits(input)), assignments)
           case AAssert(cond) =>
             val values = cond.map(c => c -> eval(c))
             val failed = values.filter(_._2 != 1)

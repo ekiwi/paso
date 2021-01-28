@@ -74,12 +74,12 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
     var head = id
     stmts.foreach {
       case s: DoStep =>
-        // add Fork edge if necessary
-        head = if(steps(s.name).doFork) addAction(head, ASignal("fork"), s.info) else head
         // add step (synchronous) edge
         val next = addNode()
         addToNode(head, List(), List(UEdge(List(), isSync = true, to = next)))
         head = next
+        // add Fork edge if necessary
+        head = if(steps(s.name).doFork) addAction(head, ASignal("fork"), s.info) else head
       case s: DoSet =>
         val rhs = toSMT(s.expr, inputs(s.loc), allowNarrow = true)
         head = addAction(head, ASet(s.loc, rhs), s.info)

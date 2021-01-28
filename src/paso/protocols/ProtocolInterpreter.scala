@@ -42,7 +42,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
   } :+ ("start" -> startStepAnnotation)).toMap
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps, _) => steps }.get
   protected val longestPath = protocol.annotations.collectFirst { case StepOrderAnnotation(_, l) => l }.get
-  protected val name = s"${prefixAnno.specName}.${prefixAnno.methodName}"
+  protected val name = s"${prefixAnno.specPrefix}.${prefixAnno.methodName}"
   protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, rets, ioPrefix, methodPrefix, steps, longestPath)
 
   /** returns the instructions of the basic block */
