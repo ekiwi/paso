@@ -17,6 +17,14 @@ object TestingProblem {
 
     val inputs = problem.io.filter(_.direction == ir.Input)
       .map(p => p.name -> firrtl.getWidth(p.tpe).asInstanceOf[ir.IntWidth].width.toInt)
+      .filterNot(i => Set("reset", "clock").contains(i._1))
+
+    // reset untimed model and implementation
+    val untimed = problem.untimed.getTester
+    untimed.poke("reset", 1)
+    untimed.step(1)
+    untimed.poke("reset", 0)
+    resetImpl(problem.impl, inputs, guide)
 
     val interpreter = new ConcreteProtocolInterpreter(
       problem.untimed.getTester, problem.protocols, problem.impl, guide, inputs
@@ -28,6 +36,16 @@ object TestingProblem {
     }
 
     println(s"Successfully tested ${problem.untimed.name} for $kMax cycles and seed=$s")
+  }
+
+  private def resetImpl(impl: TreadleTester, inputs: Seq[(String, Int)], guide: TestGuide): Unit = {
+    impl.poke("reset", 1)
+    // randomize all other inputs
+    inputs.foreach { case (name, bits) =>
+      impl.poke(name, guide.chooseInput(name, bits))
+    }
+    impl.step()
+    impl.poke("reset", 0)
   }
 
 
