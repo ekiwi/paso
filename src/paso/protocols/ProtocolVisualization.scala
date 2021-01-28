@@ -55,21 +55,23 @@ object ProtocolVisualization {
       |""".stripMargin
   }
 
-  private def serialize(a: UAction): String = {
-    val noQuotes = a.name.replace("\"", "")
-    implies(a.guard, noQuotes)
+  private def serialize(a: UAction, includeInfo: Boolean): String = {
+    val s = implies(a.guard, Action.serialize(a.a))
+    if(includeInfo) s + a.info.serialize else s
   }
 
   val SyncEdgeStyle = """color = "black:invis:black""""
-  def toDot(g: UGraph): String = {
+  def toDot(g: UGraph, includeInfo: Boolean = false): String = {
     val nodes = g.nodes.zipWithIndex.map { case (t, i) =>
-      s"""  $i [shape=$DefaultNodeShape,label="${t.name}"]"""
+      val name = if(t.name.nonEmpty) Some("# " + t.name) else None
+      val lines = name ++ t.actions.map(serialize(_, includeInfo))
+      val label = lines.mkString("\\n")
+      s"""  $i [shape=$DefaultNodeShape,label="$label"]"""
     }
     val edges = g.nodes.zipWithIndex.flatMap { case (t, from) =>
       t.next.map { n =>
         val guard = if(n.guard.isEmpty) None else Some("[" + BVAnd(n.guard).toString + "]")
-        val lines = guard ++ n.actions.map(serialize)
-        val lbl = lines.filter(_.nonEmpty).mkString("\\n")
+        val lbl = guard.getOrElse("")
         val style = if(n.isSync) "," + SyncEdgeStyle else ""
         s"""  $from -> ${n.to} [label="$lbl"$style]"""
       }

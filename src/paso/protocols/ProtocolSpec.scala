@@ -98,6 +98,6 @@ case class IOProtocol[IO <: Data, I <: Data, O <: Data](ioType: IO, meth: IOMeth
 }
 
 
-case class StepAnnotation(target: ReferenceTarget, doFork: Boolean, isFinal: Boolean = false, artificial: Boolean = false) extends SingleTargetAnnotation[ReferenceTarget] {
+case class StepAnnotation(target: ReferenceTarget, doFork: Boolean, isFinal: Boolean = false) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(target = n)
 }

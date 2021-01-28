@@ -12,9 +12,24 @@ import scala.collection.mutable
 
 /** This is an attempt at coming up with a unified graph representation for protocols */
 case class UGraph(name: String, nodes: IndexedSeq[UNode])
-case class UAction(name: String, guard: List[smt.BVExpr] = List())
-case class UEdge(guard: List[smt.BVExpr], actions: List[UAction], isSync: Boolean, to: Int)
-case class UNode(name: String, next: List[UEdge])
+case class UAction(a: Action, info: ir.Info, guard: List[smt.BVExpr] = List())
+case class UEdge(guard: List[smt.BVExpr], isSync: Boolean, to: Int)
+case class UNode(name: String, actions: List[UAction] = List(), next: List[UEdge] = List())
+
+sealed trait Action
+case object AFork extends Action
+case class ASet(input: String, rhs: smt.BVExpr) extends Action
+case class AUnSet(input: String) extends Action
+case class AAssert(cond: List[smt.BVExpr]) extends Action
+
+object Action {
+  def serialize(a: Action): String = a match {
+    case AFork => "fork"
+    case ASet(input, rhs) => s"set($input := $rhs)"
+    case AUnSet(input) => s"unset($input)"
+    case AAssert(cond) => s"assert(${smt.BVAnd(cond)}"
+  }
+}
 
 
 /** turns a GOTO program into a UGraph */
@@ -28,10 +43,10 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
     nodes.clear()
 
     // add a node for every target
-    nodes.append(UNode("start", List()))
+    nodes.append(UNode("start"))
     (1 until blockCount).foreach { id =>
       assert(nodes.length == id)
-      nodes.append(UNode(s"block$id", List()))
+      nodes.append(UNode(s"block$id"))
     }
 
     // convert instructions
@@ -50,43 +65,52 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
     val stmts = getBlock(id).map{ case (l, s) => parseStmt(s, l) }
     var head = id
     stmts.foreach {
-      case s: DoStep => head = addAction(head, "step", isSync = true)
-      case s: DoSet => head = addAction(head, s"set(${s.loc} := ${s.expr.serialize})")
-      case s: DoUnSet => head = addAction(head, s"unset(${s.loc})")
-      case s: DoAssert => head = addAction(head, s"assert(${s.expr.serialize})")
+      case s: DoStep =>
+        // add Fork edge if necessary
+        head = if(steps(s.name).doFork) addAction(head, AFork, s.info) else head
+        // add step (synchronous) edge
+        val next = addNode()
+        addToNode(head, List(), List(UEdge(List(), isSync = true, to = next)))
+        head = next
+      case s: DoSet =>
+        val rhs = toSMT(s.expr, inputs(s.loc), allowNarrow = true)
+        head = addAction(head, ASet(s.loc, rhs), s.info)
+      case s: DoUnSet => head = addAction(head, AUnSet(s.loc), s.info)
+      case s: DoAssert => head = addAction(head, AAssert(List(toSMT(s.expr))), s.info)
       case s: Goto =>
-        addBranch(head, condToSmt(s.cond), s.getTargets)
+        addBranch(head, List(toSMT(s.cond)), s.getTargets)
         head = -1 // should be the end of the block
     }
     head
   }
 
-  private def condToSmt(e: ir.Expression): List[smt.BVExpr] = {
-    List(ExpressionConverter.toMaltese(e, 1, allowNarrow = false))
+  private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
+    ExpressionConverter.toMaltese(expr, width, allowNarrow)
   }
 
   private def addBranch(startId: Int, cond: List[smt.BVExpr], targets: List[Int]): Unit = targets match {
     case List(to) =>
-      addToNode(startId, edges = List(UEdge(List(), actions = List(), isSync = false, to)))
+      addToNode(startId, edges = List(UEdge(List(), isSync = false, to)))
     case List(toTru, toFals) =>
       val truCond = Guards.normalize(cond)
       val falsCond = Guards.not(cond)
       val edges = List(
-        UEdge(truCond, actions = List(), isSync = false, to = toTru),
-        UEdge(falsCond, actions = List(), isSync = false, to = toFals),
+        UEdge(truCond, isSync = false, to = toTru),
+        UEdge(falsCond, isSync = false, to = toFals),
       )
       addToNode(startId, edges=edges)
   }
 
-  private def addAction(startId: Int, name: String, isSync: Boolean = false): Int = {
-    val e = UEdge(List(), actions = List(UAction(name)), isSync = isSync, to = addNode())
-    addToNode(startId, List(e))
+  private def addAction(startId: Int, a: Action, info: ir.Info): Int = {
+    val actions = List(UAction(a, info))
+    val e = UEdge(List(), isSync = false, to = addNode())
+    addToNode(startId, actions, List(e))
     e.to
   }
 
-  private def addToNode(id: Int, edges: List[UEdge] = List()): Unit = {
+  private def addToNode(id: Int, actions: List[UAction] = List(), edges: List[UEdge] = List()): Unit = {
     val n = nodes(id)
-    nodes(id) = n.copy(next = n.next ++ edges)
+    nodes(id) = n.copy(actions = n.actions ++ actions, next = n.next ++ edges)
   }
 
   private def addNode(name: String = ""): Int = {
