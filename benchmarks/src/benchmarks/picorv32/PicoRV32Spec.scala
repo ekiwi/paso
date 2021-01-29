@@ -29,7 +29,7 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
 
     io.valid.set(true.B)
     io.insn.set(instr)
-    println(s"instruction: ${instr.litValue()}")
+    //println(s"instruction: ${instr.litValue()}")
     io.rs1.set(rs1)
     io.rs2.set(rs2)
     io.wr.expect(false.B)
@@ -39,6 +39,9 @@ class MulProtocols[M <: PCPIModule](impl: M) extends ProtocolSpec[Multiplier] {
       clock.step()
     }
     io.valid.set(false.B)
+    io.insn.set(DontCare)
+    io.rs1.set(DontCare)
+    io.rs2.set(DontCare)
     io.rd.expect(rd)
     io.wr.expect(true.B)
     clock.step()
