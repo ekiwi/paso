@@ -282,6 +282,10 @@ class PipeliningExamplesSpec extends AnyFlatSpec {
     Paso(new Register)(new RegisterProtocol(_)).proof()
   }
 
+  "A simple register" should "pass random testing" in {
+    Paso(new Register)(new RegisterProtocol(_)).randomTest(10)
+  }
+
   "A simple register with bug" should "fail" in {
     val fail = intercept[AssertionError] {
       Paso(new Register(withBug = true))(new RegisterProtocol(_)).proof()
