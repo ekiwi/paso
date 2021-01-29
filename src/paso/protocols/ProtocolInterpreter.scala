@@ -12,7 +12,8 @@ object ProtocolInterpreter {
   case class Loc(block: Int, stmt: Int) { override def toString = f"$block:$stmt" }
 }
 
-case class ProtocolInfo(name: String, args: Map[String, Int], rets: Map[String, Int], ioPrefix: String, methodPrefix: String, steps: Map[String, StepAnnotation], longestPath: Int)
+case class ProtocolInfo(name: String, args: Map[String, Int], rets: Map[String, Int],
+  ioPrefix: String, methodPrefix: String, steps: Map[String, StepAnnotation], longestPath: Int, stickyInputs: Boolean)
 
 abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean) {
   import ProtocolInterpreter.Loc
@@ -43,7 +44,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps, _) => steps }.get
   protected val longestPath = protocol.annotations.collectFirst { case StepOrderAnnotation(_, l) => l }.get
   protected val name = s"${prefixAnno.specPrefix}${prefixAnno.methodName}"
-  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, rets, ioPrefix, methodPrefix, steps, longestPath)
+  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, rets, ioPrefix, methodPrefix, steps, longestPath, stickyInputs)
 
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {

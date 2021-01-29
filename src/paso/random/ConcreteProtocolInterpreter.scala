@@ -7,6 +7,7 @@ package paso.random
 import maltese.smt
 import paso.protocols._
 import treadle.TreadleTester
+import firrtl.ir
 
 import scala.collection.mutable
 
@@ -22,6 +23,7 @@ trait TestGuide {
 // TODO: merge with ProtocolGraph
 case class ProtocolDesc(info: ProtocolInfo, graph: UGraph) {
   def name: String = info.name
+  def stickyInputs: Boolean = info.stickyInputs
 }
 
 class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[ProtocolDesc], impl: TreadleTester, guide: TestGuide, inputs: Seq[(String, Int)]) {
@@ -80,7 +82,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     val atLeastOneActive = if(active.nonEmpty) active else List(fork())
 
     // we track inputs that have been assigned explicitly by the protocols
-    val assignments = mutable.HashMap[String, BigInt]()
+    val assignments = new Assignments()
 
     val nextAndFork = atLeastOneActive.map(executeStep(_, assignments))
 
@@ -100,8 +102,11 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     allNext
   }
 
+  private case class Assignment(input: String, value: BigInt, info: ir.Info)
+  private type Assignments = mutable.HashMap[String, Assignment]
+
   // execute a step in a single protocol
-  private def executeStep(l: Loc, assignments: mutable.HashMap[String, BigInt]): (Option[Loc], Boolean) = {
+  private def executeStep(l: Loc, assignments: Assignments): (Option[Loc], Boolean) = {
     val proto = protocols(l.pid)
     implicit val ctx: EvalCtx = EvalCtx(l.ctx, assignments.get)
 
@@ -119,7 +124,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
           case ASignal(name) => println(s"WARN: unhandled signal: $name")
           case ASet(input, rhs) =>
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
-            assign(input, eval(rhs), assignments)
+            assign(input, eval(rhs), info, assignments)
           case AUnSet(input) =>
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
             // assignments.remove(input)
@@ -150,14 +155,15 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     (next, didFork)
   }
 
-  private def assign(input: String, value: BigInt, assignments: mutable.HashMap[String, BigInt]): Unit = {
+  private def assign(input: String, value: BigInt, info: ir.Info, assignments: Assignments): Unit = {
     // ensure there are no conflicting assignments in the same cycle
     assignments.get(input) match {
-      case Some(old) =>
-        assert(old == value, s"Cannot assign $value, since $input was previously assigned $old in the same cycle!")
+      case Some(Assignment(input, oldValue, oldInfo)) =>
+        assert(oldValue == value,
+          s"Cannot assign $value @ ${info.serialize}, since $input was previously assigned to $oldValue @ ${oldInfo.serialize} in the same cycle!")
       case None =>
     }
-    assignments.put(input, value)
+    assignments.put(input, Assignment(input, value, info))
     // execute assignment
     impl.poke(input, value)
   }
@@ -166,14 +172,14 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     guard.forall(eval(_) == 1)
   }
 
-  private case class EvalCtx(p: ProtocolContext, getAssignment: String => Option[BigInt]) extends smt.SMTEvalCtx {
+  private case class EvalCtx(p: ProtocolContext, getAssignment: String => Option[Assignment]) extends smt.SMTEvalCtx {
     override def getBVSymbol(name: String): BigInt = {
       def isInput = inputNameToBits.contains(name)
       val value = p.values.get(name) match {
         case Some(value) => value
         case None =>
           if(isInput) {
-            getAssignment(name).getOrElse(
+            getAssignment(name).map(_.value).getOrElse(
               throw new RuntimeException(s"Cannot read from input $name since it has not been assigned!"))
           } else {
             impl.peek(name)
