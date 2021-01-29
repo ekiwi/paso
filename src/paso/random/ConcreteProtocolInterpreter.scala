@@ -122,7 +122,8 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             assign(input, eval(rhs), assignments)
           case AUnSet(input) =>
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
-            assign(input, guide.chooseInput(input, inputNameToBits(input)), assignments)
+            assignments.remove(input)
+            impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
           case AAssert(cond) =>
             val values = cond.map(c => c -> eval(c))
             val failed = values.filter(_._2 != 1)

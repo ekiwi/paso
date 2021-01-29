@@ -37,7 +37,7 @@ object TestingProblem {
 
     var active: List[interpreter.Loc] = List()
     (0 until kMax).foreach { k =>
-      println(s"k=$k")
+      // println(s"k=$k")
       active = interpreter.executeStep(active)
       problem.impl.step()
     }
