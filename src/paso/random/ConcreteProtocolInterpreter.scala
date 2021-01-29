@@ -67,7 +67,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     untimed.step()
     untimed.poke(t.methodPrefix + "enabled", 0)
 
-    println(s"${t.name}(${args.mkString(", ")}) -> ${rets.mkString(", ")}")
+    // println(s"${t.name}(${args.mkString(", ")}) -> ${rets.mkString(", ")}")
 
     ProtocolContext(args ++ rets)
   }
@@ -188,7 +188,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             impl.peek(name)
           }
       }
-      println(s"$name: $value")
+      // println(s"$name: $value")
       value
     }
     // the bellow methods should never be executed!

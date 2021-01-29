@@ -39,7 +39,7 @@ object TestingProblem {
     try {
       var active: List[interpreter.Loc] = List()
       (0 until kMax).foreach { k =>
-        println(s"k=$k")
+        // println(s"k=$k")
         active = interpreter.executeStep(active)
         problem.impl.step()
       }
@@ -49,7 +49,7 @@ object TestingProblem {
       problem.impl.finish
     }
 
-    println(s"Successfully tested ${problem.untimed.name} for $kMax cycles and seed=$s")
+    // println(s"Successfully tested ${problem.untimed.name} for $kMax cycles and seed=$s")
   }
 
   private def resetImpl(impl: TreadleTester, inputs: Seq[(String, Int)], guide: TestGuide): Unit = {
