@@ -63,6 +63,8 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     untimed.step()
     untimed.poke(t.methodPrefix + "enabled", 0)
 
+    // println(s"${t.name}(${args.mkString(", ")}) -> ${rets.mkString(", ")}")
+
     ProtocolContext(args ++ rets)
   }
 
@@ -165,7 +167,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
   private case class EvalCtx(p: ProtocolContext, getAssignment: String => Option[BigInt]) extends smt.SMTEvalCtx {
     override def getBVSymbol(name: String): BigInt = {
       def isInput = inputNameToBits.contains(name)
-      p.values.get(name) match {
+      val value = p.values.get(name) match {
         case Some(value) => value
         case None =>
           if(isInput) {
@@ -175,6 +177,8 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             impl.peek(name)
           }
       }
+      // println(s"$name: $value")
+      value
     }
     // the bellow methods should never be executed!
     override def getArraySymbol(name: String) = ???

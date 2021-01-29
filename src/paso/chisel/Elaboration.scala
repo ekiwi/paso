@@ -307,7 +307,6 @@ case class Elaboration(dbg: DebugOptions) {
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
 
     val implState = firrtl.CircuitState(implChisel.circuit, implChisel.annos)
-    val untimedName = specChisel.untimed.name
     val protos = specChisel.protos
       .map(compileProtocol(_, "io", ""))
       .map(p => ProtocolDesc(p._1.info, p._2))

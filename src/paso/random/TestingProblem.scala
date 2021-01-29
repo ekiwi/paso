@@ -33,6 +33,7 @@ object TestingProblem {
     var active: List[interpreter.Loc] = List()
     (0 until kMax).foreach { i =>
       active = interpreter.executeStep(active)
+      problem.impl.step()
     }
 
     println(s"Successfully tested ${problem.untimed.name} for $kMax cycles and seed=$s")
