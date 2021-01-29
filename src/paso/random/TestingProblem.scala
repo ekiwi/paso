@@ -35,11 +35,18 @@ object TestingProblem {
       problem.untimed.getTester, problem.protocols, problem.impl, guide, inputs
     )
 
-    var active: List[interpreter.Loc] = List()
-    (0 until kMax).foreach { k =>
-      // println(s"k=$k")
-      active = interpreter.executeStep(active)
-      problem.impl.step()
+    // we need this block in order to ensure that the VCD is written to disk before we crash
+    try {
+      var active: List[interpreter.Loc] = List()
+      (0 until kMax).foreach { k =>
+        println(s"k=$k")
+        active = interpreter.executeStep(active)
+        problem.impl.step()
+      }
+    } catch {
+      case a : AssertionError => throw a
+    } finally {
+      problem.impl.finish
     }
 
     println(s"Successfully tested ${problem.untimed.name} for $kMax cycles and seed=$s")

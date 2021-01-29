@@ -6,7 +6,6 @@ package paso.chisel
 
 import chisel3.{Module, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
-import chisel3.stage.ChiselStage
 import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.Dependency
 import firrtl.passes.InlineInstances
@@ -20,11 +19,9 @@ import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, Proto
 import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
 import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
-import treadle.TreadleTesterAnnotation
-import treadle.stage.TreadleTesterPhase
 
 case class Elaboration(dbg: DebugOptions) {
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
@@ -293,11 +290,10 @@ case class Elaboration(dbg: DebugOptions) {
 
   private def toTester(state: firrtl.CircuitState): (treadle.TreadleTester, Seq[ir.Port]) = {
     val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
-    val lowFirrtl = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
-    val tester = (new TreadleTesterPhase).transform(lowFirrtl).collectFirst { case TreadleTesterAnnotation(t) => t }.getOrElse(
-      throw new RuntimeException("Failed to create a treadle tester for the implementation!")
-    )
-    val lowCircuit = lowFirrtl.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get
+    val lowFirrtlAnnos = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
+    val loFirrtl = firrtl.CircuitState(lowFirrtlAnnos.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get, Seq())
+    val tester = MakeTreadleTester(loFirrtl, true)
+    val lowCircuit = loFirrtl.circuit
     val io = lowCircuit.modules.collectFirst{ case ir.Module(_, lowCircuit.main, ports, _) => ports }.get
     (tester, io)
   }
