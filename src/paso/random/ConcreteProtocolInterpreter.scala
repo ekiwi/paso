@@ -122,8 +122,9 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             assign(input, eval(rhs), assignments)
           case AUnSet(input) =>
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
-            assignments.remove(input)
-            impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
+            // assignments.remove(input)
+            // impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
+            // TODO: is it really ok to ignore this? Should unsets be removed at some point? should sticky inputs become part if this interpreter?
           case AAssert(cond) =>
             val values = cond.map(c => c -> eval(c))
             val failed = values.filter(_._2 != 1)
