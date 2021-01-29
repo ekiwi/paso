@@ -97,6 +97,10 @@ jobs:
       timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
 
+    - name: PicoRV32 Multiplier Test / BMC
+      timeout-minutes: 3
+      run: sbt "project benchmarks ; testOnly benchmarks.picorv32.**"
+
     - name: AES Proofs
       timeout-minutes: 30
       run: sbt "project benchmarks ; testOnly benchmarks.aes.**"
