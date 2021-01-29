@@ -28,6 +28,8 @@ case class ProtocolDesc(info: ProtocolInfo, graph: UGraph) {
 
 class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[ProtocolDesc], impl: TreadleTester, guide: TestGuide, inputs: Seq[(String, Int)]) {
   require(protocols.map(_.name).toSet.size == protocols.size)
+  private val stickyInputs = protocols.head.info.stickyInputs
+  assert(protocols.forall(_.stickyInputs == stickyInputs))
   private val protocolNameToId = protocols.map(_.name).zipWithIndex.toMap
   private val inputNameToBits = inputs.toMap
   case class ProtocolContext(values: Map[String, BigInt])
@@ -72,9 +74,11 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
 
   // execute a step of all active protocols
   def executeStep(active: List[Loc]): List[Loc] = {
-    // randomize all inputs to the dut
-    inputs.foreach { case (name, bits) =>
-      impl.poke(name, guide.chooseInput(name, bits))
+    // randomize all inputs to the dut if we aren't doing sticky inputs
+    if(!stickyInputs) {
+      inputs.foreach { case (name, bits) =>
+        impl.poke(name, guide.chooseInput(name, bits))
+      }
     }
 
     // if there are no active protocols start one
@@ -127,9 +131,8 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             assign(input, eval(rhs), info, assignments)
           case AUnSet(input) =>
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
-            // assignments.remove(input)
-            // impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
-            // TODO: is it really ok to ignore this? Should unsets be removed at some point? should sticky inputs become part if this interpreter?
+            assignments.remove(input)
+            impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
           case AAssert(cond) =>
             val values = cond.map(c => c -> eval(c))
             val failed = values.filter(_._2 != 1)
