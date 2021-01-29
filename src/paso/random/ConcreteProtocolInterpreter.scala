@@ -89,21 +89,19 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     assert(!didFork || forks.isEmpty, s"Cannot fork before first step! $forks")
     assert(forks.size < 2, s"Multiple protocols should never fork in the same step! $forks")
 
-    // if we have a protocol that wants to fork we need to execute it
-    val forkNext = forks match {
-      case List(loc) =>
-        val (next, forkForked) = executeStep(loc, assignments)
-        assert(!forkForked, s"Cannot fork before first step! $loc")
-        Some(next)
-      case _ => None
-    }
+    // if we have a protocol that wants to fork we need to fork an execute the new one
+    val forkNext = if(forks.nonEmpty) {
+      val (next, forkForked) = executeStep(fork(), assignments)
+      assert(!forkForked, s"Cannot fork before first step! $next")
+      next
+    } else { None }
 
-    val allNext = nextAndFork.map(_._1) ++ forkNext
+    val allNext = nextAndFork.flatMap(_._1) ++ forkNext
     allNext
   }
 
   // execute a step in a single protocol
-  private def executeStep(l: Loc, assignments: mutable.HashMap[String, BigInt]): (Loc, Boolean) = {
+  private def executeStep(l: Loc, assignments: mutable.HashMap[String, BigInt]): (Option[Loc], Boolean) = {
     val proto = protocols(l.pid)
     implicit val ctx: EvalCtx = EvalCtx(l.ctx, assignments.get)
 
@@ -144,7 +142,9 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
       nodeId = activeEdges.head.to
     }
 
-    val next = l.copy(nodeId = nodeId)
+
+    val nextNode = proto.graph.nodes(nodeId)
+    val next = if(nextNode.next.nonEmpty) Some(l.copy(nodeId = nodeId)) else None
     (next, didFork)
   }
 

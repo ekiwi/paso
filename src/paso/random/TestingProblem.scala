@@ -2,6 +2,7 @@ package paso.random
 
 
 import firrtl.ir
+import paso.protocols.ProtocolVisualization
 import paso.{DebugOptions, UntimedModule}
 import treadle.TreadleTester
 
@@ -12,6 +13,10 @@ object TestingProblem {
   private val seedGen = new scala.util.Random(0)
 
   def randomTest(problem: TestingProblem, kMax: Int, seed: Option[Long], dbg: DebugOptions): Unit = {
+    // val dot = ProtocolVisualization.toDot(problem.protocols.head.graph, true)
+    // ProtocolVisualization.showDot(dot)
+
+
     val s = seed.getOrElse(seedGen.nextLong())
     val guide = new RandomGuide(s)
 
@@ -31,7 +36,8 @@ object TestingProblem {
     )
 
     var active: List[interpreter.Loc] = List()
-    (0 until kMax).foreach { i =>
+    (0 until kMax).foreach { k =>
+      println(s"k=$k")
       active = interpreter.executeStep(active)
       problem.impl.step()
     }
