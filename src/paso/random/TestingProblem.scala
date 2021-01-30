@@ -46,6 +46,7 @@ object TestingProblem {
     } catch {
       case a : AssertionError => throw a
     } finally {
+      problem.impl.step()
       problem.impl.finish
     }
 
