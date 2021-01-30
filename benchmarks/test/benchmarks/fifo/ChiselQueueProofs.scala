@@ -14,12 +14,9 @@ class ChiselQueueProofs extends AnyFlatSpec {
       Paso(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).bmc(k)
     }
 
-    // TODO: find out why tests fail when pipe=true
-    if(!c.pipe) {
-      val j = k * 1000
-      s"Chisel Queue(UInt(${c.width}.W), depth=${c.depth}, flow=${c.flow}, pipe=${c.pipe})" should s"pass random testing (k=$j)" in {
-        Paso(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).randomTest(j)
-      }
+    val j = k * 1000
+    s"Chisel Queue(UInt(${c.width}.W), depth=${c.depth}, flow=${c.flow}, pipe=${c.pipe})" should s"pass random testing (k=$j)" in {
+      Paso(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).randomTest(j)
     }
   }
 

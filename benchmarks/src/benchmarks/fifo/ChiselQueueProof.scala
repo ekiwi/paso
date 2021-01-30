@@ -83,7 +83,7 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     // enqueue
     dut.enq.valid.set(true.B)
     dut.enq.bits.set(in)
-    dut.enq.ready.expect(true.B)
+    // dut.enq.ready.expect(true.B)
 
     // dequeue
     dut.deq.ready.set(false.B) // do not pop
@@ -93,6 +93,8 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     } else {
       dut.deq.valid.expect(!out.empty)
     }
+
+    dut.enq.ready.expect(true.B)
 
     // count
     dut.count.expect(out.count)
@@ -106,9 +108,7 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     // enqueue
     dut.enq.valid.set(false.B)
     dut.enq.bits.set(DontCare)
-    if(impl.pipe) {
-      dut.enq.ready.expect(true.B)
-    } else {
+    if(!impl.pipe) {
       dut.enq.ready.expect(!out.full)
     }
 
@@ -116,6 +116,10 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     dut.deq.ready.set(true.B)
     dut.deq.bits.expect(out.data)
     dut.deq.valid.expect(true.B)
+
+    if(impl.pipe) {
+      dut.enq.ready.expect(true.B)
+    }
 
     // count
     dut.count.expect(out.count)
@@ -129,12 +133,16 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     // enqueue
     dut.enq.valid.set(true.B)
     dut.enq.bits.set(in)
-    dut.enq.ready.expect(true.B)
+
+    // TODO: detect that we cannot read enq.ready here since we only later set deq.ready (for the piped version!)
+    // dut.enq.ready.expect(true.B)
 
     // dequeue
     dut.deq.ready.set(true.B)
     dut.deq.bits.expect(out.data)
     dut.deq.valid.expect(true.B)
+
+    dut.enq.ready.expect(true.B)
 
     // count
     dut.count.expect(out.count)
@@ -146,11 +154,13 @@ class ChiselQueueProtocol[T <: UInt](impl: Queue[T]) extends ProtocolSpec[Untime
     // enqueue
     dut.enq.valid.set(false.B)
     dut.enq.bits.set(DontCare)
-    dut.enq.ready.expect(!out.full)
+    // dut.enq.ready.expect(!out.full)
 
     // dequeue
     dut.deq.ready.set(false.B)
     dut.deq.valid.expect(!out.empty)
+
+    dut.enq.ready.expect(!out.full)
 
     // count
     dut.count.expect(out.count)
