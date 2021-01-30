@@ -8,6 +8,9 @@ on:
 
 jobs:
   test:
+    strategy:
+      matrix:
+        benchmark: [fifo, fpga, picorv32, aes]
     runs-on: ubuntu-20.04
 
     steps:
@@ -90,17 +93,21 @@ jobs:
       run: sbt "project benchmarks ; compile"
 
     - name: Fifo Proofs
+      if: ${{ matrix.benchmark == 'fifo' }}
       timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.fifo.**"
 
     - name: FPGA Memory Proofs
+      if: ${{ matrix.benchmark == 'fpga' }}
       timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
 
     - name: PicoRV32 Multiplier Test / BMC
+      if: ${{ matrix.benchmark == 'picorv32' }}
       timeout-minutes: 3
       run: sbt "project benchmarks ; testOnly benchmarks.picorv32.**"
 
     - name: AES Proofs
+      if: ${{ matrix.benchmark == 'aes' }}
       timeout-minutes: 30
       run: sbt "project benchmarks ; testOnly benchmarks.aes.**"
