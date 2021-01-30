@@ -41,11 +41,11 @@ abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val 
 
 case class NoSubSpecs[I <: RawModule, S <: UntimedModule](override val impl: I, override val spec: S) extends SubSpecs[I,S](impl, spec) {}
 
-case class PasoImpl[I <: RawModule](impl: () => I) {
-  def apply[S <: UntimedModule](spec: I => ProtocolSpec[S]): PasoImplAndSpec[I,S] = PasoImplAndSpec(impl, spec)
+case class PasoImpl[I <: RawModule](impl: () => I, getTestDir: () => String) {
+  def apply[S <: UntimedModule](spec: I => ProtocolSpec[S]): PasoImplAndSpec[I,S] = PasoImplAndSpec(this, spec)
 }
 
-case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S]) {
+case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S]) {
   def proof(): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _))
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), inv)
   def proof(opt: ProofOptions, dbg: DebugOptions): Boolean = Paso.runProof[I,S](impl, spec, NoSubSpecs(_, _), NoProofCollateral(_, _), opt, dbg)
@@ -59,7 +59,7 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: () => I, sp
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
 
-case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S]) {
+case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S]) {
   def proof(): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _))
   def proof(inv: (I, S) => ProofCollateral[I,S]): Boolean = Paso.runProof[I,S](impl, spec, subspecs, inv)
   def proof(opt: ProofOptions): Boolean = Paso.runProof[I,S](impl, spec, subspecs, NoProofCollateral(_, _), opt)
@@ -74,20 +74,21 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
 }
 
 object Paso {
-  def apply[I <: RawModule](impl: => I): PasoImpl[I] = PasoImpl(() => impl)
-
-  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
-    val elaborated = Elaboration(dbg)[I, S](impl, spec, subspecs, inv)
+  private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
+    println(s"TODO: ${impl.getTestDir()}")
+    val elaborated = Elaboration(dbg)[I, S](impl.impl, spec, subspecs, inv)
     VerificationProblem.verify(elaborated, opt, dbg)
     true
   }
-  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
-    val elaborated = Elaboration(dbg)[I, S](impl, spec, subspecs, NoProofCollateral(_, _))
+  private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
+    println(s"TODO: ${impl.getTestDir()}")
+    val elaborated = Elaboration(dbg)[I, S](impl.impl, spec, subspecs, NoProofCollateral(_, _))
     VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
     true
   }
-  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: () => I, spec: I => ProtocolSpec[S], kMax: Int, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
-    val elaborated = Elaboration(dbg).elaborateConcrete(impl, spec)
+  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], kMax: Int, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
+    println(s"TODO: ${impl.getTestDir()}")
+    val elaborated = Elaboration(dbg).elaborateConcrete(impl.impl, spec)
     TestingProblem.randomTest(elaborated, kMax, seed, dbg)
     true
   }

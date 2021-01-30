@@ -277,132 +277,132 @@ class PipelinedAdd3Delay2ProtocolCompisitional(impl: PipelinedAdd3Delay2) extend
   }
 }
 
-class PipeliningExamplesSpec extends AnyFlatSpec {
+class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
   "A simple register" should "refine its spec" in {
-    Paso(new Register)(new RegisterProtocol(_)).proof()
+    test(new Register)(new RegisterProtocol(_)).proof()
   }
 
   "A simple register" should "pass random testing" in {
-    Paso(new Register)(new RegisterProtocol(_)).randomTest(10)
+    test(new Register)(new RegisterProtocol(_)).randomTest(10)
   }
 
   "A simple register with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new Register(withBug = true))(new RegisterProtocol(_)).proof()
+      test(new Register(withBug = true))(new RegisterProtocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit adder" should "refine its spec" in {
-    Paso(new PipelinedAdd2)(new PipelinedAdd2Protocol(_)).proof()
+    test(new PipelinedAdd2)(new PipelinedAdd2Protocol(_)).proof()
   }
 
   "A pipelined 32-bit adder with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedAdd2(withBug = true))(new PipelinedAdd2Protocol(_)).proof()
+      test(new PipelinedAdd2(withBug = true))(new PipelinedAdd2Protocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit add3" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_)).proof()
+    test(new PipelinedAdd3)(new PipelinedAdd3Protocol(_)).proof()
   }
 
   "A pipelined 32-bit add3 with abstract add2" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3Protocol(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3)(new PipelinedAdd3Protocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with abstract add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with abstract and bound add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3)(new PipelinedAdd3CompositionalProtocol(_))(new SubSpecs(_, _) {
       impl.a.foreach(a => replace(a)(new PipelinedAdd2Protocol(_)).bind(spec.add2))
     }).proof(Paso.MCYices2)
   }
 
   "A pipelined 32-bit add3 with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
+      test(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit add3 with delay=2" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_)).proof()
+    test(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_)).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract add2" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2Protocol(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_))
     }).proof()
   }
 
   "A pipelined 32-bit add3 with delay=2 with abstract and bound add2 and compositional spec" should "refine its spec" in {
-    Paso(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
+    test(new PipelinedAdd3Delay2())(new PipelinedAdd3Delay2ProtocolCompisitional(_))(new SubSpecs(_, _) {
       replace(impl.a)(new PipelinedAdd2Protocol(_)).bind(spec.add2)
     }).proof(Paso.MCYices2)
   }
 
   "A pipelined 32-bit add3 with delay=2 with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedAdd3Delay2(withBug = true))(new PipelinedAdd3Delay2Protocol(_)).proof()
+      test(new PipelinedAdd3Delay2(withBug = true))(new PipelinedAdd3Delay2Protocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 }
 
 // the multiplication makes some of the SMT solvers struggle...
-class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
+class PipeliningExamplesWithMulSpec extends AnyFlatSpec with PasoTester {
   "A pipelined 32-bit multiplier" should "refine its spec" in {
-    Paso(new PipelinedMul)(new PipelinedMulProtocol(_)).proof()
+    test(new PipelinedMul)(new PipelinedMulProtocol(_)).proof()
   }
 
   "A pipelined 32-bit multiplier with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).proof()
+      test(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit multiplier with bug" should "fail bmc" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).bmc(1)
+      test(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).bmc(1)
     }
     assert(fail.getMessage.contains("Found a disagreement between implementation and spec."))
   }
 
   "A pipelined 32-bit mac" should "refine its spec" in {
-    Paso(new PipelinedMac)(new PipelinedMacProtocol(_)).proof()
+    test(new PipelinedMac)(new PipelinedMacProtocol(_)).proof()
   }
 
   "A pipelined 32-bit mac with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_)).proof()
+      test(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_)).proof()
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
 
   "A pipelined 32-bit mac with abstract adder" should "refine its spec" in {
-    Paso(new PipelinedMac)(new PipelinedMacProtocol(_))(new SubSpecs(_,_){
+    test(new PipelinedMac)(new PipelinedMacProtocol(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_))
     }).proof()
   }
 
   "A pipelined 32-bit mac with abstract adder with bug" should "fail" in {
     val fail = intercept[AssertionError] {
-      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_))(new SubSpecs(_, _) {
+      test(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_))(new SubSpecs(_, _) {
         replace(impl.mul)(new PipelinedMulProtocol(_))
       }).proof()
     }
@@ -410,7 +410,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
   }
 
   "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
-    Paso(new PipelinedMac)(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_,_){
+    test(new PipelinedMac)(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_,_){
       replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
     }).proof(Paso.MCYices2)
   }
@@ -418,7 +418,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec {
   "A pipelined 32-bit mac with abstract adder and subspec with bug" should "fail" in {
     // TODO: once the witness generation for UFs is implemented, this should be changed to an AssertionError
     assertThrows[NotImplementedError] {
-      Paso(new PipelinedMac(withBug = true))(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_, _) {
+      test(new PipelinedMac(withBug = true))(new PipelinedMacProtocolWithSubSpec(_))(new SubSpecs(_, _) {
         replace(impl.mul)(new PipelinedMulProtocol(_)).bind(spec.multiplier)
       }).proof(Paso.MCYices2)
     }

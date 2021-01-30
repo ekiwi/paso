@@ -32,13 +32,14 @@ val chiselSettings = Seq(
 val otherDependencySettings = Seq(
   // treadle is used for concrete exectuion of untimed modules
   libraryDependencies += "edu.berkeley.cs" %% "treadle" % "1.5-SNAPSHOT",
+  // we depend on scalatest for the [[paso.PasoTester]]
+  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0",
   // JNA for SMT Solver bindings
   libraryDependencies += "net.java.dev.jna" % "jna" % "5.4.0",
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
 )
 
 val testDependencySettings = Seq(
-  libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.0" % "test",
   // libraryDependencies += "edu.berkeley.cs" %% "chiseltest" % "0.5-SNAPSHOT" % "test",
 )
 

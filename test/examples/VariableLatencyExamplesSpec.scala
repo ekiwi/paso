@@ -252,20 +252,20 @@ class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean
   }
 }
 
-class VariableLatencyExamplesSpec extends AnyFlatSpec {
+class VariableLatencyExamplesSpec extends AnyFlatSpec with PasoTester {
 
   "RandomLatency module" should "export to uclid" in {
-    Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(Paso.MCUclid5)
+    test(new RandomLatency)(new RandomLatencyProtocols(_)).proof(Paso.MCUclid5)
   }
 
   "RandomLatency module" should "refine its spec" in {
-    Paso(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+    test(new RandomLatency)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut => assert(!dut.running)  }
     })
   }
 
   "RandomLatencyAndKeep module" should "refine its spec" in {
-    Paso(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_)).proof(new ProofCollateral(_, _){
+    test(new RandomLatencyKeepOutput)(new VariableLatencyKeepProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut => assert(!dut.running) }
       mapping { (impl, spec) =>
         when(spec.valid) {
@@ -276,13 +276,13 @@ class VariableLatencyExamplesSpec extends AnyFlatSpec {
   }
 
   "RandomLatencyAndKeep module" should "also refine the less demanding RandomLatency spec" in {
-    Paso(new RandomLatencyKeepOutput)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+    test(new RandomLatencyKeepOutput)(new RandomLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut => assert(!dut.running) }
     })
   }
 
   "VariableLatencyToConst with full RTL" should "refine its spec" in {
-    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+    test(new VariableLatencyToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut =>
         assert(!dut.lsb.running)
         assert(!dut.msb.running)
@@ -291,21 +291,21 @@ class VariableLatencyExamplesSpec extends AnyFlatSpec {
   }
 
   "VariableLatencyToConst with abstracted RTL" should "refine its spec" in {
-    Paso(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
+    test(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_))
       replace(impl.msb)(new RandomLatencyProtocols(_))
     }).proof()
   }
 
   "VariableLatencyToConst with abstracted RTL and id bindings" should "refine its spec" in {
-    Paso(new VariableLatencyToConst)(new ConstantLatencyWithSubIdProtocols(_))(new SubSpecs(_,_) {
+    test(new VariableLatencyToConst)(new ConstantLatencyWithSubIdProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_)).bind(spec.id32)
       replace(impl.msb)(new RandomLatencyProtocols(_)).bind(spec.id32)
     }).proof(Paso.MCYices2)
   }
 
   "VariableLatencyKeepToConst with full RTL" should "refine its spec" in {
-    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
+    test(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _){
       invariants { dut =>
         assert(!dut.lsb.running)
         assert(!dut.msb.running)
@@ -314,7 +314,7 @@ class VariableLatencyExamplesSpec extends AnyFlatSpec {
   }
 
   "VariableLatencyKeepToConst with abstracted RTL" should "refine its spec" in {
-    Paso(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
+    test(new VariableLatencyKeepToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new VariableLatencyKeepProtocols(_))
       replace(impl.msb)(new VariableLatencyKeepProtocols(_))
     }).proof()

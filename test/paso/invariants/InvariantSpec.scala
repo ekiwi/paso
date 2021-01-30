@@ -94,17 +94,17 @@ class MemWrapperProof(impl: ChiselMemWrapper, spec: UntimedMem) extends ProofCol
 }
 
 
-class InvariantSpec extends AnyFlatSpec {
+class InvariantSpec extends AnyFlatSpec with PasoTester {
   behavior of "Paso invariants"
 
   // small sanity check
-  it should "work for bmc ...." in { Paso(new ChiselMem)(new MemProtocol(_)).bmc(5) }
+  it should "work for bmc ...." in { test(new ChiselMem)(new MemProtocol(_)).bmc(5) }
 
   it should "be able to refer to a memory" in {
-    Paso(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProof(_, _))
+    test(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProof(_, _))
   }
 
   it should "be able to refer to a memory in a submodule" in {
-    Paso(new ChiselMemWrapper)(new MemProtocol(_)).proof(Paso.MCZ3, new MemWrapperProof(_, _))
+    test(new ChiselMemWrapper)(new MemProtocol(_)).proof(Paso.MCZ3, new MemWrapperProof(_, _))
   }
 }
