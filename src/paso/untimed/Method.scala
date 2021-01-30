@@ -37,7 +37,7 @@ case class NMethod(name: String, guard: () => Bool, impl: () => Unit, parent: Me
   }
 }
 
-case class IMethod[I <: Data](name: String, guard: I => Bool, inputType: I, impl: I => Unit, parent: MethodParent) extends Method {
+case class IMethod[I <: Data](name: String, guard: () => Bool, inputType: I, impl: I => Unit, parent: MethodParent) extends Method {
   def apply(in: I): Unit = {
     require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedMoudles")
     throw new NotImplementedError("Calling methods with side effects is currently not supported!")
@@ -47,7 +47,7 @@ case class IMethod[I <: Data](name: String, guard: I => Bool, inputType: I, impl
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
     io.ret := DontCare
     when(io.enabled) { impl(io.arg) }
-    io.guard := guard(io.arg)
+    io.guard := guard()
   }
 }
 
@@ -70,7 +70,7 @@ case class OMethod[O <: Data](name: String, guard: () => Bool, outputType: O, im
   }
 }
 
-case class IOMethod[I <: Data, O <: Data](name: String, guard: I => Bool, inputType: I, outputType: O, impl: (I,O) => Unit, parent: MethodParent) extends Method {
+case class IOMethod[I <: Data, O <: Data](name: String, guard: () => Bool, inputType: I, outputType: O, impl: (I,O) => Unit, parent: MethodParent) extends Method {
   def apply(in: I): O = {
     require(!parent.isElaborated, "TODO: implement method calls for elaborated UntimedModules")
     val ii = MethodCall.getCallCount(name)
@@ -86,7 +86,7 @@ case class IOMethod[I <: Data, O <: Data](name: String, guard: I => Bool, inputT
     annotate(new ChiselAnnotation { override def toFirrtl = MethodIOAnnotation(io.toTarget, name) })
     io.ret := DontCare
     when(io.enabled) { impl(io.arg, io.ret) }
-    io.guard := guard(io.arg)
+    io.guard := guard()
   }
 }
 

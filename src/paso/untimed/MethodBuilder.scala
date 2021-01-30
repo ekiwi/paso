@@ -6,43 +6,30 @@
 package paso.untimed
 import chisel3._
 
-case class NMethodBuilder(p: MethodParent, n: String, guard: List[() => Bool] = List()) {
-  def in[I <: Data](inputType: I): IMethodBuilder[I] = IMethodBuilder(p, n, inputType, MethodBuilder.addGuardInput(inputType, guard))
+case class NMethodBuilder(p: MethodParent, n: String, guard: Option[() => Bool] = None) {
+  def in[I <: Data](inputType: I): IMethodBuilder[I] = IMethodBuilder(p, n, inputType, guard)
   def out[O <: Data](outputType: O): OMethodBuilder[O] = OMethodBuilder(p, n, outputType, guard)
-  def when(cond: => Bool): NMethodBuilder = { this.copy(guard = this.guard :+ (() => cond))}
+  def when(cond: => Bool): NMethodBuilder = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: => Unit): NMethod = {
-    val g = MethodBuilder.mergeGuard(guard)
-    val m = NMethod(n, g, () => impl, p) ; p.addMethod(m) ; m
+    val m = NMethod(n, guard.getOrElse(() => true.B), () => impl, p) ; p.addMethod(m) ; m
   }
 }
-case class OMethodBuilder[O <: Data](p: MethodParent, n: String, outputType: O, guard: List[() => Bool] = List()) {
-  def when(cond: => Bool): OMethodBuilder[O] = { this.copy(guard = this.guard :+ (() => cond))}
+case class OMethodBuilder[O <: Data](p: MethodParent, n: String, outputType: O, guard: Option[() => Bool] = None) {
+  def when(cond: => Bool): OMethodBuilder[O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: O => Unit): OMethod[O] = {
-    val g = MethodBuilder.mergeGuard(guard)
-    val m = OMethod(n, g, outputType, impl, p) ; p.addMethod(m) ; m
+    val m = OMethod(n, guard.getOrElse(() => true.B), outputType, impl, p) ; p.addMethod(m) ; m
   }
 }
-case class IMethodBuilder[I <: Data](p: MethodParent, n : String, inputType: I, guard: List[I => Bool] = List()) {
+case class IMethodBuilder[I <: Data](p: MethodParent, n : String, inputType: I, guard: Option[() => Bool] = None) {
   def out[O <: Data](outputType: O): IOMethodBuilder[I, O] = IOMethodBuilder(p, n, inputType, outputType, guard)
-  def when(cond: => Bool): IMethodBuilder[I] = { this.copy(guard = this.guard :+ ((_: I) => cond))}
-  def when(cond: I => Bool): IMethodBuilder[I] = { this.copy(guard = this.guard :+ cond)}
+  def when(cond: => Bool): IMethodBuilder[I] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: I => Unit): IMethod[I] = {
-    val g = MethodBuilder.mergeGuard(guard)
-    val m = IMethod(n, g, inputType, impl, p) ; p.addMethod(m) ; m
+    val m = IMethod(n, guard.getOrElse(() => true.B), inputType, impl, p) ; p.addMethod(m) ; m
   }
 }
-// TODO: switch to two different guard lists: state only and input guards
-case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inputType: I, outputType: O, guard: List[I => Bool] = List()) {
-  def when(cond: => Bool): IOMethodBuilder[I,O] = { this.copy(guard = this.guard :+ ((_: I) => cond))}
-  def when(cond: I => Bool): IOMethodBuilder[I,O] = { this.copy(guard = this.guard :+ cond)}
+case class IOMethodBuilder[I <: Data, O <: Data](p: MethodParent, n: String, inputType: I, outputType: O, guard: Option[() => Bool] = None) {
+  def when(cond: => Bool): IOMethodBuilder[I,O] = { require(guard.isEmpty) ; this.copy(guard = Some(() => cond))}
   def apply(impl: (I, O) => Unit): IOMethod[I,O] = {
-    val g = MethodBuilder.mergeGuard(guard)
-    val m = IOMethod(n, g, inputType, outputType, impl, p) ; p.addMethod(m) ; m
+    val m = IOMethod(n, guard.getOrElse(() => true.B), inputType, outputType, impl, p) ; p.addMethod(m) ; m
   }
-}
-
-private object MethodBuilder {
-  def addGuardInput[I <: Data](tpe: I, guard: List[() => Bool]): List[I => Bool] = guard.map(g => (_:I) => g())
-  def mergeGuard(guard: List[() => Bool]): () => Bool = () => guard.foldLeft(true.B)((a,b) => a && b())
-  def mergeGuard[I <: Data](guard: List[I => Bool]): I => Bool = (i: I) => guard.foldLeft(true.B)((a,b) => a && b(i))
 }

@@ -58,7 +58,6 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
 
     // pick args
     val args = t.args.map { case (name, bits) => name -> guide.chooseArg(name, bits) }
-    // TODO: validate to see if args are allowed ...
 
     // execute transaction
     args.foreach { case (name, value) => untimed.poke(name, value) }
