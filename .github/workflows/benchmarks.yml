@@ -91,20 +91,20 @@ jobs:
 
     - name: Fifo Proofs
       if: ${{ matrix.benchmark == 'fifo' }}
-      timeout-minutes: 3
+      timeout-minutes: 10
       run: sbt "project benchmarks ; testOnly benchmarks.fifo.**"
 
     - name: FPGA Memory Proofs
       if: ${{ matrix.benchmark == 'fpga' }}
-      timeout-minutes: 3
+      timeout-minutes: 10
       run: sbt "project benchmarks ; testOnly benchmarks.fpga.**"
 
     - name: PicoRV32 Multiplier Test / BMC
       if: ${{ matrix.benchmark == 'picorv32' }}
-      timeout-minutes: 3
+      timeout-minutes: 10
       run: sbt "project benchmarks ; testOnly benchmarks.picorv32.**"
 
     - name: AES Proofs
       if: ${{ matrix.benchmark == 'aes' }}
-      timeout-minutes: 30
+      timeout-minutes: 10
       run: sbt "project benchmarks ; testOnly benchmarks.aes.**"
