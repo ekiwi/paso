@@ -4,14 +4,14 @@ import org.scalatest.flatspec.AnyFlatSpec
 import paso._
 import chisel3._
 
-class CircularPointerFifoProofs extends AnyFlatSpec {
+class CircularPointerFifoProofs extends AnyFlatSpec with PasoTester {
 
   "CircularPointerFifo" should "pass BMC" in {
     val depth = 4
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
+    test(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
   }
 
   "CircularPointerFifo" should "pass some cycles of random tests" in {
@@ -19,7 +19,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).randomTest(1000)
+    test(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).randomTest(1000)
   }
 
   "CircularPointerFifo" should "refine its spec" in {
@@ -27,7 +27,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCZ3, new CircularProof(_, _))
+    test(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).proof(Paso.MCZ3, new CircularProof(_, _))
   }
 
   "CircularPointerFifo with readDelay=1" should "pass BMC" in {
@@ -35,7 +35,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
+    test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
   }
 
   "CircularPointerFifo with readDelay=1" should "pass some cycles of random tests" in {
@@ -43,7 +43,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).randomTest(1000)
+    test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).randomTest(1000)
   }
 
   "CircularPointerFifo with readDelay=0 and bug" should "fail BMC" ignore {
@@ -52,7 +52,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val fixed = false // TODO: setting fixed to false still results ina working FIFO ...
 
     assertThrows[AssertionError] {
-      Paso(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
+      test(new CircularPointerFifo(depth, width, 0, fixed))(new FifoProtocols(_)).bmc((depth * 2) + 2)
     }
   }
 
@@ -63,7 +63,7 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
 
     assertThrows[AssertionError] {
       (0 until 10).foreach { seed =>
-        Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).randomTest(10000, seed = Some(seed))
+        test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).randomTest(10000, seed = Some(seed))
       }
     }
   }
@@ -73,6 +73,6 @@ class CircularPointerFifoProofs extends AnyFlatSpec {
     val width = 8
     val fixed = true
 
-    Paso(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
+    test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
   }
 }

@@ -9,24 +9,30 @@ import aes._
 import chisel3._
 
 object AESOneRound extends App {
-  Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
+  // TODO: run tests outside of scalatest
+  //Paso(new OneRound)(new TinyAESRoundProtocol(_)).proof()
 }
 
 object AESFinalRound extends App {
-  Paso(new FinalRound)(new TinyAESRoundProtocol(_)).proof()
+  // TODO: run tests outside of scalatest
+  //Paso(new FinalRound)(new TinyAESRoundProtocol(_)).proof()
 }
 
 object AESExpandKey extends App {
+  // TODO: run tests outside of scalatest
   StaticTables.rcon.foreach { ii =>
     val rc = ii.U(8.W)
-    Paso(new ExpandKey128(rc))(new TinyAESExpandKeyProtocol(_)).proof()
+    // Paso(new ExpandKey128(rc))(new TinyAESExpandKeyProtocol(_)).proof()
   }
 }
 
 object AES extends App {
+  // TODO: run tests outside of scalatest
+  /*
   Paso(new TinyAES128)(new TinyAESProtocol(_))(new SubSpecs(_, _) {
     replace(impl.finalRound)(new TinyAESRoundProtocol(_)).bind(spec.finalRound)
     impl.rounds.foreach(r => replace(r)(new TinyAESRoundProtocol(_)).bind(spec.round))
     impl.expandKey.zip(spec.expand).foreach { case (i, s) => replace(i)(new TinyAESExpandKeyProtocol(_)).bind(s) }
   }).proof(Paso.MCYices2)
+  */
 }

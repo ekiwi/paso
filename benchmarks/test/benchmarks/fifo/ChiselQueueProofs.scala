@@ -6,17 +6,17 @@ import chisel3._
 import chisel3.util._
 
 
-class ChiselQueueProofs extends AnyFlatSpec {
+class ChiselQueueProofs extends AnyFlatSpec with PasoTester {
 
   def makeTest(c: QueueConfig): Unit = {
     val k = (c.depth * 2) + 2
     s"Chisel Queue(UInt(${c.width}.W), depth=${c.depth}, flow=${c.flow}, pipe=${c.pipe})" should s"pass BMC(k=$k)" in {
-      Paso(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).bmc(k)
+      test(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).bmc(k)
     }
 
     val j = k * 1000
     s"Chisel Queue(UInt(${c.width}.W), depth=${c.depth}, flow=${c.flow}, pipe=${c.pipe})" should s"pass random testing (k=$j)" in {
-      Paso(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).randomTest(j)
+      test(new Queue(UInt(c.width.W), c.depth, flow = c.flow, pipe = c.pipe))(new ChiselQueueProtocol(_)).randomTest(j)
     }
   }
 

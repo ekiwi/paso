@@ -73,14 +73,14 @@ class TinyAESDebugProtocol(impl: TinyAES128Debug) extends ProtocolSpec[AES128Deb
   }
 }
 
-class TinyAESOtherSpec extends AnyFlatSpec {
+class TinyAESOtherSpec extends AnyFlatSpec with PasoTester {
   // this was used to hunt down a bug in our spec by breaking it into smaller pieces
   "TinyAES TableLookup" should "refine its spec" in {
-    Paso(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()
+    test(new TableLookup)(new TinyAESTableLookupProtocol(_)).proof()
   }
 
   "TinyAES128Debug" should "correctly connect all submodules" in {
-    Paso(new TinyAES128Debug)(new TinyAESDebugProtocol(_))(new SubSpecs(_, _) {
+    test(new TinyAES128Debug)(new TinyAESDebugProtocol(_))(new SubSpecs(_, _) {
       replace(impl.r1)(new TinyAESRoundProtocol(_)).bind(spec.round)
       replace(impl.a1)(new TinyAESExpandKeyProtocol(_)).bind(spec.expand)
     }).proof(Paso.MCYices2)
