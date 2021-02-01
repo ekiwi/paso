@@ -10,6 +10,7 @@ import paso.chisel.Elaboration
 import paso.formal.VerificationProblem
 import paso.random.TestingProblem
 
+import java.nio.file.Paths
 import scala.collection.mutable
 
 trait IsSubmodule {
@@ -75,20 +76,20 @@ case class PasoImplAndSpecAndSubspecs[I <: RawModule, S <: UntimedModule](impl: 
 
 object Paso {
   private[paso] def runProof[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I, S], inv: (I, S) => ProofCollateral[I,S], opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
-    println(s"TODO: ${impl.getTestDir()}")
-    val elaborated = Elaboration(dbg)[I, S](impl.impl, spec, subspecs, inv)
-    VerificationProblem.verify(elaborated, opt, dbg)
+    val workingDir = impl.getTestDir()
+    val elaborated = Elaboration(dbg, workingDir)[I, S](impl.impl, spec, subspecs, inv)
+    VerificationProblem.verify(elaborated, opt, dbg, Paths.get(workingDir))
     true
   }
   private[paso] def runBmc[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], subspecs: (I, S) => SubSpecs[I,S], kMax: Int, opt: ProofOptions = Default, dbg: DebugOptions = NoDebug): Boolean = {
-    println(s"TODO: ${impl.getTestDir()}")
-    val elaborated = Elaboration(dbg)[I, S](impl.impl, spec, subspecs, NoProofCollateral(_, _))
-    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
+    val workingDir = impl.getTestDir()
+    val elaborated = Elaboration(dbg, workingDir)[I, S](impl.impl, spec, subspecs, NoProofCollateral(_, _))
+    VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg, Paths.get(workingDir))
     true
   }
   private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], kMax: Int, recordWaveform: Boolean, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
-    println(s"TODO: ${impl.getTestDir()}")
-    val elaborated = Elaboration(dbg).elaborateConcrete(impl.impl, spec, recordWaveform)
+    val workingDir = impl.getTestDir()
+    val elaborated = Elaboration(dbg, workingDir).elaborateConcrete(impl.impl, spec, recordWaveform)
     TestingProblem.randomTest(elaborated, kMax, seed, dbg)
     true
   }

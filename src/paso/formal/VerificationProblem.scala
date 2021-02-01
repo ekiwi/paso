@@ -9,6 +9,7 @@ import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, St
 import maltese.{mc, smt}
 import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph, UGraph}
 import paso.{DebugOptions, untimed}
+import java.nio.file.{Files, Path}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
@@ -18,7 +19,9 @@ case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph], ugraphs: S
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Spec], invariants: TransitionSystem)
 
 object VerificationProblem {
-  def verify(problem: VerificationProblem, opt: paso.ProofOptions, dbg: DebugOptions): Unit = {
+  def verify(problem: VerificationProblem, opt: paso.ProofOptions, dbg: DebugOptions, workingDir: Path): Unit = {
+    assert(Files.exists(workingDir), s"Working dir `$workingDir` does not exist!")
+
     val checker = makeChecker(opt.modelChecker, dbg.printMCProgress)
     val solver = smt.solvers.Yices2()
 
@@ -37,14 +40,14 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
       List(generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
-    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, printSys = dbg.printBaseSys)
+    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys)
 
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)), nonCommittedInInitState(spec.name, subspecs.map(_.name)))
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
-    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength, printSys = dbg.printInductionSys)
+    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength, workingDir = workingDir, printSys = dbg.printInductionSys)
 
     // check results
     assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
@@ -54,7 +57,8 @@ object VerificationProblem {
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
   }
 
-  def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int, dbg: DebugOptions): Unit = {
+  def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int, dbg: DebugOptions, workingDir: Path): Unit = {
+    assert(Files.exists(workingDir), s"Working dir `$workingDir` does not exist!")
     val resetLength = 1
     val checker = makeChecker(modelChecker, dbg.printMCProgress)
     val solver = smt.solvers.Yices2()
@@ -73,7 +77,7 @@ object VerificationProblem {
       List(generateBmcConditions(resetLength), impl, spec, invariants))
 
     // call checker
-    val success = check(checker, bmcSys, kMax + resetLength, printSys = dbg.printBmcSys)
+    val success = check(checker, bmcSys, kMax + resetLength, workingDir, printSys = dbg.printBmcSys)
     assert(success, s"Found a disagreement between implementation and spec. Please consult ${bmcSys.name}.vcd")
   }
 
@@ -89,17 +93,17 @@ object VerificationProblem {
     case paso.Uclid5 => mc.Uclid5PseudoMC
   }
 
-  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
-    val checkerFile = sys.name + checker.fileExtension
-    val vcdFile = sys.name + ".vcd"
+  private def check(checker: IsModelChecker, sys: TransitionSystem, kMax: Int, workingDir: Path, printSys: Boolean = false, debug: Iterable[smt.BVSymbol] = List()): Boolean = {
+    val checkerFile = workingDir.resolve(sys.name + checker.fileExtension)
+    val vcdFile = workingDir.resolve(sys.name + ".vcd")
 
     val fullSys = if(debug.isEmpty) { sys } else { observe(sys, debug) }
     if(printSys) { println(fullSys.serialize) }
-    val res = checker.check(fullSys, kMax = kMax, fileName = Some(checkerFile))
+    val res = checker.check(fullSys, kMax = kMax, fileName = Some(checkerFile.toString))
     res match {
       case ModelCheckFail(witness) =>
         val sim = new TransitionSystemSimulator(fullSys)
-        sim.run(witness, vcdFileName = Some(vcdFile))
+        sim.run(witness, vcdFileName = Some(vcdFile.toString))
         println(s"${fullSys.name} fails!")
         false
       case ModelCheckSuccess() =>

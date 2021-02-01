@@ -7,7 +7,7 @@ package paso.chisel
 import chisel3.{Module, RawModule}
 import chisel3.hacks.{ElaborateObserver, ExternalReference}
 import firrtl.annotations.{Annotation, CircuitTarget}
-import firrtl.options.Dependency
+import firrtl.options.{Dependency, TargetDirAnnotation}
 import firrtl.passes.InlineInstances
 import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, RunFirrtlTransformAnnotation}
 import firrtl.{AnnotationSeq, CircuitState, LowFirrtlEmitter, ir}
@@ -23,7 +23,9 @@ import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtoc
 import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
 
-case class Elaboration(dbg: DebugOptions) {
+case class Elaboration(dbg: DebugOptions, workingDir: String) {
+  val TargetDir = Seq(TargetDirAnnotation(workingDir))
+
   private def elaborate[M <: RawModule](gen: () => M): (firrtl.CircuitState, M) = {
     val res = ChiselCompiler.elaborate(gen)
     res
@@ -48,7 +50,7 @@ case class Elaboration(dbg: DebugOptions) {
 
     // convert invariant module to SMT
     val ll = if(dbg.traceInvariantElaboration) LogLevel.Trace else LogLevel.Error
-    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos, ll)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(inv.state.circuit, inv.state.annotations ++ annos ++ TargetDir, ll)
     val sys = mc.TransitionSystem.prefixSignals(transitionSystem)
 
     // connect cross module reference inputs
@@ -130,7 +132,7 @@ case class Elaboration(dbg: DebugOptions) {
     val doFlatten = Seq(RunFirrtlTransformAnnotation(Dependency(passes.PasoSubmoduleFlatten)),
       RunFirrtlTransformAnnotation(Dependency[InlineInstances]))
     val annos = state.annotations ++ exposeSignalsAnnos ++ doFlatten
-    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, annos, ll)
+    val (transitionSystem, resAnnos) = FirrtlToFormal(state.circuit, annos ++ TargetDir, ll)
     val submoduleNames = resAnnos.collect{ case a : SubmoduleInstanceAnnotation =>
       a.originalModule -> a.target.instance
     }.toMap
