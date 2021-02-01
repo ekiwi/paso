@@ -23,6 +23,8 @@ import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtoc
 import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
 
+import java.nio.file.Paths
+
 case class Elaboration(dbg: DebugOptions, workingDir: String) {
   val TargetDir = Seq(TargetDirAnnotation(workingDir))
 
@@ -292,9 +294,9 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
 
   private def toTester(state: firrtl.CircuitState, recordWaveform: Boolean): (treadle.TreadleTester, Seq[ir.Port]) = {
     val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
-    val lowFirrtlAnnos = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
-    val loFirrtl = firrtl.CircuitState(lowFirrtlAnnos.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get, Seq())
-    val tester = MakeTreadleTester(loFirrtl, recordWaveform)
+    val lowFirrtlAnnos = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations ++ TargetDir)
+    val loFirrtl = firrtl.CircuitState(lowFirrtlAnnos.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get, TargetDir)
+    val tester = MakeTreadleTester(loFirrtl, recordWaveform, workingDir)
     val lowCircuit = loFirrtl.circuit
     val io = lowCircuit.modules.collectFirst{ case ir.Module(_, lowCircuit.main, ports, _) => ports }.get
     (tester, io)

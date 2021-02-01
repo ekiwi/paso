@@ -8,21 +8,3 @@
 
 # chisel testers
 /test_run_dir/
-
-# Chisel compiler
-/*.v
-/*.fir
-/*.json
-
-# treadle
-*.vcd
-
-# temporary files
-/*.btor
-/*.btor2
-/*.btor.out
-/*.btor2.out
-/*.vcd
-/*.smt2
-/*.ucl
-/*.dot
