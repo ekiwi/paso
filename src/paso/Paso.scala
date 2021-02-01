@@ -55,7 +55,7 @@ case class PasoImplAndSpec[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I]
   def bmc(k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k)
   def bmc(opt: ProofOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt)
   def bmc(opt: ProofOptions, dbg: DebugOptions, k: Int): Boolean = Paso.runBmc[I,S](impl, spec, NoSubSpecs(_, _), k, opt, dbg)
-  def randomTest(k: Int, seed: Option[Long] = Some(0)): Boolean = Paso.runRandomTest[I,S](impl, spec, k, seed)
+  def randomTest(k: Int, recordWaveform: Boolean = false, seed: Option[Long] = Some(0)): Boolean = Paso.runRandomTest[I,S](impl, spec, k, recordWaveform, seed)
   def apply(subspecs: (I, S) => SubSpecs[I,S]): PasoImplAndSpecAndSubspecs[I,S] = PasoImplAndSpecAndSubspecs(impl, spec, subspecs)
 }
 
@@ -86,9 +86,9 @@ object Paso {
     VerificationProblem.bmc(elaborated, opt.modelChecker, kMax, dbg)
     true
   }
-  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], kMax: Int, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
+  private[paso] def runRandomTest[I <: RawModule, S <: UntimedModule](impl: PasoImpl[I], spec: I => ProtocolSpec[S], kMax: Int, recordWaveform: Boolean, seed: Option[Long], dbg: DebugOptions = NoDebug): Boolean = {
     println(s"TODO: ${impl.getTestDir()}")
-    val elaborated = Elaboration(dbg).elaborateConcrete(impl.impl, spec)
+    val elaborated = Elaboration(dbg).elaborateConcrete(impl.impl, spec, recordWaveform)
     TestingProblem.randomTest(elaborated, kMax, seed, dbg)
     true
   }

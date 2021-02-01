@@ -288,17 +288,17 @@ case class Elaboration(dbg: DebugOptions) {
     prob
   }
 
-  private def toTester(state: firrtl.CircuitState): (treadle.TreadleTester, Seq[ir.Port]) = {
+  private def toTester(state: firrtl.CircuitState, recordWaveform: Boolean): (treadle.TreadleTester, Seq[ir.Port]) = {
     val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
     val lowFirrtlAnnos = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations)
     val loFirrtl = firrtl.CircuitState(lowFirrtlAnnos.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get, Seq())
-    val tester = MakeTreadleTester(loFirrtl, true)
+    val tester = MakeTreadleTester(loFirrtl, recordWaveform)
     val lowCircuit = loFirrtl.circuit
     val io = lowCircuit.modules.collectFirst{ case ir.Module(_, lowCircuit.main, ports, _) => ports }.get
     (tester, io)
   }
 
-  def elaborateConcrete[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S]): TestingProblem = {
+  def elaborateConcrete[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], recordWaveform: Boolean): TestingProblem = {
     val implChisel = chiselElaborationImpl(impl)
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
 
@@ -307,7 +307,7 @@ case class Elaboration(dbg: DebugOptions) {
       .map(compileProtocol(_, "io", ""))
       .map(p => ProtocolDesc(p._1.info, p._2))
       .toVector
-    val (tester, io) = toTester(implState)
+    val (tester, io) = toTester(implState, recordWaveform)
 
     TestingProblem(untimed = specChisel.untimed, protocols = protos, impl = tester, io = io)
   }
