@@ -10,6 +10,7 @@ import firrtl.annotations.{Annotation, CircuitTarget}
 import firrtl.options.{Dependency, TargetDirAnnotation}
 import firrtl.passes.InlineInstances
 import firrtl.stage.{FirrtlCircuitAnnotation, FirrtlStage, RunFirrtlTransformAnnotation}
+import firrtl.transforms.CombinationalPath
 import firrtl.{AnnotationSeq, CircuitState, LowFirrtlEmitter, ir}
 import logger.{LogLevel, LogLevelAnnotation, Logger}
 import maltese.mc.{IsOutput, TransitionSystem}
@@ -94,7 +95,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     withQuantifiers
   }
 
-  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String): (ProtocolGraph, UGraph) = {
+  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (ProtocolGraph, UGraph) = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
@@ -106,6 +107,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val graph = ProtocolGraph.encode(paths)
 
     val uGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
+    println(s"TODO: use $combPaths")
 
     (graph, uGraph)
   }
@@ -119,7 +121,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
   }
 
   /** used for both: RTL implementation and untimed module spec */
-  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Seq[ExposedSignalAnnotation], annos: AnnotationSeq)
+  private case class FormalSys(model: TransitionSystem, submodules: Map[String, String], exposedSignals: Seq[ExposedSignalAnnotation], combPaths: Seq[(String, Seq[String])], annos: AnnotationSeq)
   private def compileToFormal(state: CircuitState, externalRefs: Iterable[ExternalReference], prefix: String, ll: LogLevel.Value = LogLevel.Error): FormalSys = {
     // We want to wire all external signals to the toplevel
     val circuitName = state.circuit.main
@@ -142,13 +144,24 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     // collect information about exposed signals
     val exposed = resAnnos.collect { case a : ExposedSignalAnnotation => a }
 
+    // collect information about any combinatorial paths
+    val paths = extractCombPaths(resAnnos)
+
     // add prefix to transition system before namespacing
     val withPrefix = transitionSystem.copy(name = prefix + transitionSystem.name)
 
     // namespace the transition system
     val namespaced = mc.TransitionSystem.prefixSignals(withPrefix)
 
-    FormalSys(namespaced, submoduleNames, exposed, resAnnos)
+    FormalSys(namespaced, submoduleNames, exposed, paths, resAnnos)
+  }
+  private def extractCombPaths(annos: AnnotationSeq): Seq[(String, Seq[String])] = {
+    val combinatorial = annos.collect { case a: CombinationalPath if a.sink.module == a.sink.circuit => a }
+    val paths = combinatorial.flatMap { case CombinationalPath(sink, sources) =>
+      val external = sources.filter(s => s.circuit == s.module).map(_.ref)
+      if(external.nonEmpty) Some(sink.ref -> external) else None
+    }
+    paths
   }
 
   private case class Untimed(model: UntimedModel, protocols: Seq[Protocol], exposedSignals: Seq[ExposedSignalAnnotation])
@@ -208,13 +221,14 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
   private def simplifyTransitionSystem(sys: TransitionSystem): TransitionSystem =
     simplificationPasses.run(sys, trace = false)
 
-  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String, externalRefs: Iterable[ExternalReference],
+  private def compileSpec(spec: ChiselSpec[UntimedModule], implName: String,
+    combPaths: Seq[(String, Seq[String])], externalRefs: Iterable[ExternalReference],
     prefix: String = "", abstracted: Iterable[AbstractModuleAnnotation] = List()):
   (Spec, Seq[ExposedSignalAnnotation]) = {
     val ut = compileUntimed(spec, externalRefs, prefix = prefix, abstracted = abstracted)
     val ioPrefix = f"$implName.io"
     val specPrefix = f"${ut.model.name}."
-    val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix))
+    val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix, combPaths))
     val sp = Spec(ut.model, pt.map(_._1), pt.map(_._2))
     (sp, ut.exposedSignals)
   }
@@ -266,20 +280,22 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
       val prefix = (target.module +: target.asPath.map(_._1.value)).mkString(".")
       AbstractModuleAnnotation(target, prefix)
     }
-    val (spec, specExposedSignals) = compileSpec(specChisel, implementation.model.name, invChisel.externalRefs, abstracted=abstractModules)
+    val (spec, specExposedSignals) = compileSpec(specChisel, implementation.model.name, implementation.combPaths, invChisel.externalRefs, abstracted=abstractModules)
 
     // elaborate + compile subspecs
     val subspecs = subspecList.map { s =>
       val elaborated = chiselElaborationSpec(s.makeSpec)
       val instance = implementation.submodules(s.module.name)
       val prefix = implementation.model.name + "." + instance
-      // if teh submodule is bound, we need to replace method implementations with uninterpreted functions
+      // if the submodule is bound, we need to replace method implementations with uninterpreted functions
       val abstractModules = s.getBinding.map { bound =>
         val prefix = (bound.module +: bound.asPath.map(_._1.value)).mkString(".")
         val target = CircuitTarget(elaborated.untimed.name).module(elaborated.untimed.name)
         AbstractModuleAnnotation(target, prefix)
       }
-      compileSpec(elaborated, prefix, List(), prefix = prefix + ".", abstracted = abstractModules)._1
+      // TODO: maybe we should try to find combpaths for the submodules as well
+      val combPaths = Seq()
+      compileSpec(elaborated, prefix, combPaths, List(), prefix = prefix + ".", abstracted = abstractModules)._1
     }
 
     // elaborate the proof collateral
@@ -292,14 +308,15 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     prob
   }
 
-  private def toTester(state: firrtl.CircuitState, recordWaveform: Boolean): (treadle.TreadleTester, Seq[ir.Port]) = {
+  private def toTester(state: firrtl.CircuitState, recordWaveform: Boolean): (treadle.TreadleTester, Seq[ir.Port], Seq[(String, Seq[String])]) = {
     val runLowFirrtl = RunFirrtlTransformAnnotation(new LowFirrtlEmitter)
     val lowFirrtlAnnos = (new FirrtlStage).execute(Array(), Seq(runLowFirrtl, FirrtlCircuitAnnotation(state.circuit)) ++ state.annotations ++ TargetDir)
+    val paths = extractCombPaths(lowFirrtlAnnos)
     val loFirrtl = firrtl.CircuitState(lowFirrtlAnnos.collectFirst{ case FirrtlCircuitAnnotation(c) => c }.get, TargetDir)
     val tester = MakeTreadleTester(loFirrtl, recordWaveform, workingDir)
     val lowCircuit = loFirrtl.circuit
     val io = lowCircuit.modules.collectFirst{ case ir.Module(_, lowCircuit.main, ports, _) => ports }.get
-    (tester, io)
+    (tester, io, paths)
   }
 
   def elaborateConcrete[I <: RawModule, S <: UntimedModule](impl: () => I, proto: (I) => ProtocolSpec[S], recordWaveform: Boolean): TestingProblem = {
@@ -307,11 +324,12 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val specChisel = chiselElaborationSpec(() => proto(implChisel.instance))
 
     val implState = firrtl.CircuitState(implChisel.circuit, implChisel.annos)
+    val (tester, io, combPaths) = toTester(implState, recordWaveform)
     val protos = specChisel.protos
-      .map(compileProtocol(_, "io", ""))
+      .map(compileProtocol(_, "io", "", combPaths))
       .map(p => ProtocolDesc(p._1.info, p._2))
       .toVector
-    val (tester, io) = toTester(implState, recordWaveform)
+
 
     TestingProblem(untimed = specChisel.untimed, protocols = protos, impl = tester, io = io)
   }
