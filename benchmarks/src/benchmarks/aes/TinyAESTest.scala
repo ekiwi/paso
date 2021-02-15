@@ -1,4 +1,10 @@
-package aes
+package benchmarks.aes
+
+import org.scalatest.flatspec.AnyFlatSpec
+
+class TinyAESTest extends AnyFlatSpec {
+}
+
 /*
 import chisel3._
 import chiseltest._
