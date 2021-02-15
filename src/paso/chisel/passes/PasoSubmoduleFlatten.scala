@@ -28,7 +28,7 @@ case class SubmoduleInstanceAnnotation(target: InstanceTarget, originalModule: S
  * - we track the submodule instance name
  */
 object PasoSubmoduleFlatten extends Transform with DependencyAPIMigration {
-  override def prerequisites = Forms.WorkingIR
+  override def prerequisites = Forms.MinimalHighForm
   // this pass relies on modules not being dedupped
   override def optionalPrerequisiteOf = Seq(Dependency[firrtl.transforms.DedupModules])
   override def invalidates(a: Transform): Boolean = false
