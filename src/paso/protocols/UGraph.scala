@@ -18,7 +18,7 @@ case class UNode(name: String, actions: List[UAction] = List(), next: List[UEdge
 
 sealed trait Action
 case class ASignal(name: String) extends Action
-case class ASet(input: String, rhs: smt.BVExpr) extends Action
+case class ASet(input: String, rhs: smt.BVExpr, isSticky: Boolean) extends Action
 case class AUnSet(input: String) extends Action
 case class AAssert(cond: List[smt.BVExpr]) extends Action
 case class AIOAccess(pin: String, bits: BigInt) extends Action
@@ -30,7 +30,7 @@ case class AMapping(arg: smt.BVSymbol, hi: Int, lo: Int, update: smt.BVExpr) ext
 object Action {
   def serialize(a: Action): String = a match {
     case ASignal(name) => name
-    case ASet(input, rhs) => s"set($input := $rhs)"
+    case ASet(input, rhs, _) => s"set($input := $rhs)"
     case AUnSet(input) => s"unset($input)"
     case AAssert(cond) => s"assert(${smt.BVAnd(cond)}"
     case AIOAccess(pin, bits) => s"access($pin)"
@@ -82,7 +82,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
         head = if(steps(s.name).doFork) addAction(head, ASignal("fork"), s.info) else head
       case s: DoSet =>
         val rhs = toSMT(s.expr, inputs(s.loc), allowNarrow = true)
-        head = addAction(head, ASet(s.loc, rhs), s.info)
+        head = addAction(head, ASet(s.loc, rhs, s.isSticky), s.info)
       case s: DoUnSet => head = addAction(head, AUnSet(s.loc), s.info)
       case s: DoAssert => head = addAction(head, AAssert(List(toSMT(s.expr))), s.info)
       case s: Goto =>

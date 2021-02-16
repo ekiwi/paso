@@ -13,6 +13,7 @@ object ProtocolInterpreter {
 }
 
 case class ProtocolInfo(name: String, args: Map[String, Int], rets: Map[String, Int],
+  inputs: Map[String, Int], outputs: Map[String, Int],
   ioPrefix: String, methodPrefix: String, steps: Map[String, StepAnnotation], longestPath: Int, stickyInputs: Boolean)
 
 abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: Boolean) {
@@ -44,7 +45,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
   protected val stepOrder = protocol.annotations.collectFirst { case StepOrderAnnotation(steps, _) => steps }.get
   protected val longestPath = protocol.annotations.collectFirst { case StepOrderAnnotation(_, l) => l }.get
   protected val name = s"${prefixAnno.specPrefix}${prefixAnno.methodName}"
-  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, rets, ioPrefix, methodPrefix, steps, longestPath, stickyInputs)
+  protected def getInfo: ProtocolInfo = ProtocolInfo(name, args, rets, inputs, outputs, ioPrefix, methodPrefix, steps, longestPath, stickyInputs)
 
   /** returns the instructions of the basic block */
   protected def getBlock(id: Int): IndexedSeq[(Loc, ir.Statement)] = {
