@@ -137,7 +137,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             val values = cond.map(c => c -> eval(c))
             val failed = values.filter(_._2 != 1)
             assert(failed.isEmpty, s"Failed assertion from $info: ${failed.map(_._1).mkString(", ")}")
-          case _: AIOAccess =>
+          case _: AInputAssign =>
           case _: AMapping => throw new RuntimeException("Unexpected argument mapping! Not supported for concrete execution!")
         }
       }

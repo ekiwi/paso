@@ -21,7 +21,8 @@ case class ASignal(name: String) extends Action
 case class ASet(input: String, rhs: smt.BVExpr, isSticky: Boolean) extends Action
 case class AUnSet(input: String) extends Action
 case class AAssert(cond: List[smt.BVExpr]) extends Action
-case class AIOAccess(pin: String, bits: BigInt) extends Action
+case class AAssume(cond: List[smt.BVExpr]) extends Action
+case class AInputAssign(pin: String) extends Action
 case class AMapping(arg: smt.BVSymbol, hi: Int, lo: Int, update: smt.BVExpr) extends Action {
   def bits: BigInt = BitMapping.toMask(hi, lo)
   def mapsAll: Boolean = lo == 0 && (hi == arg.width - 1)
@@ -33,7 +34,8 @@ object Action {
     case ASet(input, rhs, _) => s"set($input := $rhs)"
     case AUnSet(input) => s"unset($input)"
     case AAssert(cond) => s"assert(${smt.BVAnd(cond)}"
-    case AIOAccess(pin, bits) => s"access($pin)"
+    case AAssume(cond) => s"assert(${smt.BVAnd(cond)}"
+    case AInputAssign(pin) => s"assign($pin)"
     case a @ AMapping(arg, _, _, update) if a.mapsAll => s"map($arg := $update)"
     case AMapping(arg, hi, lo, update) => s"map($arg[$hi,$lo] := $update)"
   }

@@ -31,7 +31,8 @@ class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq
     val nodeIds = mutable.HashMap[(Int, DataFlowInfo), Int]()
 
     // find all paths
-    val start = (0, DataFlowInfo(Map(), false, Seq()))
+    val startMappings = protocolInfo.args.keys.map(_ -> BigInt(0)).toMap
+    val start = (0, DataFlowInfo(startMappings, false, Seq()))
     nodeIds(start) = 0
     var visited = Set(start)
     val todo = mutable.Stack(start)
@@ -130,13 +131,50 @@ class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq
 
   private def finishPath(to: Int, ctx: PathCtx): Path = {
     val asserts = ctx.asserts.map{ case (a,i) => UAction(a, i) }
-    val sets = ctx.inputs.values.toSeq.sortBy(_.name).map(i => UAction(ASet(i.name, i.value, i.sticky), i.info)).toList
+    val inputs = processInputAssignments(ctx.prevMappings, ctx.inputs.values)
+
     val signals = ctx.signals.map{ case (name, infos) =>
       val info = if(infos.length > 1) ir.MultiInfo(infos) else infos.head
       UAction(ASignal(name), info)
     }
     val flowInfo = pathCtxToFlow(ctx)
-    Path(ctx.guard, to, flowInfo, sets ++ signals ++ asserts)
+    Path(ctx.guard, to, flowInfo, inputs ++ signals ++ asserts)
+  }
+
+  /** process final input state into assumes, mappings and markers for the inputs that were assigned */
+  private def processInputAssignments(prevMappings: Map[String, BigInt], inputs: Iterable[InputValue]): List[UAction] = {
+    val assignments = inputs.toList.sortBy(_.name)
+    val inputsAssigned = assignments.map(v => UAction(AInputAssign(v.name), v.info))
+    val sets = assignments.map(i => UAction(ASet(i.name, i.value, i.sticky), i.info))
+
+    // we separate mappings from assumptions
+    var mappings = prevMappings
+    val mapsAndConstraints = assignments.flatMap { v =>
+      val (constr, maps, updatedMappings) = BitMapping.analyze(mappings, smt.BVSymbol(v.name, v.value.width), v.value)
+      mappings = updatedMappings
+      constr.map(c => UAction(AAssume(List(c)), v.info)) ++
+        maps.map(m => UAction(exprToMapping(m.asInstanceOf[smt.BVEqual]), v.info))
+    }
+
+    inputsAssigned ++ mapsAndConstraints
+  }
+
+  private def exprToMapping(eq: smt.BVEqual): AMapping = {
+    val input = eq.a
+    val (arg, hi, lo) = eq.b match {
+      case s : smt.BVSymbol => (s, s.width-1, 0)
+      case smt.BVSlice(s: smt.BVSymbol, hi, lo) => (s, hi, lo)
+      case other => throw new RuntimeException(s"Unexpected argument mapping expr: $other")
+    }
+
+    // if not the whole arg is update at once, we need to retain some of the previous state
+    val prev = arg.rename(arg.name + "$prev")
+    val leftPad = if(hi == arg.width - 1) { input }
+    else { smt.BVConcat(smt.BVSlice(prev, arg.width-1, hi + 1), input) }
+    val rightPad = if(lo == 0) { leftPad }
+    else { smt.BVConcat(leftPad, smt.BVSlice(prev, lo-1, 0)) }
+
+    AMapping(arg=arg, hi=hi, lo=lo, rightPad)
   }
 
   private def execute(ctx: PathCtx, action: UAction): PathCtx = action.a match {
@@ -162,7 +200,7 @@ class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq
       assert(cond.length == 1)
       val (reads, expr) = analyzeRValue(cond.head, ctx, action.info, isSet = false)
       ctx.addRead(reads).addAssert(AAssert(List(expr)), action.info)
-    case _ : AIOAccess =>
+    case _ : AInputAssign =>
       throw new RuntimeException(s"Unexpected io access statement from: ${action.info.serialize}")
     case _ : AMapping =>
       throw new RuntimeException(s"Unexpected mapping statement from: ${action.info.serialize}")
