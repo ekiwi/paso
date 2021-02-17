@@ -27,9 +27,9 @@ class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq
 
   def run(): Unit = {
     // find all paths
-    val startFlow = DataFlowInfo(Map(), false, Seq())
-    var visited = Set((0, startFlow))
-    val todo = mutable.Stack((0, startFlow))
+    val start = (0, DataFlowInfo(Map(), false, Seq()))
+    var visited = Set(start)
+    val todo = mutable.Stack(start)
     while(todo.nonEmpty) {
       val (id, flow) = todo.pop()
       val paths = executeSingleStepPath(id, flowToPathCtx(flow))

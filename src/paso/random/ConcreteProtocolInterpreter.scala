@@ -125,7 +125,8 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
         a match {
           case ASignal("fork") => didFork = true
           case ASignal(name) => println(s"WARN: unhandled signal: $name")
-          case ASet(input, rhs) =>
+          case ASet(input, rhs, isSticky) =>
+            // TODO: take stickyness into account
             assert(inputNameToBits.contains(input), s"Unknown input $input! ${inputs.mkString(", ")}")
             assign(input, eval(rhs), info, assignments)
           case AUnSet(input) =>
