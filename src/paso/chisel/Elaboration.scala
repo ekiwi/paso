@@ -107,7 +107,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val graph = ProtocolGraph.encode(paths)
 
     val uGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
-    new UGraphAnalysis(uGraph, paths.info.args, paths.info.stickyInputs, combPaths).run()
+    new UGraphAnalysis(uGraph, paths.info, combPaths).run()
 
     (graph, uGraph)
   }

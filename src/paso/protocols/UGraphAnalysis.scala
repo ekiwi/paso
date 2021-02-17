@@ -16,13 +16,20 @@ import scala.collection.mutable
  */
 class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(String, Seq[String])]) {
 
+  private val inputToOutputs: Map[String, Seq[String]] = combPaths
+    .flatMap{ case (sink, sources) => sources.map(s => s -> sink)}
+    .groupBy(_._1).map{ case (source, lst) => source -> lst.map(_._2) }
+    .toMap
+
   def run(): Unit = {
     // find all paths
+    val flow = mutable.Map[Int, DataFlowInfo]()
+    flow(0) = DataFlowInfo(Map(), false, Seq())
     var visited = Set(0)
     val todo = mutable.Stack(0)
     while(todo.nonEmpty) {
       val id = todo.pop()
-      val paths = findSingleStepPaths(id)
+      val paths = executeSingleStepPath(id, flowToPathCtx(flow(id)))
 
       val isFinalState = paths.isEmpty
       val newNext = paths.map(_.to).toSet.toSeq.filterNot(visited.contains)
@@ -34,55 +41,115 @@ class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(Stri
     println(combPaths)
   }
 
-  case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir.Info = ir.NoInfo)
-  case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
-  private case class DataFlowInfo(mappings: Map[String, BigInt], hasForked: Boolean, stickyInputs: Map[String, InputValue])
 
+  private def executeSingleStepPath(nodeId: Int, ctx: PathCtx): List[Path] = {
+    val node = g.nodes(nodeId)
 
-  private case class Path(guard: List[smt.BVExpr], to: Int, actions: List[UAction] = List()) {
+    // in this form actions should not have guards!
+    node.actions.foreach(a => assert(a.guard.isEmpty))
+
+    // execute actions in sequence
+    val afterActions = node.actions.foldLeft(ctx)((ctx, a) => execute(ctx, a))
+
+    // iterate over out going edges
+    node.next.flatMap { case UEdge(g, isSync, to) =>
+      val (guardReads, guard) = analyzeRValue(g, afterActions)
+      // TODO: check combined guard to ensure that it is feasible!
+      val ctxWithGuard = afterActions.addRead(guardReads).addGuard(guard)
+      if(isSync) { List(finishPath(to, ctxWithGuard))
+      } else { executeSingleStepPath(to, ctxWithGuard)
+      }
+    }
+  }
+
+  // Path Execution
+  private case class InputValue(name: String, value: smt.BVExpr, sticky: Boolean, info: ir.Info = ir.NoInfo)
+  private case class OutputRead(name: String, info: ir.Info = ir.NoInfo)
+  private case class DataFlowInfo(mappings: Map[String, BigInt], hasForked: Boolean, stickyInputs: Seq[(String, InputValue)])
+
+  /** execution context of a single path */
+  private case class PathCtx(
+    prevMappings: Map[String, BigInt], hasForked: Boolean, inputs: Map[String, InputValue],
+    guard: List[smt.BVExpr], signals: Map[String, List[ir.Info]], asserts: List[(AAssert, ir.Info)],
+    outputsRead: Map[String, List[OutputRead]]
+  ) {
+    /** list of current mappings which takes current input values into account */
+    def mappedArgs: Map[String, BigInt] = {
+      val updates =
+        inputs.flatMap{ case (_, v) => BitMapping.mappedBits(v.value) }
+          .filter{ case (name, _) => prevMappings.contains(name) }
+      updates.foldLeft(prevMappings){ case (map, (name, bits)) => map + (name -> (map.getOrElse(name, BigInt(0)) | bits)) }
+    }
+    def addGuard(g: List[smt.BVExpr]): PathCtx = copy(guard = guard ++ g)
+    def addRead(read: Iterable[OutputRead]): PathCtx = if(read.isEmpty) this else {
+      val combined = mutable.HashMap[String, List[OutputRead]]()
+      read.foreach { r =>
+        val prev = combined.getOrElse(r.name, outputsRead.getOrElse(r.name, List()))
+        combined(r.name) = prev :+ r
+      }
+      copy(outputsRead = outputsRead ++ combined)
+    }
+    def addAssert(a: AAssert, i: ir.Info): PathCtx = copy(asserts = asserts :+ (a,i))
+    def setSignal(name: String, info: ir.Info): PathCtx =
+      copy(signals = signals ++ Map(name -> (signals.getOrElse(name, List()) :+ info)))
+    def setInput(v: InputValue): PathCtx = copy(inputs = inputs ++ Map(v.name -> v))
+    def clearInput(name: String): PathCtx = copy(inputs = inputs -- Set(name))
+    def isMapped(arg: smt.BVSymbol): Boolean = mappedArgs.contains(arg.name)
+    def getInput(input: smt.BVSymbol): Option[smt.BVExpr] = inputs.get(input.name).map(_.value)
+  }
+
+  private def flowToPathCtx(flow: DataFlowInfo): PathCtx = PathCtx(
+    flow.mappings, flow.hasForked, flow.stickyInputs.toMap,
+    List(), Map(), List(), Map()
+  )
+
+  private def pathCtxToFlow(ctx: PathCtx): DataFlowInfo = DataFlowInfo(
+    ctx.mappedArgs, ctx.hasForked, ctx.inputs.filter(_._2.sticky).toSeq.sortBy(_._1)
+  )
+
+  private case class Path(guard: List[smt.BVExpr], to: Int, flowOut: DataFlowInfo, actions: List[UAction] = List()) {
     actions.foreach(a => assert(a.guard.isEmpty))
   }
 
-
-  // TODO: combine executing and exploring paths
-  //       this is necessary since we want to analyze the when conditions
-  //       to make sure that they do not depend on inputs that have not been set or
-  //       arguments that have not been mapped yet.
-  private def findSingleStepPaths(nodeId: Int, guard: List[smt.BVExpr] = List()): List[Path] = {
-    val node = g.nodes(nodeId)
-    val actions = node.actions.map(a => a.copy(guard = guard ++ a.guard))
-    val next = node.next.flatMap {
-      case UEdge(g, true, to) => List(Path(guard ++ g, to))
-      case UEdge(g, false, to) => findSingleStepPaths(to, guard ++ g)
+  private def finishPath(to: Int, ctx: PathCtx): Path = {
+    val asserts = ctx.asserts.map{ case (a,i) => UAction(a, i) }
+    val sets = ctx.inputs.values.toSeq.sortBy(_.name).map(i => UAction(ASet(i.name, i.value, i.sticky), i.info)).toList
+    val signals = ctx.signals.map{ case (name, infos) =>
+      val info = if(infos.length > 1) ir.MultiInfo(infos) else infos.head
+      UAction(ASignal(name), info)
     }
-    next.map(n => n.copy(actions = actions ++ n.actions))
+    val flowInfo = pathCtxToFlow(ctx)
+    Path(ctx.guard, to, flowInfo, sets ++ signals ++ asserts)
   }
 
-  /** Throws an exception if the actions are not allowed. Make sure to only check paths that might be feasible
-   * to reduce false positives! */
-  private def executePath(p: Path, in: DataFlowInfo): DataFlowInfo = {
-    p.actions.foreach(a => assert(a.guard.isEmpty))
-    val inputs = new mutable.HashMap() ++ in.stickyInputs
-    val outputs = new mutable.HashMap[String, List[ir.Info]]()
-    var hasForked = in.hasForked
-    val signals = new mutable.HashMap[String, List[ir.Info]]()
-
-    p.actions.foreach { case UAction(a, info, guard) =>
-      a match {
-        case ASignal(name) =>
-          // remember that the signal was activated
-          signals(name) = signals.getOrElse(name, List()) :+ info
-        case ASet(input, rhs, isSticky) =>
-        case AUnSet(input) =>
-        case AAssert(cond) =>
-        case AIOAccess(pin, bits) =>
-          throw new RuntimeException(s"Unexpected io access statement from: ${info.serialize}")
-        case _ : AMapping =>
-          throw new RuntimeException(s"Unexpected mapping statement from: ${info.serialize}")
+  private def execute(ctx: PathCtx, action: UAction): PathCtx = action.a match {
+    case ASignal(name) =>
+      // remember that the signal was activated
+      ctx.setSignal(name, action.info)
+    case ASet(input, rhs, isSticky) =>
+      // check that the input can still be set
+      val sinks = inputToOutputs(input)
+      sinks.foreach { sink =>
+        if(ctx.outputsRead.contains(sink)) {
+          val infos = ctx.outputsRead(sink).map(_.info.serialize).mkString(", ")
+          throw new RuntimeException(s"Cannot set input $input ${action.info.serialize}!\n" +
+          s"The output $sink has been read already in the same cycle: $infos")
+        }
       }
-     }
+      // apply the new value to the input
+      val (reads, expr) = analyzeRValue(rhs, ctx, action.info, isSet = true)
+      ctx.addRead(reads).setInput(InputValue(input, expr, isSticky, action.info))
+    case AUnSet(input) =>
+      ctx.clearInput(input)
+    case AAssert(cond) =>
+      assert(cond.length == 1)
+      val (reads, expr) = analyzeRValue(cond.head, ctx, action.info, isSet = false)
+      ctx.addRead(reads).addAssert(AAssert(List(expr)), action.info)
+    case _ : AIOAccess =>
+      throw new RuntimeException(s"Unexpected io access statement from: ${action.info.serialize}")
+    case _ : AMapping =>
+      throw new RuntimeException(s"Unexpected mapping statement from: ${action.info.serialize}")
   }
-
 
   /** Reading a symbol has different restrictions depending on its kind:
    * - args: needs to be mapped before it is used as a rvalue (besides for sets, which actually do the mapping)
@@ -90,7 +157,7 @@ class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(Stri
    * - inputs: (1) if already set: just return value (2) if not set: create new random input (not supported yet)
    * - outputs: output will be added to read outputs which are used to decide whether an input can be set
    */
-  private def analyzeRValue(e: smt.BVExpr, getInput: smt.BVSymbol => Option[smt.BVExpr], isMapped: smt.BVSymbol => Boolean, info: ir.Info = ir.NoInfo, isSet: Boolean = false): (PathCtx, smt.BVExpr) = {
+  private def analyzeRValue(e: smt.BVExpr, ctx: PathCtx, info: ir.Info = ir.NoInfo, isSet: Boolean = false): (Seq[OutputRead], smt.BVExpr) = {
     val syms = Analysis.findSymbols(e).map(_.asInstanceOf[smt.BVSymbol])
     val args = syms.filter(s => protocolInfo.args.contains(s.name))
     val rets = syms.filter(s => protocolInfo.rets.contains(s.name))
@@ -104,19 +171,33 @@ class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(Stri
     // args
     if(!isSet) { // set maps any unmapped args
       args.foreach { arg =>
-        assert(isMapped(arg), s"Argument $arg needs to first be bound to an input before reading it!${info.serialize}")
+        assert(ctx.isMapped(arg), s"Argument $arg needs to first be bound to an input before reading it!${info.serialize}")
       }
     }
 
     // inputs
     val inputReplacements = inputs.map { i => i.name ->
-      getInput(i).getOrElse(throw new RuntimeException(s"Input $i cannot be read before it is set!${info.serialize}"))
+      ctx.getInput(i).getOrElse(throw new RuntimeException(s"Input $i cannot be read before it is set!${info.serialize}"))
     }.toMap
 
     // record which outputs where read
-    val outputsRead = outputs.map(o => o.name -> OutputRead(o.name, info))
+    val outputsRead = outputs
+      // .filterNot(o => ctx.outputsRead.contains(o.name))
+      .map(o => OutputRead(o.name, info))
 
     val newExpr = replaceSymbols(e, inputReplacements).asInstanceOf[smt.BVExpr]
+
+    (outputsRead, newExpr)
+  }
+
+  private def analyzeRValue(es: List[smt.BVExpr], ctx: PathCtx): (List[OutputRead], List[smt.BVExpr]) = {
+    var read = mutable.ListBuffer[OutputRead]()
+    val out = es.map { e =>
+      val (r, out) = analyzeRValue(e, ctx)
+      read ++= r
+      out
+    }
+    (read.toList, out)
   }
 
   private def replaceSymbols(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
