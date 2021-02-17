@@ -14,7 +14,7 @@ import scala.collection.mutable
  *  - Ensure that either all paths to the final node fork, or none do.
  *  - Ensure that sticky input values do not depend on the path taken.
  */
-class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(String, Seq[String])]) {
+class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(String, Seq[String])]) {
 
   private def fixPrefix(name: String): String = {
     assert(name.startsWith("io"))
@@ -40,7 +40,6 @@ class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(Stri
       visited ++= newNext.toSet
     }
   }
-
 
   private def executeSingleStepPath(nodeId: Int, ctx: PathCtx): List[Path] = {
     val node = g.nodes(nodeId)

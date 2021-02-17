@@ -20,7 +20,7 @@ import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, Proto
 import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter, UGraph, UGraphAnalysis, UGraphConverter}
+import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, SymbolicProtocolInterpreter, UGraph, ProtocolToSyncUGraph, UGraphConverter}
 import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
 
@@ -107,7 +107,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val graph = ProtocolGraph.encode(paths)
 
     val uGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
-    new UGraphAnalysis(uGraph, paths.info, combPaths).run()
+    new ProtocolToSyncUGraph(uGraph, paths.info, combPaths).run()
 
     (graph, uGraph)
   }
