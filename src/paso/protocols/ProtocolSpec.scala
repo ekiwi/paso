@@ -5,6 +5,7 @@ package paso.protocols
 
 import chisel3._
 import chisel3.experimental.{ChiselAnnotation, IO, annotate}
+import chisel3.internal.sourceinfo.SourceInfo
 import firrtl.annotations.{ReferenceTarget, SingleTargetAnnotation}
 import paso.UntimedModule
 import paso.untimed.{IMethod, IOMethod, NMethod, OMethod}
@@ -28,34 +29,34 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
 
   // TODO: support more than just UInt
   implicit class testableData[T <: UInt](x: T) {
-    def set(value: T): Unit = {
+    def set(value: T)(implicit sourceInfo: SourceInfo): Unit = {
       x := value
     }
-    def poke(value: T): Unit = set(value)
-    def set(value: DontCare.type): Unit = {
+    def poke(value: T)(implicit sourceInfo: SourceInfo): Unit = set(value)
+    def set(value: DontCare.type)(implicit sourceInfo: SourceInfo): Unit = {
       x := value
     }
-    def poke(value: DontCare.type): Unit = set(value)
-    def get(): T = x
-    def peek(): T = get()
-    def expect(value: T): Unit = { assert(x === value) }
+    def poke(value: DontCare.type)(implicit sourceInfo: SourceInfo): Unit = set(value)
+    def get()(implicit sourceInfo: SourceInfo): T = x
+    def peek()(implicit sourceInfo: SourceInfo): T = get()
+    def expect(value: T)(implicit sourceInfo: SourceInfo): Unit = { assert(x === value) }
   }
 
   implicit class testableClock(x: Clock) {
-    def step(fork: Boolean = false): Unit = {
+    def step(fork: Boolean = false)(implicit sourceInfo: SourceInfo): Unit = {
       val w = Wire(Bool()).suggestName("step")
       annotate(new ChiselAnnotation { override def toFirrtl = StepAnnotation(w.toTarget, fork) })
     }
-    def stepAndFork(): Unit = step(true)
+    def stepAndFork()(implicit sourceInfo: SourceInfo): Unit = step(true)
   }
 
-  def do_while(cond: => Bool, max: Int)(block: => Unit) = {
+  def do_while(cond: => Bool, max: Int)(block: => Unit)(implicit sourceInfo: SourceInfo) = {
     require(max > 0, "Loop bounds must be greater zero!")
     require(max < 1024, "We currently do not support larger loop bounds!")
     unroll(cond, max, block)
   }
 
-  private def unroll(cond: => Bool, max: Int, body: => Unit): Unit = if(max > 0) {
+  private def unroll(cond: => Bool, max: Int, body: => Unit)(implicit sourceInfo: SourceInfo): Unit = if(max > 0) {
     when(cond) {
       body
       unroll(cond, max-1, body)
@@ -65,7 +66,7 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
   }
 
   // replace default chisel assert
-  private def assert(cond: => Bool): Unit = chisel3.experimental.verification.assert(cond)
+  private def assert(cond: => Bool)(implicit sourceInfo: SourceInfo): Unit = chisel3.experimental.verification.assert(cond)
 }
 
 trait Protocol {
