@@ -16,29 +16,29 @@ import scala.collection.mutable
  */
 class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(String, Seq[String])]) {
 
+  private def fixPrefix(name: String): String = {
+    assert(name.startsWith("io"))
+    protocolInfo.ioPrefix + name.drop(2)
+  }
   private val inputToOutputs: Map[String, Seq[String]] = combPaths
     .flatMap{ case (sink, sources) => sources.map(s => s -> sink)}
-    .groupBy(_._1).map{ case (source, lst) => source -> lst.map(_._2) }
+    .groupBy(_._1).map{ case (source, lst) => fixPrefix(source) -> lst.map(_._2).map(fixPrefix) }
     .toMap
 
   def run(): Unit = {
     // find all paths
-    val flow = mutable.Map[Int, DataFlowInfo]()
-    flow(0) = DataFlowInfo(Map(), false, Seq())
-    var visited = Set(0)
-    val todo = mutable.Stack(0)
+    val startFlow = DataFlowInfo(Map(), false, Seq())
+    var visited = Set((0, startFlow))
+    val todo = mutable.Stack((0, startFlow))
     while(todo.nonEmpty) {
-      val id = todo.pop()
-      val paths = executeSingleStepPath(id, flowToPathCtx(flow(id)))
+      val (id, flow) = todo.pop()
+      val paths = executeSingleStepPath(id, flowToPathCtx(flow))
 
       val isFinalState = paths.isEmpty
-      val newNext = paths.map(_.to).toSet.toSeq.filterNot(visited.contains)
+      val newNext = paths.map(p => (p.to, p.flowOut)).toSet.toSeq.filterNot(visited.contains)
       newNext.foreach(todo.push)
       visited ++= newNext.toSet
     }
-
-
-    println(combPaths)
   }
 
 
@@ -128,7 +128,7 @@ class UGraphAnalysis(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(Stri
       ctx.setSignal(name, action.info)
     case ASet(input, rhs, isSticky) =>
       // check that the input can still be set
-      val sinks = inputToOutputs(input)
+      val sinks = inputToOutputs.getOrElse(input, List())
       sinks.foreach { sink =>
         if(ctx.outputsRead.contains(sink)) {
           val infos = ctx.outputsRead(sink).map(_.info.serialize).mkString(", ")
