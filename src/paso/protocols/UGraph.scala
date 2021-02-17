@@ -128,18 +128,6 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
   }
 }
 
-/** checks which bits are mopped */
-object MappedBitsAnalysis {
-
-}
-
-/** turn Set actions into assumptions and Map actions */
-object ConvertSet {
-  def run(g: UGraph): UGraph = {
-    ???
-  }
-}
-
 /** Guards are represented as a list of "clauses", an empty list is means true! */
 object Guards {
   def not(g: List[smt.BVExpr]): List[smt.BVExpr] = {

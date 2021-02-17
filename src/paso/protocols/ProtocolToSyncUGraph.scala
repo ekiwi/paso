@@ -25,20 +25,38 @@ class ProtocolToSyncUGraph(g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq
     .groupBy(_._1).map{ case (source, lst) => fixPrefix(source) -> lst.map(_._2).map(fixPrefix) }
     .toMap
 
-  def run(): Unit = {
+  def run(): UGraph = {
+    // collect new nodes
+    val nodes = mutable.ArrayBuffer[UNode]()
+    val nodeIds = mutable.HashMap[(Int, DataFlowInfo), Int]()
+
     // find all paths
     val start = (0, DataFlowInfo(Map(), false, Seq()))
+    nodeIds(start) = 0
     var visited = Set(start)
     val todo = mutable.Stack(start)
     while(todo.nonEmpty) {
       val (id, flow) = todo.pop()
       val paths = executeSingleStepPath(id, flowToPathCtx(flow))
 
-      val isFinalState = paths.isEmpty
       val newNext = paths.map(p => (p.to, p.flowOut)).toSet.toSeq.filterNot(visited.contains)
-      newNext.foreach(todo.push)
+      newNext.foreach { n =>
+        todo.push(n)
+        nodeIds(n) = nodeIds.size
+      }
       visited ++= newNext.toSet
+
+      nodes.append(pathsToNode(paths, nodeIds))
     }
+
+    UGraph(g.name, nodes.toIndexedSeq)
+  }
+
+  private def pathsToNode(paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
+    val actions = paths.flatMap(p => p.actions.map(a => a.copy(guard = p.guard)))
+    val next = paths.map(p => UEdge(p.guard, true, getId((p.to, p.flowOut))))
+    val name = "" // TODO
+    UNode(name, actions, next)
   }
 
   private def executeSingleStepPath(nodeId: Int, ctx: PathCtx): List[Path] = {
