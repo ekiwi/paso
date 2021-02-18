@@ -189,13 +189,20 @@ class GuardSolver(solver: smt.Solver) {
   }
 }
 
+trait UGraphPass {
+  def name: String
+  def run(g: UGraph): UGraph
+}
+
 /** Turns assumptions in a node into guards on all outgoing edges.
  *  This makes sense if we accept an implicit assumption that at least one of the
  *  outgoing edges (for a DFA, exactly one) will be feasible.
  *  This pass will fail if a node has an assumption, but no outgoing edge.
  * */
-object AssumptionsToGuards {
-  def run(g: UGraph): UGraph = {
+object AssumptionsToGuards extends UGraphPass {
+  override def name = "AssumptionsToGuards"
+
+  override def run(g: UGraph): UGraph = {
     val nodes = g.nodes.map(onNode)
     g.copy(nodes = nodes)
   }
@@ -213,11 +220,51 @@ object AssumptionsToGuards {
   }
 }
 
+/** Removes any nodes that are unreachable.
+ *  WARN: Does not take guard feasibility into account!
+ *        Thus if a node is only reachable through an unfeasible edge, it will still be kept around.
+ * */
+object RemoveUnreachable extends UGraphPass {
+  override def name: String = "RemoveUnreachable"
+  override def run(g: UGraph): UGraph = {
+    var visited = Set(0)
+    val todo = mutable.Stack(0)
+
+    while(todo.nonEmpty) {
+      val node = g.nodes(todo.pop())
+      val next = node.next.map(_.to).toSet.toSeq.filterNot(visited.contains)
+      next.foreach(todo.push)
+      visited ++= next
+    }
+
+    if(visited.size < g.nodes.size) {
+      // if there are unreachable nodes, we need to compact the graph
+      compact(g, visited)
+    } else { g }
+  }
+
+  private def compact(g: UGraph, visited: Iterable[Int]): UGraph = {
+    val remaining = visited.toIndexedSeq.sorted
+    val idMap = remaining.zipWithIndex.toMap
+    val nodes = remaining.map(g.nodes).map(onNode(_, idMap))
+    g.copy(nodes = nodes)
+  }
+
+  private def onNode(n: UNode, idMap: Map[Int, Int]): UNode = {
+    val next = n.next.map(e => e.copy(to = idMap(e.to)))
+    n.copy(next = next)
+  }
+}
+
 /** Removes all edges where isSync=false.
  *  Requirements:
  *  - no order sensitive Actions: ASet, AUnSet
  *  - no cycles along isSync=false edges
  */
-object RemoveAsynchronousEdges {
+object RemoveAsynchronousEdges extends UGraphPass {
+  override def name: String = "RemoveAsynchronousEdges"
+  override def run(g: UGraph): UGraph = {
+    ???
+  }
 
 }
