@@ -140,6 +140,16 @@ object Guards {
     val simpl = g.map(simplify).flatMap(splitConjunction)
     removeDuplicates(simpl)
   }
+  def implies(a: List[smt.BVExpr], b: List[smt.BVExpr]): List[smt.BVExpr] = {
+    val aNorm = normalize(a)
+    if(aNorm.isEmpty) { b } else {
+      val bNorm = normalize(b)
+      // not(a) || true = true
+      if(bNorm.isEmpty) { List() } else {
+        List(smt.BVImplies(smt.BVAnd(aNorm), smt.BVAnd(bNorm)))
+      }
+    }
+  }
   private def simplify(e: smt.BVExpr): smt.BVExpr = smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
   private def splitConjunction(e: smt.BVExpr): List[smt.BVExpr] = e match {
     case smt.BVAnd(a, b) => splitConjunction(a) ++ splitConjunction(b)
@@ -177,4 +187,37 @@ class GuardSolver(solver: smt.Solver) {
       solver.check(smt.BVAnd(norm)).isSat
     }
   }
+}
+
+/** Turns assumptions in a node into guards on all outgoing edges.
+ *  This makes sense if we accept an implicit assumption that at least one of the
+ *  outgoing edges (for a DFA, exactly one) will be feasible.
+ *  This pass will fail if a node has an assumption, but no outgoing edge.
+ * */
+object AssumptionsToGuards {
+  def run(g: UGraph): UGraph = {
+    val nodes = g.nodes.map(onNode)
+    g.copy(nodes = nodes)
+  }
+
+  private def onNode(n: UNode): UNode = {
+    val assumptions = n.actions.collect { case UAction(AAssume(cond), _, guard) => Guards.implies(guard, cond) }.flatten
+    if(assumptions.isEmpty) return n
+
+    assert(n.next.nonEmpty, "Node has assumptions but no outgoing edges!")
+
+    val otherActions = n.actions.filterNot(_.a.isInstanceOf[AAssume])
+    val next = n.next.map(e => e.copy(guard = e.guard ++ assumptions))
+
+    n.copy(actions = otherActions, next = next)
+  }
+}
+
+/** Removes all edges where isSync=false.
+ *  Requirements:
+ *  - no order sensitive Actions: ASet, AUnSet
+ *  - no cycles along isSync=false edges
+ */
+object RemoveAsynchronousEdges {
+
 }
