@@ -1,6 +1,7 @@
 package paso.protocols
 
 import scala.collection.mutable
+import maltese.smt
 
 
 trait UGraphPass {
@@ -78,20 +79,41 @@ object RemoveUnreachable extends UGraphPass {
 object RemoveAsynchronousEdges extends UGraphPass {
   override def name: String = "RemoveAsynchronousEdges"
   override def run(g: UGraph): UGraph = {
-    val nodes = g.nodes.map(onNode)
+    val nodes = g.nodes.map(onNode(g, _))
     // removing all asynchronous edges might leave some nodes unreachable
     RemoveUnreachable.run(g.copy(nodes = nodes))
   }
 
-  private def onNode(n: UNode): UNode = {
-    n.actions.map(_.a).foreach {
+  private def onNode(g: UGraph, n: UNode): UNode = {
+    // early exit
+    if(n.next.forall(_.isSync)) return n
+
+    // find all single step paths
+    val paths = findSingleStepPaths(g, List(), n)
+    val next = paths.map(p => UEdge(p.guard, isSync = true, to = p.to))
+    val actions = paths.flatMap(_.actions)
+
+    // ensure that there are no actions that depend on a fixed order
+    actions.map(_.a).foreach {
       case _: ASet | _: AUnSet =>
         throw new RuntimeException(s"UnSet/Set commands are not supported in this pass! ${n}")
       case _ =>
     }
 
-    ???
+    n.copy(actions = actions, next = next)
+  }
 
+  private case class Path(actions: List[UAction], guard: List[smt.BVExpr], to: Int)
+  private def findSingleStepPaths(g: UGraph, guard: List[smt.BVExpr], from: UNode): List[Path] = {
+    val paths = from.next.flatMap { n =>
+      if(n.isSync) {
+        List(Path(List(), guard ++ n.guard, n.to))
+      } else {
+        findSingleStepPaths(g, guard ++ n.guard, g.nodes(n.to))
+      }
+    }
+    val actions = from.actions.map(a => a.copy(guard = a.guard ++ guard))
+    paths.map(p => p.copy(actions = actions ++ p.actions))
   }
 
 }
