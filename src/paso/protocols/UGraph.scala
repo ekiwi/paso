@@ -95,7 +95,8 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
   }
 
   private def toSMT(expr: ir.Expression, width: Int = 1, allowNarrow: Boolean = false): smt.BVExpr = {
-    ExpressionConverter.toMaltese(expr, width, allowNarrow)
+    val raw = ExpressionConverter.toMaltese(expr, width, allowNarrow)
+    smt.SMTSimplifier.simplify(raw).asInstanceOf[smt.BVExpr]
   }
 
   private def addBranch(startId: Int, cond: List[smt.BVExpr], targets: List[Int]): Unit = targets match {
