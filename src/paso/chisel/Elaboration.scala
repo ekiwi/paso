@@ -103,11 +103,12 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
       proto.generate(clock)
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = ioPrefix, specPrefix = specPrefix, methodName = proto.methodName)
-    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, Yices2()).run()
+    val solver = Yices2()
+    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, solver).run()
     val graph = ProtocolGraph.encode(paths)
 
     val basicUGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
-    val syncUGraph = new ProtocolToSyncUGraph(basicUGraph, paths.info, combPaths).run()
+    val syncUGraph = new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run()
 
     ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
     ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")

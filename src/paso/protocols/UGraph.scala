@@ -131,7 +131,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
   }
 }
 
-/** Guards are represented as a list of "clauses", an empty list is means true! */
+/** Guards are represented as a list of "clauses", an empty list means true! */
 object Guards {
   def not(g: List[smt.BVExpr]): List[smt.BVExpr] = {
     List(smt.BVNot(smt.BVAnd(g)))
@@ -164,6 +164,17 @@ object Guards {
         val duplicate = positive.contains(key)
         positive.add(key)
         if(duplicate) None else Some(p)
+    }
+  }
+}
+
+class GuardSolver(solver: smt.Solver) {
+  import Guards._
+  def isSat(guard: List[smt.BVExpr]): Boolean = {
+    val norm = normalize(guard)
+    // an empty list means "true" and "true" is trivially SAT
+    if(norm.isEmpty) { true } else {
+      solver.check(smt.BVAnd(norm)).isSat
     }
   }
 }
