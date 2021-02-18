@@ -109,8 +109,8 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val basicUGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
     val syncUGraph = new ProtocolToSyncUGraph(basicUGraph, paths.info, combPaths).run()
 
-    //ProtocolVisualization.showDot(basicUGraph)
-    //ProtocolVisualization.showDot(syncUGraph)
+    ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
+    ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")
 
     (graph, basicUGraph)
   }

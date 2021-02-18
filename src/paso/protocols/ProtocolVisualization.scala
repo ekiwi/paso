@@ -86,10 +86,15 @@ object ProtocolVisualization {
   }
 
 
-  def showDot(src: String, fileName: String = "test.dot"): Unit = {
+  def saveDot(src: String, fileName: String): Unit = {
     val ff = new FileWriter(fileName)
     ff.write(src)
     ff.close()
+  }
+  def saveDot(g: UGraph, includeInfo: Boolean, fileName: String): Unit = saveDot(toDot(g, includeInfo), fileName)
+
+  def showDot(src: String, fileName: String = "test.dot"): Unit = {
+    saveDot(src, fileName)
     val cmd = s"xdot $fileName"
     println(s"Launching: $cmd")
     cmd.!!
