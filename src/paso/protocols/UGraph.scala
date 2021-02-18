@@ -34,7 +34,7 @@ object Action {
     case ASet(input, rhs, _) => s"set($input := $rhs)"
     case AUnSet(input) => s"unset($input)"
     case AAssert(cond) => s"assert(${smt.BVAnd(cond)}"
-    case AAssume(cond) => s"assert(${smt.BVAnd(cond)}"
+    case AAssume(cond) => s"assume(${smt.BVAnd(cond)}"
     case AInputAssign(pin) => s"assign($pin)"
     case a @ AMapping(arg, _, _, update) if a.mapsAll => s"map($arg := $update)"
     case AMapping(arg, hi, lo, update) => s"map($arg[$hi,$lo] := $update)"
