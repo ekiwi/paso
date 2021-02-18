@@ -8,3 +8,6 @@
 
 # chisel testers
 /test_run_dir/
+
+# graphs
+/*.dot
