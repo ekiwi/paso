@@ -2,6 +2,7 @@ package paso.protocols
 
 import scala.collection.mutable
 import maltese.smt
+import firrtl.ir
 
 
 trait UGraphPass {
@@ -204,5 +205,29 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     }
 
     finalEdges
+  }
+}
+
+/** Tries to reduce the number of individual actions per node by merging actions. */
+class MergeActions(solver: GuardSolver)  extends UGraphPass {
+  override def name: String = "MergeActions"
+  override def run(g: UGraph): UGraph = {
+    val nodes = g.nodes.map(onNode)
+    g.copy(nodes = nodes)
+  }
+
+  private def onNode(n: UNode): UNode = {
+    val byAction = n.actions.groupBy(_.a).toList
+    // exit early if there are no actions that can be merged
+    if(byAction.size == n.actions.size) return n
+
+    val actions = byAction.map { case (a, actions) =>
+      val infos = actions.map(_.info).toSet.toSeq
+      val info = if(infos.length > 1) ir.MultiInfo(infos) else infos.head
+      val guard = solver.simplify(actions.map(_.guard).reduce((a,b) => Guards.or(a, b)))
+      UAction(a, info, guard)
+    }
+
+    n.copy(actions = actions)
   }
 }

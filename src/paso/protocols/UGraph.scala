@@ -143,7 +143,11 @@ object Guards {
   }
   def normalize(g: List[smt.BVExpr]): List[smt.BVExpr] = {
     val simpl = g.map(simplify).flatMap(splitConjunction)
-    removeDuplicates(simpl)
+    val r = removeDuplicates(simpl)
+    r match {
+      case List(smt.True()) => List()
+      case _ => r
+    }
   }
   def implies(a: List[smt.BVExpr], b: List[smt.BVExpr]): List[smt.BVExpr] = {
     val aNorm = normalize(a)
