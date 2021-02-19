@@ -7,7 +7,9 @@ package paso.protocols
 
 import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
+import maltese.bdd.BDDToSMTConverter
 import maltese.smt
+
 import scala.collection.mutable
 
 /** This is an attempt at coming up with a unified graph representation for protocols */
@@ -183,6 +185,7 @@ object Guards {
 
 class GuardSolver(solver: smt.Solver) {
   import Guards._
+  private val conv = new BDDToSMTConverter()
   def isSat(guard: List[smt.BVExpr]): Boolean = {
     val norm = normalize(guard)
     // an empty list means "true" and "true" is trivially SAT
@@ -190,6 +193,13 @@ class GuardSolver(solver: smt.Solver) {
       solver.check(smt.BVAnd(norm)).isSat
     }
   }
+  def simplify(guard: List[smt.BVExpr]): List[smt.BVExpr] = {
+    val norm = normalize(guard)
+    val bdd = conv.smtToBdd(smt.BVAnd(norm))
+    val simplified = conv.bddToSmt(bdd)
+    normalize(List(simplified))
+  }
+
 }
 
 class UGraphBuilder(name: String) {

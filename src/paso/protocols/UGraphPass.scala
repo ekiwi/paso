@@ -185,8 +185,8 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
           (oldGuard ++ Guards.not(newEdge.guard), oldNext),
           (oldGuard ++ newEdge.guard, oldNext ++ Set(newEdge.to)),
         )
-        // normalize guards and filter out infeasible edges
-          .map { case (guard, next) => (Guards.normalize(guard), next) }
+        // simplify guards and filter out infeasible edges
+          .map { case (guard, next) => (solver.simplify(guard), next) }
           .filter { case (guard, _) => solver.isSat(guard) }
       }
 
@@ -194,7 +194,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
       val merged = feasible.groupBy(_._2).toList.map { case (next, guards) =>
         if(guards.size == 1) { guards.head } else {
           // either edge will take us to the same state:
-          val combined = guards.map(_._1).reduce((a,b) => Guards.or(a, b))
+          val combined = solver.simplify(guards.map(_._1).reduce((a,b) => Guards.or(a, b)))
           (combined, next)
         }
       }
