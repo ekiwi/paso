@@ -10,6 +10,11 @@ trait UGraphPass {
   def run(g: UGraph): UGraph
 }
 
+object UGraphPass {
+  def mergeInfo(i: Seq[ir.Info]): ir.Info = if(i.length > 1) ir.MultiInfo(i) else i.head
+}
+
+
 /** Turns assumptions in a node into guards on all outgoing edges.
  *  This makes sense if we accept an implicit assumption that at least one of the
  *  outgoing edges (for a DFA, exactly one) will be feasible.
@@ -222,8 +227,7 @@ class MergeActions(solver: GuardSolver)  extends UGraphPass {
     if(byAction.size == n.actions.size) return n
 
     val actions = byAction.map { case (a, actions) =>
-      val infos = actions.map(_.info).toSet.toSeq
-      val info = if(infos.length > 1) ir.MultiInfo(infos) else infos.head
+      val info = UGraphPass.mergeInfo(actions.map(_.info).toSet.toSeq)
       val guard = solver.simplify(actions.map(_.guard).reduce((a,b) => Guards.or(a, b)))
       UAction(a, info, guard)
     }

@@ -198,6 +198,7 @@ class GuardSolver(solver: smt.Solver) {
     }
   }
   def simplify(guard: List[smt.BVExpr]): List[smt.BVExpr] = {
+    if(guard.isEmpty) return guard
     val norm = normalize(guard)
     val bdd = conv.smtToBdd(smt.BVAnd(norm))
     val simplified = conv.bddToSmt(bdd)
