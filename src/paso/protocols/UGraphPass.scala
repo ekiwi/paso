@@ -23,12 +23,12 @@ object AssumptionsToGuards extends UGraphPass {
   }
 
   private def onNode(n: UNode): UNode = {
-    val assumptions = n.actions.collect { case UAction(AAssume(cond), _, guard) => Guards.implies(guard, cond) }.flatten
+    val assumptions = n.actions.collect { case UAction(AAssume(cond), _, guard) => Guards.implies(guard, Guards.normalize(cond)) }.flatten
     if(assumptions.isEmpty) return n
 
     assert(n.next.nonEmpty, "Node has assumptions but no outgoing edges!")
 
-    val otherActions = n.actions.filterNot(_.a.isInstanceOf[AAssume])
+    val otherActions = n.actions.filterNot(_.a.isInstanceOf[AAssume]).map(a => a.copy(guard = a.guard ++ assumptions))
     val next = n.next.map(e => e.copy(guard = e.guard ++ assumptions))
 
     n.copy(actions = otherActions, next = next)
@@ -178,15 +178,28 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     // merge edges until there aren't any left
     while(remainingEdges.nonEmpty) {
       val newEdge = remainingEdges.pop()
-      finalEdges = finalEdges.flatMap { case (oldGuard, oldNext) =>
-        val all = List(
+      val feasible = finalEdges.flatMap { case (oldGuard, oldNext) =>
+        // TODO: better guard simplification
+        List(
           (Guards.not(oldGuard) ++ newEdge.guard, Set(newEdge.to)),
           (oldGuard ++ Guards.not(newEdge.guard), oldNext),
           (oldGuard ++ newEdge.guard, oldNext ++ Set(newEdge.to)),
         )
-        // filter out infeasible edges
-        all.filter(x => solver.isSat(x._1))
+        // normalize guards and filter out infeasible edges
+          .map { case (guard, next) => (Guards.normalize(guard), next) }
+          .filter { case (guard, _) => solver.isSat(guard) }
       }
+
+      // merge edges with same target
+      val merged = feasible.groupBy(_._2).toList.map { case (next, guards) =>
+        if(guards.size == 1) { guards.head } else {
+          val combined = Guards.normalize(guards.flatMap(_._1))
+          (combined, next)
+        }
+      }
+
+      // update edges
+      finalEdges = merged
     }
 
     finalEdges

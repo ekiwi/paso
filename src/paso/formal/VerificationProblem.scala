@@ -136,6 +136,7 @@ object VerificationProblem {
     val combined = b.get
     ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
 
+    // TODO: merge actions pass
     val passes = Seq(RemoveAsynchronousEdges, new MakeDeterministic(new GuardSolver(solver)))
     val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
