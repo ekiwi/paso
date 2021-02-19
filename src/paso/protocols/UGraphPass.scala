@@ -193,7 +193,8 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
       // merge edges with same target
       val merged = feasible.groupBy(_._2).toList.map { case (next, guards) =>
         if(guards.size == 1) { guards.head } else {
-          val combined = Guards.normalize(guards.flatMap(_._1))
+          // either edge will take us to the same state:
+          val combined = guards.map(_._1).reduce((a,b) => Guards.or(a, b))
           (combined, next)
         }
       }

@@ -136,6 +136,9 @@ object Guards {
   def not(g: List[smt.BVExpr]): List[smt.BVExpr] = {
     List(smt.BVNot(smt.BVAnd(g)))
   }
+  def or(a: List[smt.BVExpr], b: List[smt.BVExpr]): List[smt.BVExpr] = {
+    List(smt.BVOr(smt.BVAnd(a), smt.BVAnd(b)))
+  }
   def normalize(g: List[smt.BVExpr]): List[smt.BVExpr] = {
     val simpl = g.map(simplify).flatMap(splitConjunction)
     removeDuplicates(simpl)
