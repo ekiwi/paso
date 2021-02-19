@@ -188,3 +188,42 @@ class GuardSolver(solver: smt.Solver) {
     }
   }
 }
+
+class UGraphBuilder(name: String) {
+  private val nodes = mutable.ArrayBuffer[UNode]()
+  def addNode(name: String, actions: List[UAction] = List()): Int = {
+    val node = UNode(name, actions)
+    val id = size
+    nodes.append(node)
+    id
+  }
+
+  /** returns the new id of the starting state */
+  def addGraph(g: UGraph): Int = {
+    val shift = size
+    g.nodes.foreach { n =>
+      val next = n.next.map(n => n.copy(to = n.to + shift))
+      nodes.append(n.copy(next=next))
+    }
+    shift
+  }
+
+  def addEdge(from: Int, to: Int): Unit = {
+    assert(to >= 0 && to < size)
+    addEdge(from, UEdge(List(), false, to))
+  }
+
+  def addSyncEdge(from: Int, to: Int): Unit = {
+    assert(to >= 0 && to < size)
+    addEdge(from, UEdge(List(), true, to))
+  }
+
+  def addEdge(from: Int, e: UEdge): Unit = {
+    assert(from >= 0 && from < size)
+    val n = nodes(from)
+    nodes(from) = n.copy(next = n.next :+ e)
+  }
+
+  def get: UGraph = UGraph(name, nodes.toIndexedSeq)
+  def size: Int = nodes.size
+}
