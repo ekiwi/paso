@@ -132,11 +132,12 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     val newNodes = mutable.ArrayBuffer[UNode]()
 
     // start
-    visited(List(0)) = 0
-    todo.push(List(0))
+    visited(Set(0)) = 0
+    todo.push(Set(0))
 
     while(todo.nonEmpty) {
-      val nodes = todo.pop().map(g.nodes)
+      // we sort the set in order to ensure deterministic behavior
+      val nodes = todo.pop().toList.sorted.map(g.nodes)
 
       // combine all actions together
       val actions = nodes.flatMap(_.actions)
@@ -160,12 +161,34 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     g.copy(nodes = newNodes.toIndexedSeq)
   }
 
-  private type NodeKey = List[Int]
+  private type NodeKey = Set[Int]
   private type Guard = List[smt.BVExpr]
 
+  // assumes that the edges on their own are feasible
   private def mergeEdges(next: List[UEdge]): List[(Guard, NodeKey)] = {
     assert(next.forall(_.isSync))
-    val newEdges = mutable.ListBuffer[(Guard, NodeKey)]()
-    ???
+    if(next.isEmpty) return List()
+
+    val remainingEdges = mutable.Stack[UEdge]()
+    next.foreach(remainingEdges.push)
+
+    val firstEdge = remainingEdges.pop()
+    var finalEdges = List((firstEdge.guard, Set(firstEdge.to)))
+
+    // merge edges until there aren't any left
+    while(remainingEdges.nonEmpty) {
+      val newEdge = remainingEdges.pop()
+      finalEdges = finalEdges.flatMap { case (oldGuard, oldNext) =>
+        val all = List(
+          (Guards.not(oldGuard) ++ newEdge.guard, Set(newEdge.to)),
+          (oldGuard ++ Guards.not(newEdge.guard), oldNext),
+          (oldGuard ++ newEdge.guard, oldNext ++ Set(newEdge.to)),
+        )
+        // filter out infeasible edges
+        all.filter(x => solver.isSat(x._1))
+      }
+    }
+
+    finalEdges
   }
 }
