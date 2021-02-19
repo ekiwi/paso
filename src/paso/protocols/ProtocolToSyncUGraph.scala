@@ -50,17 +50,23 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
       }
       visited ++= newNext.toSet
 
-      nodes.append(pathsToNode(paths, nodeIds))
+      nodes.append(pathsToNode(flow, paths, nodeIds))
     }
 
     UGraph(g.name, nodes.toIndexedSeq)
   }
 
-  private def pathsToNode(paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
+  private def pathsToNode(flowIn: DataFlowInfo, paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
     val actions = paths.flatMap(p => p.actions.map(a => a.copy(guard = p.guard)))
     val next = paths.map(p => UEdge(p.guard, true, getId((p.to, p.flowOut))))
+
+    // if this is a final state and we have not forked yet => implicit fork
+    val isFinal = next.isEmpty
+    val hasForked = flowIn.hasForked || actions.collectFirst{ case UAction(ASignal("fork"), _, _) => true }.getOrElse(false)
+    val forkAction = if(isFinal && !hasForked) Some(UAction(ASignal("fork"), ir.NoInfo)) else None
+
     val name = "" // TODO
-    UNode(name, actions, next)
+    UNode(name, actions ++ forkAction, next)
   }
 
   private def executeSingleStepPath(nodeId: Int, ctx: PathCtx): List[Path] = {
@@ -131,7 +137,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
   )
 
   private def pathCtxToFlow(ctx: PathCtx): DataFlowInfo = DataFlowInfo(
-    ctx.mappedArgs, ctx.hasForked, ctx.inputs.filter(_._2.sticky).toSeq.sortBy(_._1)
+    ctx.mappedArgs, ctx.hasForked || ctx.signals.contains("fork"), ctx.inputs.filter(_._2.sticky).toSeq.sortBy(_._1)
   )
 
   private case class Path(guard: List[smt.BVExpr], to: Int, flowOut: DataFlowInfo, actions: List[UAction] = List()) {
