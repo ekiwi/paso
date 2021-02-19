@@ -123,9 +123,49 @@ object RemoveAsynchronousEdges extends UGraphPass {
  *  - could lead to exponential blowup
  *  - works only on a UGraph with only synchronous edges (this could probably be fixed)
  * */
-object MakeDeterministic extends UGraphPass {
+class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
   override def name: String = "MakeDeterministic"
   override def run(g: UGraph): UGraph = {
+    // visited is also used to lookup the id of the new combined nodes
+    val visited = mutable.HashMap[NodeKey, Int]()
+    val todo = mutable.Stack[NodeKey]()
+    val newNodes = mutable.ArrayBuffer[UNode]()
+
+    // start
+    visited(List(0)) = 0
+    todo.push(List(0))
+
+    while(todo.nonEmpty) {
+      val nodes = todo.pop().map(g.nodes)
+
+      // combine all actions together
+      val actions = nodes.flatMap(_.actions)
+      val name = nodes.map(_.name).mkString(" and ")
+
+      // the edges could be mutually exclusive but do not have to be
+      val edges = nodes.flatMap(_.next)
+      val next = mergeEdges(edges).map { case (guard, to) =>
+        val id = visited.getOrElseUpdate(to, {
+          // if we haven't seen this combination yet
+          todo.push(to)
+          visited.size
+        })
+        UEdge(guard, isSync = true, to=id)
+      }
+
+      // save new node
+      newNodes.append(UNode(name, actions, next))
+    }
+
+    g.copy(nodes = newNodes.toIndexedSeq)
+  }
+
+  private type NodeKey = List[Int]
+  private type Guard = List[smt.BVExpr]
+
+  private def mergeEdges(next: List[UEdge]): List[(Guard, NodeKey)] = {
+    assert(next.forall(_.isSync))
+    val newEdges = mutable.ListBuffer[(Guard, NodeKey)]()
     ???
   }
 }
