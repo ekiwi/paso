@@ -95,7 +95,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     withQuantifiers
   }
 
-  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (ProtocolGraph, UGraph) = {
+  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (ProtocolGraph, UGraph, UGraph) = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
@@ -113,7 +113,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
     ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")
 
-    (graph, basicUGraph)
+    (graph, basicUGraph, syncUGraph)
   }
 
   private def compileImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
@@ -233,7 +233,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val ioPrefix = f"$implName.io"
     val specPrefix = f"${ut.model.name}."
     val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix, combPaths))
-    val sp = Spec(ut.model, pt.map(_._1), pt.map(_._2))
+    val sp = Spec(ut.model, pt.map(_._1), pt.map(_._3))
     (sp, ut.exposedSignals)
   }
 

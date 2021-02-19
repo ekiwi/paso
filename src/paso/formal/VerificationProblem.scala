@@ -7,8 +7,9 @@ package paso.formal
 import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
-import paso.protocols.{PasoAutomatonEncoder, ProtocolGraph, UGraph}
+import paso.protocols.{AssumptionsToGuards, GuardSolver, MakeDeterministic, PasoAutomatonEncoder, ProtocolGraph, ProtocolVisualization, RemoveAsynchronousEdges, UGraph, UGraphBuilder}
 import paso.{DebugOptions, untimed}
+
 import java.nio.file.{Files, Path}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
@@ -33,6 +34,8 @@ object VerificationProblem {
 
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+    // TODO trying out a new thing
+    makePasoAutomaton(problem.spec.ugraphs, solver, workingDir)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -68,6 +71,8 @@ object VerificationProblem {
 
     // turn spec into a monitoring automaton
     val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+    // TODO trying out a new thing
+    makePasoAutomaton(problem.spec.ugraphs, solver, workingDir)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -118,6 +123,22 @@ object VerificationProblem {
     val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
     val longestPath = automaton.longestPath
     (sys, longestPath)
+  }
+
+  private def makePasoAutomaton(protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
+    // trying to make a paso automaton out of u graphs
+    val b = new UGraphBuilder("combined")
+    val start = b.addNode("start")
+    protocols.foreach { p =>
+      val protoStart = b.addGraph(AssumptionsToGuards.run(p))
+      b.addEdge(start, protoStart)
+    }
+    val combined = b.get
+    ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
+
+    val passes = Seq(RemoveAsynchronousEdges, new MakeDeterministic(new GuardSolver(solver)))
+    val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
+    ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
