@@ -37,6 +37,8 @@ val otherDependencySettings = Seq(
   // JNA for SMT Solver bindings
   libraryDependencies += "net.java.dev.jna" % "jna" % "5.4.0",
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
+  // BDDs for protocol guards
+  libraryDependencies += "com.github.com-github-javabdd" % "com.github.javabdd" % "1.0.1",
 )
 
 val testDependencySettings = Seq(
