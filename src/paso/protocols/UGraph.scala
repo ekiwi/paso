@@ -106,7 +106,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
       addToNode(startId, edges = List(UEdge(List(), isSync = false, to)))
     case List(toTru, toFals) =>
       val truCond = Guards.normalize(cond)
-      val falsCond = Guards.not(cond)
+      val falsCond = Guards.normalize(Guards.not(cond))
       val edges = List(
         UEdge(truCond, isSync = false, to = toTru),
         UEdge(falsCond, isSync = false, to = toFals),
