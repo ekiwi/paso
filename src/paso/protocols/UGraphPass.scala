@@ -167,7 +167,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     // visited is also used to lookup the id of the new combined nodes
     val visited = mutable.HashMap[NodeKey, Int]()
     val todo = mutable.Stack[NodeKey]()
-    val newNodes = mutable.ArrayBuffer[UNode]()
+    val newNodes = mutable.ArrayBuffer[(Int, UNode)]()
 
     // start
     visited(Set(0)) = 0
@@ -175,7 +175,8 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
 
     while(todo.nonEmpty) {
       // we sort the set in order to ensure deterministic behavior
-      val nodes = todo.pop().toList.sorted.map(g.nodes)
+      val key = todo.pop()
+      val nodes = key.toList.sorted.map(g.nodes)
 
       // combine all actions together
       val actions = nodes.flatMap(_.actions)
@@ -193,10 +194,12 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
       }
 
       // save new node
-      newNodes.append(UNode(name, actions, next))
+      val newId = visited(key)
+      newNodes.append((newId, UNode(name, actions, next)))
     }
 
-    g.copy(nodes = newNodes.toIndexedSeq)
+    val nodes = newNodes.toIndexedSeq.sortBy(_._1).map(_._2)
+    g.copy(nodes = nodes)
   }
 
   private type NodeKey = Set[Int]

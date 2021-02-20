@@ -30,7 +30,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
 
   def run(): UGraph = {
     // collect new nodes
-    val nodes = mutable.ArrayBuffer[UNode]()
+    val newNodes = mutable.ArrayBuffer[(Int, UNode)]()
     val nodeIds = mutable.HashMap[(Int, DataFlowInfo), Int]()
 
     // find all paths
@@ -50,10 +50,12 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
       }
       visited ++= newNext.toSet
 
-      nodes.append(pathsToNode(flow, paths, nodeIds))
+      val newId = nodeIds((id, flow))
+      newNodes.append((newId, pathsToNode(flow, paths, nodeIds)))
     }
 
-    UGraph(g.name, nodes.toIndexedSeq)
+    val nodes = newNodes.sortBy(_._1).map(_._2).toIndexedSeq
+    UGraph(g.name, nodes)
   }
 
   private def pathsToNode(flowIn: DataFlowInfo, paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
