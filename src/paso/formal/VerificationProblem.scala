@@ -7,7 +7,7 @@ package paso.formal
 import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
-import paso.protocols.{AssumptionsToGuards, GuardSolver, MakeDeterministic, MergeActions, PasoAutomatonEncoder, ProtocolGraph, ProtocolVisualization, RemoveAsynchronousEdges, UGraph, UGraphBuilder}
+import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, MakeDeterministic, MergeActions, PasoAutomatonEncoder, ProtocolGraph, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
 import paso.{DebugOptions, untimed}
 
 import java.nio.file.{Files, Path}
@@ -126,21 +126,29 @@ object VerificationProblem {
   }
 
   private def makePasoAutomaton(protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
+    val taggedProtocols = protocols.map { p =>
+      TagInternalNodes.run(p, "A:" + p.name + "$0")
+    }
+
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start")
-    protocols.foreach { p =>
+    taggedProtocols.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
       b.addEdge(start, protoStart)
     }
     val combined = b.get
     ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
 
-    // TODO: merge actions pass
     val gSolver = new GuardSolver(solver)
-    val passes = Seq(RemoveAsynchronousEdges, new MakeDeterministic(gSolver), new MergeActions(gSolver))
+    val makeDet = new MakeDeterministic(gSolver)
+    val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActions(gSolver))
     val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
+
+    val entries = Map(Set[String]() -> 0)
+    val fork1 = RemoveAsynchronousEdges.run(DoFork.run(merged, entries))
+    ProtocolVisualization.saveDot(fork1, false, s"$workingDir/fork1.dot")
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {

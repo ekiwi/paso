@@ -235,3 +235,48 @@ class MergeActions(solver: GuardSolver)  extends UGraphPass {
     n.copy(actions = actions)
   }
 }
+
+object TagInternalNodes {
+  def name: String = "TagInternalNodes"
+  def run(g: UGraph, signal: String): UGraph = {
+    val nodes = g.nodes.head +: g.nodes.drop(1).map(onNode(_, signal))
+    g.copy(nodes = nodes)
+  }
+  private def onNode(n: UNode, signal: String): UNode = if(n.next.isEmpty) { n }  else {
+    n.copy(actions = n.actions :+ UAction(ASignal(signal), ir.NoInfo))
+  }
+}
+
+/** Expands the graph by  */
+object DoFork {
+  def name: String = "DoFork"
+  def run(g: UGraph, entries: Map[Set[String], Int]): UGraph = {
+    val nodes = g.nodes.map(onNode(_, entries))
+    g.copy(nodes = nodes)
+  }
+
+  private def onNode(n : UNode, entries: Map[Set[String], Int]): UNode = {
+    val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }
+    val forks = signals.filter(_._1 == "fork")
+    if(forks.isEmpty) return n
+    val forkGuards = forks.map(_._2).reduce(Guards.or)
+
+    // we are over approximating here, assuming that all could be active at the same time
+    val active = signals.map(_._1).filter(_.startsWith("A:")).map(_.drop(2)).toSet
+
+    // check if we already know a state which we can fork to
+    val to = entries.get(active) match {
+      case Some(id) => id
+      case None => throw new NotImplementedError(s"TODO: create new entry for ${active}")
+    }
+
+    // new edge
+    val forkEdge = UEdge(forkGuards, isSync = false, to = to)
+
+    // remove forks
+    val nonForkActions = n.actions.filter{ case UAction(ASignal("fork"), _, _) => false case _ => true}
+
+    n.copy(next = n.next :+ forkEdge, actions = nonForkActions)
+  }
+
+}
