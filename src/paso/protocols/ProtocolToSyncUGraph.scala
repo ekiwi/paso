@@ -171,7 +171,9 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
         maps.map(m => UAction(exprToMapping(m.asInstanceOf[smt.BVEqual]), v.info))
     }
 
-    inputsAssigned ++ mapsAndConstraints
+    // TODO: do we need to track input assignments or not?
+    //inputsAssigned
+    mapsAndConstraints
   }
 
   private def exprToMapping(eq: smt.BVEqual): AMapping = {
