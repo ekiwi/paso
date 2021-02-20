@@ -147,8 +147,10 @@ object VerificationProblem {
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
 
     val entries = Map(Set[String]() -> 0)
-    val fork1 = RemoveAsynchronousEdges.run(DoFork.run(merged, entries))
+    val fork1 = DoFork.run(merged, entries)
+    val fork1Sync = passes.foldLeft(fork1)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(fork1, false, s"$workingDir/fork1.dot")
+    ProtocolVisualization.saveDot(fork1Sync, false, s"$workingDir/fork1.sync.dot")
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {

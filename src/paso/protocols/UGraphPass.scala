@@ -85,9 +85,12 @@ object RemoveUnreachable extends UGraphPass {
 object RemoveAsynchronousEdges extends UGraphPass {
   override def name: String = "RemoveAsynchronousEdges"
   override def run(g: UGraph): UGraph = {
-    val nodes = g.nodes.map(onNode(g, _))
+    // first we try to remove simple forwarding states
+    val noForwarding = RemoveForwardingStates.run(g)
+
+    val nodes = noForwarding.nodes.map(onNode(g, _))
     // removing all asynchronous edges might leave some nodes unreachable
-    RemoveUnreachable.run(g.copy(nodes = nodes))
+    RemoveUnreachable.run(noForwarding.copy(nodes = nodes))
   }
 
   private def onNode(g: UGraph, n: UNode): UNode = {
@@ -122,6 +125,35 @@ object RemoveAsynchronousEdges extends UGraphPass {
     paths.map(p => p.copy(actions = actions ++ p.actions))
   }
 
+}
+
+/** Removes all states that have:
+ *  - no actions
+ *  - a single async outgoing edge with no guard
+ * */
+object RemoveForwardingStates extends UGraphPass {
+  override def name: String = "RemoveForwardingStates"
+  override def run(g: UGraph): UGraph = {
+    val forwards = g.nodes.indices.map( i => i -> onNode(g, i) )
+    if(forwards.forall(f => f._1 == f._2)) return g
+    val forwardMap = forwards.toMap
+    g.copy(nodes = g.nodes.map(changeEdges(_, forwardMap)))
+  }
+
+  private def changeEdges(n: UNode, forwards: Map[Int, Int]): UNode = {
+    n.copy(next = n.next.map(e => e.copy(to = forwards(e.to))))
+  }
+
+  private def onNode(g: UGraph, id: Int): Int = {
+    val n = g.nodes(id)
+    val isForwardingState = n.actions.isEmpty && n.next.size == 1 && n.next.head.guard.isEmpty && !n.next.head.isSync
+    if(isForwardingState) {
+      // forward to next node (which might be a forwarding node itself)
+      onNode(g, n.next.head.to)
+    } else {
+      id
+    }
+  }
 }
 
 /** Ensures that all outgoing edges are mutually exclusive.
