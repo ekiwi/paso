@@ -20,7 +20,7 @@ import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, Proto
 import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{Protocol, ProtocolCompiler, ProtocolGraph, ProtocolToSyncUGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
+import paso.protocols.{GuardSolver, MergeActions, Protocol, ProtocolCompiler, ProtocolGraph, ProtocolToSyncUGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
 import paso.random.{ProtocolDesc, TestingProblem}
 import paso.untimed.AbstractModuleAnnotation
 
@@ -108,7 +108,8 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val graph = ProtocolGraph.encode(paths)
 
     val basicUGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
-    val syncUGraph = new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run()
+    // TODO: cleanup
+    val syncUGraph = new MergeActions(new GuardSolver(solver)).run(new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run())
 
     ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
     ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")
