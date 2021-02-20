@@ -169,8 +169,8 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     val mapsAndConstraints = assignments.flatMap { v =>
       val (constr, maps, updatedMappings) = BitMapping.analyze(mappings, smt.BVSymbol(v.name, v.value.width), v.value)
       mappings = updatedMappings
-      constr.map(c => UAction(AAssume(List(c)), v.info)) ++
-        maps.map(m => UAction(exprToMapping(m.asInstanceOf[smt.BVEqual]), v.info))
+      constr.map(simplify).map(c => UAction(AAssume(List(c)), v.info)) ++
+        maps.map(simplify).map(m => UAction(exprToMapping(m.asInstanceOf[smt.BVEqual]), v.info))
     }
 
     // TODO: do we need to track input assignments or not?
@@ -278,4 +278,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     case s : smt.BVSymbol => subs.getOrElse(s.name, s)
     case other => other.mapExpr(replaceSymbols(_, subs))
   }
+
+  private def simplify(e: smt.BVExpr): smt.BVExpr =
+    smt.SMTSimplifier.simplify(e).asInstanceOf[smt.BVExpr]
 }
