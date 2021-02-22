@@ -83,6 +83,10 @@ lazy val paso = (project in file("."))
   .settings(testDependencySettings)
   .settings(otherDependencySettings)
   .settings(pubSettings)
+  .settings(
+    // execute test in serial for now to avoid race conditions on shared files like test.btor
+    parallelExecution := false,
+  )
 
 lazy val benchmarks = (project in file("benchmarks"))
   .dependsOn(paso)
@@ -92,4 +96,8 @@ lazy val benchmarks = (project in file("benchmarks"))
   .settings(
     assemblyJarName in assembly := "paso-benchmarks.jar",
     test in assembly := {},
+  )
+  .settings(
+    // execute test in serial for now to avoid race conditions on shared files like test.btor
+    parallelExecution := false,
   )
