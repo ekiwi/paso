@@ -57,7 +57,7 @@ class CompileRiscVSpec extends AnyFlatSpec {
   // many Chisel/Paso errors are only caught when elaborating
   it should "correctly elaborate" in {
     val spec = UntimedModule(new RiscVSpec)
-    println(spec.getFirrtl.circuit.serialize)
+    // println(spec.getFirrtl.circuit.serialize)
   }
 
 }
