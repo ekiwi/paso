@@ -1,7 +1,7 @@
 val basicSettings = Seq(
   name := "paso",
   organization := "edu.berkeley.cs",
-  scalaVersion := "2.12.10",
+  scalaVersion := "2.12.13",
 )
 
 val directoryLayout = Seq(
