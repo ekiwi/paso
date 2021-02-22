@@ -28,7 +28,7 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
 
 
   // TODO: support more than just UInt
-  implicit class testableData[T <: UInt](x: T) {
+  implicit class testableData[T <: Element](x: T) {
     def set(value: T)(implicit sourceInfo: SourceInfo): Unit = {
       x := value
     }
@@ -39,7 +39,7 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
     def poke(value: DontCare.type)(implicit sourceInfo: SourceInfo): Unit = set(value)
     def get()(implicit sourceInfo: SourceInfo): T = x
     def peek()(implicit sourceInfo: SourceInfo): T = get()
-    def expect(value: T)(implicit sourceInfo: SourceInfo): Unit = { assert(x === value) }
+    def expect(value: T)(implicit sourceInfo: SourceInfo): Unit = { assert(x.asUInt() === value.asUInt()) }
   }
 
   implicit class testableClock(x: Clock) {
