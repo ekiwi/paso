@@ -13,6 +13,9 @@ class AluModel extends UntimedModule {
   val add = fun("add").in(new AluArgs).out(UInt(32.W)) { (in, rd) =>
     rd := in.rs1 + in.rs2
   }
+  val sub = fun("sub").in(new AluArgs).out(UInt(32.W)) { (in, rd) =>
+    rd := in.rs1 - in.rs2
+  }
 }
 
 class AluArgs extends Bundle {
@@ -23,31 +26,35 @@ class AluArgs extends Bundle {
 class SerialAluProtocols(impl: SerialAlu) extends ProtocolSpec[AluModel] {
   val spec = new AluModel
 
-  protocol(spec.add)(impl.io) { (clock, io, in, rd) =>
+  private def calculate(clock: Clock, io: AluIO, conf: DecodeToAluIO => Unit, rs1: UInt, rs2: UInt, rd: UInt) {
     io.count.count0.poke(false.B)
     io.count.enabled.poke(false.B)
     clock.step()
     io.count.count0.poke(true.B)
     io.count.enabled.poke(true.B)
     io.decode.opBIsRS2.poke(true.B)
-    // configure for add
-    io.decode.doSubtract.poke(false.B)
-    io.decode.rdSelect.poke(Result.Add)
-
+    conf(io.decode)
     // bit0
-    io.data.rs1.poke(in.rs1(0))
-    io.data.rs2.poke(in.rs2(0))
+    io.data.rs1.poke(rs1(0))
+    io.data.rs2.poke(rs2(0))
     io.data.rd.expect(rd(0))
     clock.step()
     io.count.count0.poke(false.B)
     // bit1...bit31
     (1 until 32).foreach { ii =>
-      io.data.rs1.poke(in.rs1(ii))
-      io.data.rs2.poke(in.rs2(ii))
+      io.data.rs1.poke(rs1(ii))
+      io.data.rs2.poke(rs2(ii))
       io.data.rd.expect(rd(ii))
       clock.step()
     }
   }
+
+
+  private def add(decode: DecodeToAluIO) { decode.doSubtract.poke(false.B) ; decode.rdSelect.poke(Result.Add) }
+  private def sub(decode: DecodeToAluIO) { decode.doSubtract.poke(true.B)  ; decode.rdSelect.poke(Result.Add) }
+
+  protocol(spec.add)(impl.io) { (clock, io, in, rd) => calculate(clock, io, add, in.rs1, in.rs2, rd) }
+  protocol(spec.sub)(impl.io) { (clock, io, in, rd) => calculate(clock, io, sub, in.rs1, in.rs2, rd) }
 }
 
 
