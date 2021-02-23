@@ -69,10 +69,11 @@ object VerificationProblem {
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
 
-    // turn spec into a monitoring automaton
-    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
     // TODO trying out a new thing
     makePasoAutomaton(problem.spec.ugraphs, solver, workingDir)
+
+    // turn spec into a monitoring automaton
+    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
