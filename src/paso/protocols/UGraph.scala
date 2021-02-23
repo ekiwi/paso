@@ -136,7 +136,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
 /** Guards are represented as a list of "clauses", an empty list means true! */
 object Guards {
   def not(g: List[smt.BVExpr]): List[smt.BVExpr] = {
-    List(smt.BVNot(smt.BVAnd(g)))
+    if(g.isEmpty) { List(smt.False()) } else { List(smt.BVNot(smt.BVAnd(g))) }
   }
   def or(a: List[smt.BVExpr], b: List[smt.BVExpr]): List[smt.BVExpr] = {
     if(a.isEmpty || b.isEmpty) { List() } else {
