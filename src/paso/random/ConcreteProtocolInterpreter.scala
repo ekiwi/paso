@@ -121,7 +121,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
       // execute actions in the current state
       val node = proto.graph.nodes(nodeId)
       node.actions.foreach { case UAction(a, info, guard) =>
-        assert(guard.isEmpty, "Actions should not have guards for concrete execution!")
+        assert(guard == smt.True(), "Actions should not have guards for concrete execution!")
         a match {
           case ASignal("fork") => didFork = true
           case ASignal(name) => println(s"WARN: unhandled signal: $name")
@@ -134,16 +134,16 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
             assignments.remove(input)
             impl.poke(input, guide.chooseInput(input, inputNameToBits(input)))
           case AAssert(cond) =>
-            val values = cond.map(c => c -> eval(c))
-            val failed = values.filter(_._2 != 1)
-            assert(failed.isEmpty, s"Failed assertion from $info: ${failed.map(_._1).mkString(", ")}")
+            val value = eval(cond)
+            val failed = value != 1
+            assert(!failed, s"Failed assertion from $info: $failed")
           case _: AInputAssign =>
           case _: AMapping => throw new RuntimeException("Unexpected argument mapping! Not supported for concrete execution!")
         }
       }
 
       // pick a next state
-      val activeEdges = node.next.filter(e => eval(e.guard))
+      val activeEdges = node.next.filter(e => eval(e.guard) == 1)
       // we want exact one next state since we are doing concrete execution!
       assert(activeEdges.nonEmpty, s"No active edge from state ${node.name} in protocol ${proto.name}")
       assert(activeEdges.length < 2, s"Multiple active edge from state ${node.name} in protocol ${proto.name}")
@@ -169,10 +169,6 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
     assignments.put(input, Assignment(input, value, info))
     // execute assignment
     impl.poke(input, value)
-  }
-
-  private def eval(guard: List[smt.BVExpr])(implicit ctx: EvalCtx): Boolean = if(guard.isEmpty) { true } else {
-    guard.forall(eval(_) == 1)
   }
 
   private case class EvalCtx(p: ProtocolContext, getAssignment: String => Option[Assignment]) extends smt.SMTEvalCtx {

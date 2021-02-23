@@ -4,7 +4,7 @@
 
 package paso.protocols
 
-import maltese.smt.{BVAnd, BVExpr}
+import maltese.smt
 
 import java.io._
 import scala.sys.process._
@@ -12,10 +12,14 @@ import scala.sys.process._
 object ProtocolVisualization {
   val DefaultNodeShape = "box"
 
-  private def implies(guard: List[BVExpr], rhs: String): String = {
+  private def implies(guard: List[smt.BVExpr], rhs: String): String = {
     if(guard.isEmpty) { rhs } else {
-      BVAnd(guard).toString + " => " + rhs
+      smt.BVAnd(guard).toString + " => " + rhs
     }
+  }
+
+  private def implies(guard: smt.BVExpr, rhs: String): String = {
+    if(guard == smt.True()) { rhs } else { guard + " => " + rhs }
   }
 
   def serialize(a: Guarded): String = implies(a.guard, a.pred.toString)
@@ -38,7 +42,7 @@ object ProtocolVisualization {
     }
     val edges = g.transitions.zipWithIndex.flatMap { case (t, i) =>
       t.next.map { n =>
-        val guard = if(n.guard.isEmpty) "" else BVAnd(n.guard).toString
+        val guard = if(n.guard.isEmpty) "" else smt.BVAnd(n.guard).toString
         val attributes = n.commit.map(_.name) ++
           (if(n.fork) Some("fork") else None) ++
           (if(n.isFinal) Some("final") else None)
@@ -70,7 +74,7 @@ object ProtocolVisualization {
     }
     val edges = g.nodes.zipWithIndex.flatMap { case (t, from) =>
       t.next.map { n =>
-        val guard = if(n.guard.isEmpty) None else Some("[" + BVAnd(n.guard).toString + "]")
+        val guard = if(n.guard == smt.True()) None else Some("[" + n.guard.toString + "]")
         val lbl = guard.getOrElse("")
         val style = if(n.isSync) "," + SyncEdgeStyle else ""
         s"""  $from -> ${n.to} [label="$lbl"$style]"""

@@ -60,7 +60,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
 
   private def pathsToNode(flowIn: DataFlowInfo, paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
     val actions = paths.flatMap(p => p.actions.map(a => a.copy(guard = p.guard)))
-    val next = paths.map(p => UEdge(p.guard, true, getId((p.to, p.flowOut))))
+    val next = paths.map(p => UEdge(to = getId((p.to, p.flowOut)), isSync = true, p.guard))
 
     // if this is a final state and we have not forked yet => implicit fork
     val isFinal = next.isEmpty
@@ -75,13 +75,13 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     val node = g.nodes(nodeId)
 
     // in this form actions should not have guards!
-    node.actions.foreach(a => assert(a.guard.isEmpty))
+    node.actions.foreach(a => assert(a.guard == smt.True()))
 
     // execute actions in sequence
     val afterActions = node.actions.foldLeft(ctx)((ctx, a) => execute(ctx, a))
 
     // iterate over out going edges
-    node.next.flatMap { case UEdge(g, isSync, to) =>
+    node.next.flatMap { case UEdge(to, isSync, g) =>
       val (guardReads, guard) = analyzeRValue(g, afterActions)
       val ctxWithGuard = afterActions.addRead(guardReads).addGuard(guard)
       if(isFeasible(ctxWithGuard)) {
@@ -105,7 +105,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
   /** execution context of a single path */
   private case class PathCtx(
     prevMappings: Map[String, BigInt], hasForked: Boolean, inputs: Map[String, InputValue],
-    guard: List[smt.BVExpr], signals: Map[String, List[ir.Info]], asserts: List[(AAssert, ir.Info)],
+    guard: smt.BVExpr, signals: Map[String, List[ir.Info]], asserts: List[(AAssert, ir.Info)],
     outputsRead: Map[String, List[OutputRead]]
   ) {
     /** list of current mappings which takes current input values into account */
@@ -115,7 +115,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
           .filter{ case (name, _) => prevMappings.contains(name) }
       updates.foldLeft(prevMappings){ case (map, (name, bits)) => map + (name -> (map.getOrElse(name, BigInt(0)) | bits)) }
     }
-    def addGuard(g: List[smt.BVExpr]): PathCtx = copy(guard = guard ++ g)
+    def addGuard(g: smt.BVExpr): PathCtx = copy(guard = smt.BVAnd(guard, g))
     def addRead(read: Iterable[OutputRead]): PathCtx = if(read.isEmpty) this else {
       val combined = mutable.HashMap[String, List[OutputRead]]()
       read.foreach { r =>
@@ -135,15 +135,15 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
 
   private def flowToPathCtx(flow: DataFlowInfo): PathCtx = PathCtx(
     flow.mappings, flow.hasForked, flow.stickyInputs.toMap,
-    List(), Map(), List(), Map()
+    smt.True(), Map(), List(), Map()
   )
 
   private def pathCtxToFlow(ctx: PathCtx): DataFlowInfo = DataFlowInfo(
     ctx.mappedArgs, ctx.hasForked || ctx.signals.contains("fork"), ctx.inputs.filter(_._2.sticky).toSeq.sortBy(_._1)
   )
 
-  private case class Path(guard: List[smt.BVExpr], to: Int, flowOut: DataFlowInfo, actions: List[UAction] = List()) {
-    actions.foreach(a => assert(a.guard.isEmpty))
+  private case class Path(guard: smt.BVExpr, to: Int, flowOut: DataFlowInfo, actions: List[UAction] = List()) {
+    actions.foreach(a => assert(a.guard == smt.True()))
   }
 
   private def finishPath(to: Int, ctx: PathCtx): Path = {
@@ -169,7 +169,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     val mapsAndConstraints = assignments.flatMap { v =>
       val (constr, maps, updatedMappings) = BitMapping.analyze(mappings, smt.BVSymbol(v.name, v.value.width), v.value)
       mappings = updatedMappings
-      constr.map(simplify).map(c => UAction(AAssume(List(c)), v.info)) ++
+      constr.map(simplify).map(c => UAction(AAssume(c), v.info)) ++
         maps.map(simplify).map(m => UAction(exprToMapping(m.asInstanceOf[smt.BVEqual]), v.info))
     }
 
@@ -216,9 +216,8 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     case AUnSet(input) =>
       ctx.clearInput(input)
     case AAssert(cond) =>
-      assert(cond.length == 1)
-      val (reads, expr) = analyzeRValue(cond.head, ctx, action.info, isSet = false)
-      ctx.addRead(reads).addAssert(AAssert(List(expr)), action.info)
+      val (reads, expr) = analyzeRValue(cond, ctx, action.info, isSet = false)
+      ctx.addRead(reads).addAssert(AAssert(expr), action.info)
     case _ : AInputAssign =>
       throw new RuntimeException(s"Unexpected io access statement from: ${action.info.serialize}")
     case _ : AMapping =>

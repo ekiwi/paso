@@ -29,13 +29,14 @@ object AssumptionsToGuards extends UGraphPass {
   }
 
   private def onNode(n: UNode): UNode = {
-    val assumptions = n.actions.collect { case UAction(AAssume(cond), _, guard) => Guards.implies(guard, Guards.normalize(cond)) }.flatten
+    val assumptions = n.actions.collect { case UAction(AAssume(cond), _, guard) => smt.BVImplies(guard, cond) }
     if(assumptions.isEmpty) return n
 
     assert(n.next.nonEmpty, "Node has assumptions but no outgoing edges!")
 
-    val otherActions = n.actions.filterNot(_.a.isInstanceOf[AAssume]).map(a => a.copy(guard = a.guard ++ assumptions))
-    val next = n.next.map(e => e.copy(guard = e.guard ++ assumptions))
+    val assumption = Guards.simplify(smt.BVAnd(assumptions))
+    val otherActions = n.actions.filterNot(_.a.isInstanceOf[AAssume]).map(a => a.copy(guard = smt.BVAnd(assumption, a.guard)))
+    val next = n.next.map(e => e.copy(guard = smt.BVAnd(assumption, e.guard)))
 
     n.copy(actions = otherActions, next = next)
   }
@@ -98,8 +99,8 @@ object RemoveAsynchronousEdges extends UGraphPass {
     if(n.next.forall(_.isSync)) return n
 
     // find all single step paths
-    val paths = findSingleStepPaths(g, List(), n)
-    val next = paths.map(p => UEdge(p.guard, isSync = true, to = p.to))
+    val paths = findSingleStepPaths(g, smt.True(), n)
+    val next = paths.map(p => UEdge(to = p.to, isSync = true, p.guard))
     val actions = paths.flatMap(_.actions)
 
     // ensure that there are no actions that depend on a fixed order
@@ -112,16 +113,16 @@ object RemoveAsynchronousEdges extends UGraphPass {
     n.copy(actions = actions, next = next)
   }
 
-  private case class Path(actions: List[UAction], guard: List[smt.BVExpr], to: Int)
-  private def findSingleStepPaths(g: UGraph, guard: List[smt.BVExpr], from: UNode): List[Path] = {
+  private case class Path(actions: List[UAction], guard: smt.BVExpr, to: Int)
+  private def findSingleStepPaths(g: UGraph, guard: smt.BVExpr, from: UNode): List[Path] = {
     val paths = from.next.flatMap { n =>
       if(n.isSync) {
-        List(Path(List(), guard ++ n.guard, n.to))
+        List(Path(List(), smt.BVAnd(guard, n.guard), n.to))
       } else {
-        findSingleStepPaths(g, guard ++ n.guard, g.nodes(n.to))
+        findSingleStepPaths(g, smt.BVAnd(guard, n.guard), g.nodes(n.to))
       }
     }
-    val actions = from.actions.map(a => a.copy(guard = a.guard ++ guard))
+    val actions = from.actions.map(a => a.copy(guard = smt.BVAnd(guard, a.guard)))
     paths.map(p => p.copy(actions = actions ++ p.actions))
   }
 
@@ -146,7 +147,7 @@ object RemoveForwardingStates extends UGraphPass {
 
   private def onNode(g: UGraph, id: Int): Int = {
     val n = g.nodes(id)
-    val isForwardingState = n.actions.isEmpty && n.next.size == 1 && n.next.head.guard.isEmpty && !n.next.head.isSync
+    val isForwardingState = n.actions.isEmpty && n.next.size == 1 && (n.next.head.guard == smt.True()) && !n.next.head.isSync
     if(isForwardingState) {
       // forward to next node (which might be a forwarding node itself)
       onNode(g, n.next.head.to)
@@ -190,7 +191,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
           todo.push(to)
           visited.size
         })
-        UEdge(guard, isSync = true, to=id)
+        UEdge(to=id, isSync = true, guard)
       }
 
       // save new node
@@ -203,7 +204,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
   }
 
   private type NodeKey = Set[Int]
-  private type Guard = List[smt.BVExpr]
+  private type Guard = smt.BVExpr
 
   // assumes that the edges on their own are feasible
   private def mergeEdges(next: List[UEdge]): List[(Guard, NodeKey)] = {
@@ -222,9 +223,9 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
       val feasible = finalEdges.flatMap { case (oldGuard, oldNext) =>
         // TODO: better guard simplification
         List(
-          (Guards.not(oldGuard) ++ newEdge.guard, Set(newEdge.to)),
-          (oldGuard ++ Guards.not(newEdge.guard), oldNext),
-          (oldGuard ++ newEdge.guard, oldNext ++ Set(newEdge.to)),
+          (smt.BVAnd(smt.BVNot(oldGuard), newEdge.guard), Set(newEdge.to)),
+          (smt.BVAnd(oldGuard, smt.BVNot(newEdge.guard)), oldNext),
+          (smt.BVAnd(oldGuard, newEdge.guard), oldNext ++ Set(newEdge.to)),
         )
         // simplify guards and filter out infeasible edges
           .map { case (guard, next) => (solver.simplify(guard), next) }
@@ -235,7 +236,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
       val merged = feasible.groupBy(_._2).toList.map { case (next, guards) =>
         if(guards.size == 1) { guards.head } else {
           // either edge will take us to the same state:
-          val combined = solver.simplify(guards.map(_._1).reduce((a,b) => Guards.or(a, b)))
+          val combined = solver.simplify(guards.map(_._1).reduce(smt.BVOr(_, _)))
           (combined, next)
         }
       }
@@ -263,7 +264,7 @@ class MergeActions(solver: GuardSolver)  extends UGraphPass {
 
     val actions = byAction.map { case (a, actions) =>
       val info = UGraphPass.mergeInfo(actions.map(_.info).toSet.toSeq)
-      val guard = solver.simplify(actions.map(_.guard).reduce((a,b) => Guards.or(a, b)))
+      val guard = solver.simplify(actions.map(_.guard).reduce(smt.BVOr(_, _)))
       UAction(a, info, guard)
     }
 
@@ -294,7 +295,7 @@ object DoFork {
     val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }
     val forks = signals.filter(_._1 == "fork")
     if(forks.isEmpty) return n
-    val forkGuards = forks.map(_._2).reduce(Guards.or)
+    val forkGuards = forks.map(_._2).reduce(smt.BVOr(_, _))
 
     // we are over approximating here, assuming that all could be active at the same time
     val active = signals.map(_._1).filter(_.startsWith("A:")).map(_.drop(2)).toSet
@@ -306,7 +307,7 @@ object DoFork {
     }
 
     // new edge
-    val forkEdge = UEdge(forkGuards, isSync = false, to = to)
+    val forkEdge = UEdge(to = to, isSync = false, forkGuards)
 
     // remove forks
     val nonForkActions = n.actions.filter{ case UAction(ASignal("fork"), _, _) => false case _ => true}
