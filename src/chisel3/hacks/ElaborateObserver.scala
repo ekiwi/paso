@@ -3,17 +3,19 @@ package chisel3.hacks
 import chisel3._
 import chisel3.aop.Aspect
 import chisel3.experimental.BaseModule
-import chisel3.internal.{Builder, HasId, Namespace}
+import chisel3.internal.{Builder, Namespace, DynamicContext}
 import chisel3.internal.firrtl._
+import firrtl.AnnotationSeq
 import firrtl.annotations.{CircuitTarget, IsModule, ReferenceTarget}
 
 import scala.collection.mutable
 
 /** elaborate into a module that can observe internal signals of the modules it is _observing_ */
 object ElaborateObserver {
-  def apply(observing: Iterable[RawModule], name: String, gen: () => Unit): (firrtl.CircuitState, Seq[ExternalReference])  = {
+  def apply(observing: Iterable[RawModule], name: String, gen: () => Unit, annos: AnnotationSeq = List()): (firrtl.CircuitState, Seq[ExternalReference])  = {
     ensureUniqueCircuitNames(observing)
-    val (chiselIR, mod) = Builder.build(Module(new ObservingModule(observing, name) { gen() }))
+    val ctx = new DynamicContext(annos)
+    val (chiselIR, mod) = Builder.build(Module(new ObservingModule(observing, name) { gen() }), ctx)
     val prefix = new FixNamings(observing.map(_.name).toSet, mod._namespace)
     val pp = prefix.run(chiselIR)
     (firrtl.CircuitState(Aspect.getFirrtl(pp), chiselIR.annotations.map(_.toFirrtl)), prefix.getExternalRefs)
