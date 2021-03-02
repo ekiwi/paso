@@ -147,6 +147,8 @@ object VerificationProblem {
     val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
 
+    return // skip fork step for now
+
     val entries = Map(Set[String]() -> 0)
     val fork1 = DoFork.run(merged, entries)
     val fork1Sync = passes.foldLeft(fork1)((in, pass) => pass.run(in))
