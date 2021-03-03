@@ -88,12 +88,23 @@ case class BVEqual(a: BVExpr, b: BVExpr) extends BVBinaryExpr {
   override def reapply(nA: BVExpr, nB: BVExpr) = BVEqual(nA, nB)
 }
 // added as a separate node because it is used a lot in model checking and benefits from pretty printing
-case class BVImplies(a: BVExpr, b: BVExpr) extends BVBinaryExpr {
+class BVImplies(val a: BVExpr, val b: BVExpr) extends BVBinaryExpr {
   assert(a.width == 1, s"The antecedent needs to be a boolean expression!")
   assert(b.width == 1, s"The consequent needs to be a boolean expression!")
   override def width: Int = 1
-  override def reapply(nA: BVExpr, nB: BVExpr) = BVImplies(nA, nB)
+  override def reapply(nA: BVExpr, nB: BVExpr) = new BVImplies(nA, nB)
 }
+object BVImplies {
+  def apply(a: BVExpr, b: BVExpr): BVExpr = (a,b) match {
+    case (True(), b) => b         // (!1 || b) = b
+    case (False(), _) => True()   // (!0 || _) = (1 || _) = 1
+    case (_, True()) => True()    // (!a || 1) = 1
+    case (a, False()) => BVNot(a) // (!a || 0) = !a
+    case (a, b) => new BVImplies(a, b)
+  }
+  def unapply(i: BVImplies): Some[(BVExpr, BVExpr)] = Some((i.a, i.b))
+}
+
 object Compare extends Enumeration {
   val Greater, GreaterEqual = Value
 }
