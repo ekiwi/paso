@@ -42,6 +42,59 @@ object AssumptionsToGuards extends UGraphPass {
   }
 }
 
+/** Tries to undo Assumptions to Guards */
+class GuardsToAssumptions(solver: GuardSolver)  extends UGraphPass {
+  override def name = "GuardsToAssumptions"
+
+  override def run(g: UGraph): UGraph = {
+    val nodes = g.nodes.map(onNode)
+    g.copy(nodes = nodes)
+  }
+
+  private def onNode(n: UNode): UNode = {
+    // in case there are already assumptions in the node
+    val assumptions = n.actions.collect{ case UAction(AAssume(cond), _, guard) => smt.BVImplies(guard, cond) }
+
+    // the implicit assumption is that (at least) one of the outgoing edges is true
+    // special exception: no outgoing edges
+    val outgoingEdgeAssumption =
+      if(n.next.isEmpty) smt.True() else solver.simplify(n.next.map(_.guard).reduce(smt.BVOr(_, _)))
+    val allAssumptions = if(assumptions.isEmpty) { outgoingEdgeAssumption } else {
+      solver.simplify(smt.BVAnd(assumptions :+ outgoingEdgeAssumption))
+    }
+
+    // filter out common clauses from actions
+    val assumptionClauses = destructAnd(allAssumptions).toSet
+    val actions = n.actions.map(removeClauses(assumptionClauses, _))
+
+    // filter out common clauses from edges
+    val next = n.next.map(removeClauses(assumptionClauses, _))
+
+    // turns common edge assumptions into actions
+    val edgeAssumptions =
+      if(n.next.isEmpty) List() else destructAnd(outgoingEdgeAssumption).map(cond => UAction(AAssume(cond), ir.NoInfo))
+
+    n.copy(actions = actions ++ edgeAssumptions, next= next)
+  }
+
+  // remove common clauses from the action guard
+  private def removeClauses(clauses: Set[smt.BVExpr], a: UAction): UAction = {
+    if(a.guard == smt.True()) return a
+    val guardClauses = destructAnd(a.guard).filterNot(clauses.contains)
+    a.copy(guard = guardClauses.foldLeft[smt.BVExpr](smt.True())(smt.BVAnd(_, _)))
+  }
+  private def removeClauses(clauses: Set[smt.BVExpr], e: UEdge): UEdge = {
+    if(e.guard == smt.True()) return e
+    val guardClauses = destructAnd(e.guard).filterNot(clauses.contains)
+    e.copy(guard = guardClauses.foldLeft[smt.BVExpr](smt.True())(smt.BVAnd(_, _)))
+  }
+
+  private def destructAnd(e: smt.BVExpr): List[smt.BVExpr] = e match {
+    case smt.BVAnd(a, b) => destructAnd(a) ++ destructAnd(b)
+    case other => List(other)
+  }
+}
+
 /** Removes any nodes that are unreachable.
  *  WARN: Does not take guard feasibility into account!
  *        Thus if a node is only reachable through an unfeasible edge, it will still be kept around.

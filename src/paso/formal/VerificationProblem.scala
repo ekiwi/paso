@@ -8,7 +8,7 @@ import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import paso.protocols.old.{PasoAutomatonEncoder, ProtocolGraph}
-import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, MakeDeterministic, MergeActions, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
+import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, GuardsToAssumptions, MakeDeterministic, MergeActions, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
 import paso.{DebugOptions, untimed}
 
 import java.nio.file.{Files, Path}
