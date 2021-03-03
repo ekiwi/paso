@@ -147,14 +147,16 @@ object VerificationProblem {
     val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActions(gSolver))
     val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
+    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
+    ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
 
     return // skip fork step for now
-
     val entries = Map(Set[String]() -> 0)
     val fork1 = DoFork.run(merged, entries)
     val fork1Sync = passes.foldLeft(fork1)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(fork1, false, s"$workingDir/fork1.dot")
     ProtocolVisualization.saveDot(fork1Sync, false, s"$workingDir/fork1.sync.dot")
+    ProtocolVisualization.saveDot(guardsToAssumptions.run(fork1Sync), false, s"$workingDir/fork1.sync.simpl.dot")
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
