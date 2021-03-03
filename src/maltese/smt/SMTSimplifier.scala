@@ -175,6 +175,7 @@ object SMTSimplifier {
       case BVOp(op, _, _) => SMTExprEval.doBVOp(op, a, b, expr.width)
       case BVComparison(op, _, _, signed) => SMTExprEval.doBVCompare(op, a, b, expr.a.width, signed)
       case _: BVConcat => SMTExprEval.doBVConcat(a, b, bWidth = expr.b.width)
+      case _: BVImplies => SMTExprEval.doBVImplies(a, b)
       case other => throw new NotImplementedError(s"Unexpected expression: $other")
     }
     BVLiteral(r, expr.width)

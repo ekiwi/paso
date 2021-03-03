@@ -120,6 +120,8 @@ object SMTExprEval {
     case other => throw new NotImplementedError(other.toString)
   }
   def doBVConcat(a: BigInt, b: BigInt, bWidth: Int): BigInt = (a << bWidth) | b
+  // not(a) || b
+  def doBVImplies(a: BigInt, b: BigInt): BigInt = doBVOp(Op.Or, doBVNot(a, 1), b, 1)
 
   // helper functions
   private def sub(a: BigInt, b: BigInt, width: Int): BigInt = (a + flipBits(b, width) + 1) & mask(width)
