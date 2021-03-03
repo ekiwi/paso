@@ -207,7 +207,13 @@ sealed trait SMTFunctionArg
 case class UTSymbol(name: String, tpe: String) extends SMTFunctionArg
 
 object BVAnd {
-  def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.And, a, b)
+  def apply(a: BVExpr, b: BVExpr): BVExpr = (a,b) match {
+    case (True(), b) => b
+    case (a, True()) => a
+    case (False(), _) => False()
+    case (_, False()) => False()
+    case (a, b) => BVOp(Op.And, a, b)
+  }
   def apply(exprs: Iterable[BVExpr]): BVExpr = {
     assert(exprs.nonEmpty, "Don't know what to do with an empty list!")
     val nonTriviallyTrue = exprs.filterNot(_ == True())
@@ -216,7 +222,13 @@ object BVAnd {
   def unapply(e: BVOp): Option[(BVExpr, BVExpr)] = if(e.op == Op.And) Some((e.a, e.b)) else None
 }
 object BVOr {
-  def apply(a: BVExpr, b: BVExpr): BVOp = BVOp(Op.Or, a, b)
+  def apply(a: BVExpr, b: BVExpr): BVExpr = (a,b) match {
+    case (True(), _) => True()
+    case (_, True()) => True()
+    case (False(), b) => b
+    case (a, False()) => a
+    case (a, b) => BVOp(Op.Or, a, b)
+  }
   def apply(exprs: Iterable[BVExpr]): BVExpr = {
     assert(exprs.nonEmpty, "Don't know what to do with an empty list!")
     val nonTriviallyFalse = exprs.filterNot(_ == False())
