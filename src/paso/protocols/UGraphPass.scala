@@ -72,7 +72,8 @@ class GuardsToAssumptions(solver: GuardSolver)  extends UGraphPass {
 
     // turns common edge assumptions into actions
     val edgeAssumptions =
-      if(n.next.isEmpty) List() else destructAnd(outgoingEdgeAssumption).map(cond => UAction(AAssume(cond), ir.NoInfo))
+      if(n.next.isEmpty || outgoingEdgeAssumption == smt.True()) List()
+      else destructAnd(outgoingEdgeAssumption).map(cond => UAction(AAssume(cond), ir.NoInfo))
 
     n.copy(actions = actions ++ edgeAssumptions, next= next)
   }
