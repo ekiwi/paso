@@ -2,11 +2,12 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.protocols
+package paso.protocols.old
 
-import paso.formal.UntimedModel
 import maltese.smt
 import maltese.smt.solvers.Solver
+import paso.formal.UntimedModel
+import paso.protocols.old
 
 import scala.collection.mutable
 
@@ -100,7 +101,7 @@ class PasoAutomatonEncoder(untimed: UntimedModel, protocols: Iterable[ProtocolGr
     // printAutomaton()
 
     val longestPath = protocols.map(_.info.longestPath).max
-    PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
+    old.PasoAutomaton(states.values.toArray.map(s => PasoState(s.id, s.start, s.toString)).sortBy(_.id), stateEdges.toSeq,
       assumptions.toSeq, assertions.toSeq, mappings.toSeq, commits.toSeq,
       newTransactionPred.zip(protocols).map{ case (expr, p) => newTransaction(p.name).name -> expr },
       longestPath, untimed, protocolCopies.toSeq)

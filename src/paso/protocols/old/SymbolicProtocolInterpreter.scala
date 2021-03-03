@@ -2,13 +2,14 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.protocols
+package paso.protocols.old
 
 import firrtl.backends.experimental.smt.ExpressionConverter
 import firrtl.ir
 import maltese.passes.Analysis
 import maltese.smt
 import maltese.smt.solvers.Solver
+import paso.protocols._
 
 import scala.collection.mutable
 

@@ -5,6 +5,7 @@
 package paso.protocols
 
 import maltese.smt
+import paso.protocols.old.{Guarded, GuardedMapping, ProtocolGraph}
 
 import java.io._
 import scala.sys.process._

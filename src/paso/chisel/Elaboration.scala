@@ -16,13 +16,14 @@ import logger.{LogLevel, LogLevelAnnotation, Logger}
 import maltese.mc.{IsOutput, TransitionSystem}
 import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassManager, QuantifiedVariable, Simplify}
 import paso.chisel.passes._
-import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, ProtocolSpec, SubSpecs, UntimedModule, untimed}
-import paso.formal.{Spec, UntimedModel, VerificationProblem}
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso.protocols.{GuardSolver, MergeActions, Protocol, ProtocolCompiler, ProtocolGraph, ProtocolToSyncUGraph, ProtocolVisualization, SymbolicProtocolInterpreter, UGraph, UGraphConverter}
-import paso.random.{ProtocolDesc, TestingProblem}
-import paso.untimed.AbstractModuleAnnotation
+import paso._
+import paso.formal._
+import paso.protocols.old._
+import paso.protocols._
+import paso.random._
+import paso.untimed._
 
 import java.nio.file.Paths
 

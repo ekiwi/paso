@@ -2,10 +2,11 @@
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
-package paso.protocols
+package paso.protocols.old
 
 import firrtl.passes.PassException
 import maltese.smt
+import paso.protocols.{BitMapping, ProtocolInfo, old}
 
 /** the first cycle is always cycles.head */
 case class ProtocolGraph(info: ProtocolInfo, transitions: Array[Transition]) {
@@ -93,7 +94,7 @@ object ProtocolGraph {
     // find all I/O pins that are accessed
     val ioAccess = findIOUses(info.ioPrefix, assumptions ++ mappings ++ assertions) ++ findIOGuardUses(info.ioPrefix, paths)
 
-    Transition(stepName, info.name, assertions, assumptions, mappings.map(exprToMapping), ioAccess.toList, next)
+    old.Transition(stepName, info.name, assertions, assumptions, mappings.map(exprToMapping), ioAccess.toList, next)
   }
 
   private def exprToMapping(e: Guarded): GuardedMapping = {

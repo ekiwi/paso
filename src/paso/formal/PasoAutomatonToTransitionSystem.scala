@@ -8,7 +8,9 @@ import Chisel.log2Ceil
 import maltese.mc.{Signal, State, TransitionSystem}
 import maltese.{mc, smt}
 import paso.protocols._
+import paso.protocols.old.{PasoAutomaton, PasoGuardedSignal, PasoStateEdge, PasoStateGuarded, PasoStateGuardedMapping}
 import paso.untimed.MethodInfo
+
 import scala.collection.mutable
 
 /** Turns the PasoAutomaton into a TransitionSystem which can then be combined with the Design Under Verification
