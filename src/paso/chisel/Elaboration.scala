@@ -18,7 +18,7 @@ import maltese.passes.{AddForallQuantifiers, DeadCodeElimination, Inline, PassMa
 import paso.chisel.passes._
 import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
-import paso._
+import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, SubSpecs, UntimedModule, untimed}
 import paso.formal._
 import paso.protocols.old._
 import paso.protocols._

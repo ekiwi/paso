@@ -7,7 +7,7 @@ package paso.protocols.old
 import maltese.smt
 import maltese.smt.solvers.Solver
 import paso.formal.UntimedModel
-import paso.protocols.old
+import paso.protocols.{ProtocolInfo, old}
 
 import scala.collection.mutable
 
