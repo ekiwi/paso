@@ -25,8 +25,6 @@ import paso.protocols._
 import paso.random._
 import paso.untimed._
 
-import java.nio.file.Paths
-
 case class Elaboration(dbg: DebugOptions, workingDir: String) {
   val TargetDir = Seq(TargetDirAnnotation(workingDir))
 
