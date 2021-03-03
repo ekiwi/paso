@@ -263,16 +263,6 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     (outputsRead, newExpr)
   }
 
-  private def analyzeRValue(es: List[smt.BVExpr], ctx: PathCtx): (List[OutputRead], List[smt.BVExpr]) = {
-    var read = mutable.ListBuffer[OutputRead]()
-    val out = es.map { e =>
-      val (r, out) = analyzeRValue(e, ctx)
-      read ++= r
-      out
-    }
-    (read.toList, out)
-  }
-
   private def replaceSymbols(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
     case s : smt.BVSymbol => subs.getOrElse(s.name, s)
     case other => other.mapExpr(replaceSymbols(_, subs))
