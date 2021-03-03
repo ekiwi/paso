@@ -303,7 +303,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
 }
 
 /** Tries to reduce the number of individual actions per node by merging actions. */
-class MergeActions(solver: GuardSolver)  extends UGraphPass {
+class MergeActionsAndEdges(solver: GuardSolver)  extends UGraphPass {
   override def name: String = "MergeActions"
   override def run(g: UGraph): UGraph = {
     val nodes = g.nodes.map(onNode)
@@ -312,8 +312,10 @@ class MergeActions(solver: GuardSolver)  extends UGraphPass {
 
   private def onNode(n: UNode): UNode = {
     val byAction = n.actions.groupBy(_.a).toList
-    // exit early if there are no actions that can be merged
-    if(byAction.size == n.actions.size) return n
+    val byToAndSync = n.next.groupBy(e => (e.to, e.isSync)).toList
+
+    // exit early if there are no actions or edges that can be merged
+    if(byAction.size == n.actions.size && byToAndSync.size == n.next.size) return n
 
     val actions = byAction.map { case (a, actions) =>
       val info = UGraphPass.mergeInfo(actions.map(_.info).toSet.toSeq)
@@ -321,7 +323,12 @@ class MergeActions(solver: GuardSolver)  extends UGraphPass {
       UAction(a, info, guard)
     }
 
-    n.copy(actions = actions)
+    val next = byToAndSync.map { case ((to, isSync), edges) =>
+      val guard = solver.simplify(edges.map(_.guard).reduce(smt.BVOr(_, _)))
+      UEdge(to, isSync, guard)
+    }
+
+    n.copy(actions = actions, next = next)
   }
 }
 

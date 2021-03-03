@@ -108,7 +108,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
 
     val basicUGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
     // TODO: cleanup
-    val syncUGraph = new MergeActions(new GuardSolver(solver)).run(new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run())
+    val syncUGraph = new MergeActionsAndEdges(new GuardSolver(solver)).run(new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run())
 
     ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
     ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")

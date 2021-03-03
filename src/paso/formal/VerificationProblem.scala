@@ -8,7 +8,7 @@ import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import paso.protocols.old.{PasoAutomatonEncoder, ProtocolGraph}
-import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, GuardsToAssumptions, MakeDeterministic, MergeActions, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
+import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, GuardsToAssumptions, MakeDeterministic, MergeActionsAndEdges, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
 import paso.{DebugOptions, untimed}
 
 import java.nio.file.{Files, Path}
@@ -144,7 +144,7 @@ object VerificationProblem {
 
     val gSolver = new GuardSolver(solver)
     val makeDet = new MakeDeterministic(gSolver)
-    val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActions(gSolver))
+    val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActionsAndEdges(gSolver))
     val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
     val guardsToAssumptions = new GuardsToAssumptions(gSolver)
