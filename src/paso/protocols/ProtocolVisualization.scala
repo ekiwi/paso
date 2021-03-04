@@ -68,8 +68,8 @@ object ProtocolVisualization {
   val SyncEdgeStyle = """color = "black:invis:black""""
   def toDot(g: UGraph, includeInfo: Boolean = false): String = {
     val nodes = g.nodes.zipWithIndex.map { case (t, i) =>
-      val name = if(t.name.nonEmpty) Some("# " + t.name) else None
-      val lines = name ++ t.actions.map(serialize(_, includeInfo))
+      val name = s"[$i] ${t.name}"
+      val lines = List(name) ++ t.actions.map(serialize(_, includeInfo))
       val label = lines.mkString("\\n")
       s"""  $i [shape=$DefaultNodeShape,label="$label"]"""
     }
