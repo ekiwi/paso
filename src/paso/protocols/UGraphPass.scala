@@ -157,6 +157,8 @@ object RemoveAsynchronousEdges extends UGraphPass {
     val next = paths.map(p => UEdge(to = p.to, isSync = true, p.guard))
     val actions = paths.flatMap(_.actions)
 
+    // println(s"#$nid [${n.name}] paths: ${paths.size}, actions: ${actions.size}, old actions: ${n.actions.size}")
+
     // ensure that there are no actions that depend on a fixed order
     actions.map(_.a).foreach {
       case _: ASet | _: AUnSet =>
@@ -400,7 +402,10 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
       // add copies of the merged protocols for every new starting point
       val withStarts = addNewStarts(merged, graph)
       // turn into a DFA so that we know exactly which protocols are active at the fork points
-      val dfa = toDFA.foldLeft(withStarts)((in, pass) => pass.run(in))
+      val noAsyncEdges = toDFA(2).run(toDFA(0).run(withStarts))
+      val deterministic = toDFA(1).run(noAsyncEdges)
+      val dfa = toDFA(2).run(deterministic)
+      //val dfa = toDFA.foldLeft(withStarts)((in, pass) => pass.run(in))
       // scan for new forks
       maxId = dfa.size - 1
       val resolvedFork = UGraph(dfa.name, dfa.nodes.map(onNode))
@@ -409,8 +414,10 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
       //
       plot(withStarts, s"A_with_starts", count)
-      plot(dfa, s"B_dfa", count)
-      plot(resolvedFork, s"C_resolved_fork.dot", count)
+      plot(noAsyncEdges, s"B_no_async", count)
+      plot(deterministic, s"C_dfa", count)
+      plot(dfa, s"D_dfa_simple", count)
+      plot(resolvedFork, s"E_resolved_fork.dot", count)
       count += 1
     }
 
@@ -426,7 +433,6 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     var nodes = graph.nodes
     while(todo.nonEmpty) {
       val (active, id) = todo.pop()
-      println(nodes.size, id, todo)
       assert(id == nodes.size)
       nodes = nodes ++ replaceProtocolInstances(merged, active, id)
     }
@@ -442,9 +448,10 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
       val id = Iterator.from(0).find(i => !iActive(i)).get
       (id, p)
     }
-    println(activeInstances)
-    println(newIds.map(_._1))
+    println("ActiveInstances: " + activeInstances.toList.mkString(", "))
+    println("NewIds: "+  newIds.map(_._1).mkString(", "))
 
+    // replace symbols and signals for all new instances
     val replacements = newIds.map { case (id, p) =>
       val replaceSignal = if(id == 0) List() else List(s"A:${p.name}$$0" -> s"A:${p.name}$$$id")
       val replaceSyms = if(id == 0) List() else {
@@ -459,6 +466,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     val syms = replacements.flatMap(_._2).toMap
     val replaced = new Replace(signals, syms).run(merged)
 
+    // shift edge targets since we are appending the nodes
     val shifted = replaced.nodes.map { n =>
       val next = n.next.map(n => n.copy(to = n.to + shift))
       n.copy(next=next)
