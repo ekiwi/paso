@@ -13,7 +13,9 @@ import maltese.smt
 import scala.collection.mutable
 
 /** This is an attempt at coming up with a unified graph representation for protocols */
-case class UGraph(name: String, nodes: IndexedSeq[UNode])
+case class UGraph(name: String, nodes: IndexedSeq[UNode]) {
+  def size: Int = nodes.size
+}
 case class UAction(a: Action, info: ir.Info, guard: smt.BVExpr = smt.True())
 case class UEdge(to: Int, isSync: Boolean, guard: smt.BVExpr = smt.True())
 case class UNode(name: String, actions: List[UAction] = List(), next: List[UEdge] = List())

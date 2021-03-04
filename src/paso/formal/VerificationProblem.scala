@@ -8,7 +8,7 @@ import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import paso.protocols.old.{PasoAutomatonEncoder, ProtocolGraph}
-import paso.protocols.{AssumptionsToGuards, DoFork, GuardSolver, GuardsToAssumptions, MakeDeterministic, MergeActionsAndEdges, ProtocolVisualization, RemoveAsynchronousEdges, TagInternalNodes, UGraph, UGraphBuilder}
+import paso.protocols._
 import paso.{DebugOptions, untimed}
 
 import java.nio.file.{Files, Path}
@@ -36,7 +36,7 @@ object VerificationProblem {
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
     // TODO trying out a new thing
-    makePasoAutomaton(problem.spec.ugraphs, solver, workingDir)
+    makePasoAutomaton(problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -71,7 +71,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // TODO trying out a new thing
-    makePasoAutomaton(problem.spec.ugraphs, solver, workingDir)
+    makePasoAutomaton(problem.spec.protocols.map(_.info), problem.spec.ugraphs, solver, workingDir)
 
     // turn spec into a monitoring automaton
     val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
@@ -127,9 +127,9 @@ object VerificationProblem {
     (sys, longestPath)
   }
 
-  private def makePasoAutomaton(protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
-    val taggedProtocols = protocols.map { p =>
-      TagInternalNodes.run(p, "A:" + p.name + "$0")
+  private def makePasoAutomaton(info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
+    val taggedProtocols = protocols.zip(info).map { case(p, i) =>
+      TagInternalNodes.run(p, "A:" + i.name + "$0")
     }
 
     // trying to make a paso automaton out of u graphs
@@ -137,7 +137,7 @@ object VerificationProblem {
     val start = b.addNode("start")
     taggedProtocols.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
-      b.addEdge(start, protoStart)
+      b.addEdge(start, protoStart) // TODO: add method guard
     }
     val combined = b.get
     ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
@@ -150,13 +150,10 @@ object VerificationProblem {
     val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
 
-    return // skip fork step for now
-    val entries = Map(Set[String]() -> 0)
-    val fork1 = DoFork.run(merged, entries)
-    val fork1Sync = passes.foldLeft(fork1)((in, pass) => pass.run(in))
-    ProtocolVisualization.saveDot(fork1, false, s"$workingDir/fork1.dot")
-    ProtocolVisualization.saveDot(fork1Sync, false, s"$workingDir/fork1.sync.dot")
-    ProtocolVisualization.saveDot(guardsToAssumptions.run(fork1Sync), false, s"$workingDir/fork1.sync.simpl.dot")
+    val forksExpanded = new ExpandForksPass(info, gSolver, workingDir.toString).run(merged)
+    ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
+    val simplified = guardsToAssumptions.run(forksExpanded)
+    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {

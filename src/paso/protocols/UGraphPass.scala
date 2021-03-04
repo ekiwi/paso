@@ -143,17 +143,17 @@ object RemoveAsynchronousEdges extends UGraphPass {
     // first we try to remove simple forwarding states
     val noForwarding = RemoveForwardingStates.run(g)
 
-    val nodes = noForwarding.nodes.map(onNode(g, _))
+    val nodes = noForwarding.nodes.zipWithIndex.map { case (n, id) => onNode(g, n, id) }
     // removing all asynchronous edges might leave some nodes unreachable
     RemoveUnreachable.run(noForwarding.copy(nodes = nodes))
   }
 
-  private def onNode(g: UGraph, n: UNode): UNode = {
+  private def onNode(g: UGraph, n: UNode, nid: Int): UNode = {
     // early exit
     if(n.next.forall(_.isSync)) return n
 
     // find all single step paths
-    val paths = findSingleStepPaths(g, smt.True(), n)
+    val paths = findSingleStepPaths(g, smt.True(), n, List(nid))
     val next = paths.map(p => UEdge(to = p.to, isSync = true, p.guard))
     val actions = paths.flatMap(_.actions)
 
@@ -168,12 +168,13 @@ object RemoveAsynchronousEdges extends UGraphPass {
   }
 
   private case class Path(actions: List[UAction], guard: smt.BVExpr, to: Int)
-  private def findSingleStepPaths(g: UGraph, guard: smt.BVExpr, from: UNode): List[Path] = {
+  private def findSingleStepPaths(g: UGraph, guard: smt.BVExpr, from: UNode, visited: List[Int]): List[Path] = {
     val paths = from.next.flatMap { n =>
       if(n.isSync) {
         List(Path(List(), smt.BVAnd(guard, n.guard), n.to))
       } else {
-        findSingleStepPaths(g, smt.BVAnd(guard, n.guard), g.nodes(n.to))
+        assert(!visited.contains(n.to), f"Found a cycle without a synchronous edge: ${(visited :+ n.to).mkString(" -> ")}")
+        findSingleStepPaths(g, smt.BVAnd(guard, n.guard), g.nodes(n.to), visited :+ n.to)
       }
     }
     val actions = from.actions.map(a => a.copy(guard = smt.BVAnd(guard, a.guard)))
@@ -235,7 +236,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
 
       // combine all actions together
       val actions = nodes.flatMap(_.actions)
-      val name = nodes.map(_.name).mkString(" and ")
+      val name = nodes.map(_.name).filterNot(_.isEmpty).mkString(" and ")
 
       // the edges could be mutually exclusive but do not have to be
       val edges = nodes.flatMap(_.next)
@@ -344,15 +345,142 @@ object TagInternalNodes {
   }
 }
 
-/** Expands the graph by  */
-object DoFork {
-  def name: String = "DoFork"
-  def run(g: UGraph, entries: Map[Set[String], Int]): UGraph = {
-    val nodes = g.nodes.map(onNode(_, entries))
+class Replace(signals: Map[String, String] = Map(), symbols: Map[String, smt.BVExpr] = Map()) extends UGraphPass {
+  override def name = "ReplacePass"
+  override def run(g: UGraph): UGraph = {
+    if(signals.isEmpty && symbols.isEmpty) return g
+    val nodes = g.nodes.map(onNode)
     g.copy(nodes = nodes)
   }
+  private def onNode(n: UNode): UNode = {
+    val actions = n.actions.map { action =>
+      val a = action.a match {
+        case ASignal(name) => ASignal(signals.getOrElse(name, name))
+        case AAssert(cond) => AAssert(replace(cond))
+        case AAssume(cond) => AAssume(replace(cond))
+        case AMapping(arg, hi, lo, update) => AMapping(replace(arg).asInstanceOf[smt.BVSymbol], hi, lo, replace(update))
+        case i : AInputAssign => i
+        case other => throw new RuntimeException(s"Unexpected action $other")
+      }
+      action.copy(a = a)
+    }
+    n.copy(actions = actions)
+  }
+  private def replace(e: smt.BVExpr): smt.BVExpr = replaceSMT(e).asInstanceOf[smt.BVExpr]
+  private def replaceSMT(e: smt.SMTExpr): smt.SMTExpr = e match {
+    case s : smt.BVSymbol => symbols.getOrElse(s.name, s)
+    case other => other.mapExpr(replaceSMT)
+  }
+}
 
-  private def onNode(n : UNode, entries: Map[Set[String], Int]): UNode = {
+
+/** Expands the graph by  */
+class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") {
+  def name: String = "ExpandForksPass"
+
+  private val startPoints = mutable.HashMap[Set[String], Int]()
+  private val todo = mutable.Stack[(Set[String], Int)]()
+  private var graphSize: Int = 0
+  private var maxId : Int = 0
+
+  private val toDFA = Seq(RemoveAsynchronousEdges, new MakeDeterministic(solver), new MergeActionsAndEdges(solver))
+
+  def run(merged: UGraph): UGraph = {
+    // we start with no active transactions
+    startPoints.clear()
+    startPoints(Set()) = 0
+    todo.clear()
+    todo.push((Set(), 0))
+    graphSize = merged.size
+    maxId = merged.size - 1
+
+    var graph = UGraph(merged.name, IndexedSeq())
+    var count = 0
+    while(todo.nonEmpty) {
+      // add copies of the merged protocols for every new starting point
+      val withStarts = addNewStarts(merged, graph)
+      // turn into a DFA so that we know exactly which protocols are active at the fork points
+      val dfa = toDFA.foldLeft(withStarts)((in, pass) => pass.run(in))
+      // scan for new forks
+      maxId = dfa.size - 1
+      val resolvedFork = UGraph(dfa.name, dfa.nodes.map(onNode))
+      // this is out new graph
+      graph = resolvedFork
+
+      //
+      plot(withStarts, s"A_with_starts", count)
+      plot(dfa, s"B_dfa", count)
+      plot(resolvedFork, s"C_resolved_fork.dot", count)
+      count += 1
+    }
+
+    toDFA.foldLeft(graph)((in, pass) => pass.run(in))
+  }
+
+  private def plot(g: UGraph, name: String, count: Int): Unit = if(graphDir.nonEmpty) {
+    val filename = s"$graphDir/fork_${count}_$name.dot"
+    ProtocolVisualization.saveDot(g, false, filename)
+  }
+
+  private def addNewStarts(merged: UGraph, graph: UGraph): UGraph = {
+    var nodes = graph.nodes
+    while(todo.nonEmpty) {
+      val (active, id) = todo.pop()
+      println(nodes.size, id, todo)
+      assert(id == nodes.size)
+      nodes = nodes ++ replaceProtocolInstances(merged, active, id)
+    }
+    UGraph(merged.name, nodes)
+  }
+
+  private def replaceProtocolInstances(merged: UGraph, active: Set[String], shift: Int): IndexedSeq[UNode] = {
+    // first we find a non-active instance for every protocol
+    val activeInstances = active.groupBy(_.split('$').head).mapValues(_.map(_.split('$').last.toInt))
+    val newIds = protos.map { p =>
+      val iActive = activeInstances.getOrElse(p.name, List()).toSet
+      // select the lowest available id
+      val id = Iterator.from(0).find(i => !iActive(i)).get
+      (id, p)
+    }
+    println(activeInstances)
+    println(newIds.map(_._1))
+
+    val replacements = newIds.map { case (id, p) =>
+      val replaceSignal = if(id == 0) List() else List(s"A:${p.name}$$0" -> s"A:${p.name}$$$id")
+      val replaceSyms = if(id == 0) List() else {
+        val suffix = "$" + id
+        p.args.flatMap { case(name, width) =>
+          List(name -> smt.BVSymbol(name + suffix, width), (name + "$prev") -> smt.BVSymbol(name + suffix + "$prev", width))
+        } ++ p.rets.map{ case (name, width) => name -> smt.BVSymbol(name + suffix, width) }
+      }
+      (replaceSignal, replaceSyms)
+    }
+    val signals = replacements.flatMap(_._1).toMap
+    val syms = replacements.flatMap(_._2).toMap
+    val replaced = new Replace(signals, syms).run(merged)
+
+    val shifted = replaced.nodes.map { n =>
+      val next = n.next.map(n => n.copy(to = n.to + shift))
+      n.copy(next=next)
+    }
+    shifted
+  }
+
+
+  private def getStart(active: Set[String]): Int = startPoints.get(active) match {
+    case Some(id: Int) => id
+    case None =>
+      // calculate the id of a new node
+      // TODO: this id calculation is wrong! graph can be compacted when constructing DFA!
+      val id = maxId + 1
+      maxId += graphSize
+      // add new entry
+      startPoints(active) = id
+      todo.push((active, id))
+      id
+  }
+
+  private def onNode(n : UNode): UNode = {
     val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }
     val forks = signals.filter(_._1 == "fork")
     if(forks.isEmpty) return n
@@ -362,10 +490,7 @@ object DoFork {
     val active = signals.map(_._1).filter(_.startsWith("A:")).map(_.drop(2)).toSet
 
     // check if we already know a state which we can fork to
-    val to = entries.get(active) match {
-      case Some(id) => id
-      case None => throw new NotImplementedError(s"TODO: create new entry for ${active}")
-    }
+    val to = getStart(active)
 
     // new edge
     val forkEdge = UEdge(to = to, isSync = false, forkGuards)
