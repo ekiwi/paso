@@ -391,8 +391,8 @@ class Replace(signals: Map[String, String] = Map(), symbols: Map[String, smt.BVE
 class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") {
   def name: String = "ExpandForksPass"
 
-  private val startPoints = mutable.HashMap[Set[String], Int]()
-  private val todo = mutable.Stack[(Set[String], Int)]()
+  private val startPoints = mutable.HashMap[Seq[(String,Int)], Int]()
+  private val todo = mutable.Stack[(Seq[(String,Int)], Int)]()
   private var graphSize: Int = 0
   private var maxId : Int = 0
 
@@ -401,9 +401,9 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
   def run(merged: UGraph): UGraph = {
     // we start with no active transactions
     startPoints.clear()
-    startPoints(Set()) = 0
+    startPoints(activeToStart(Set())) = 0
     todo.clear()
-    todo.push((Set(), 0))
+    todo.push((activeToStart(Set()), 0))
     graphSize = merged.size
     maxId = merged.size - 1
 
@@ -432,6 +432,13 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
       count += 1
     }
 
+    val noAsyncEdges = toDFA(2).run(toDFA(0).run(graph))
+    val deterministic = toDFA(1).run(noAsyncEdges)
+    val dfa = toDFA(2).run(deterministic)
+    plot(noAsyncEdges, s"B_no_async", count)
+    plot(deterministic, s"C_dfa", count)
+    plot(dfa, s"D_dfa_simple", count)
+
     toDFA.foldLeft(graph)((in, pass) => pass.run(in))
   }
 
@@ -450,20 +457,10 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     UGraph(merged.name, nodes)
   }
 
-  private def replaceProtocolInstances(merged: UGraph, active: Set[String], shift: Int): IndexedSeq[UNode] = {
-    // first we find a non-active instance for every protocol
-    val activeInstances = active.groupBy(_.split('$').head).mapValues(_.map(_.split('$').last.toInt))
-    val newIds = protos.map { p =>
-      val iActive = activeInstances.getOrElse(p.name, List()).toSet
-      // select the lowest available id
-      val id = Iterator.from(0).find(i => !iActive(i)).get
-      (id, p)
-    }
-    println("ActiveInstances: " + activeInstances.toList.mkString(", "))
-    println("NewIds: "+  newIds.map(_._1).mkString(", "))
-
+  private def replaceProtocolInstances(merged: UGraph, newIds: Seq[(String, Int)], shift: Int): IndexedSeq[UNode] = {
     // replace symbols and signals for all new instances
-    val replacements = newIds.map { case (id, p) =>
+    val replacements = newIds.zip(protos).map { case ((n, id), p) =>
+      assert(n == p.name)
       val replaceSignal = if(id == 0) List() else List(s"A:${p.name}$$0" -> s"A:${p.name}$$$id")
       val replaceSyms = if(id == 0) List() else {
         val suffix = "$" + id
@@ -486,18 +483,35 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
   }
 
 
-  private def getStart(active: Set[String]): Int = startPoints.get(active) match {
-    case Some(id: Int) => id
-    case None =>
-      // calculate the id of a new node
-      // TODO: this id calculation is wrong! graph can be compacted when constructing DFA!
-      val id = maxId + 1
-      maxId += graphSize
-      // add new entry
-      startPoints(active) = id
-      todo.push((active, id))
-      id
+  private def getStart(key: Seq[(String, Int)]): Int = {
+      startPoints.get(key) match {
+      case Some(id: Int) => id
+      case None =>
+        // calculate the id of a new node
+        val id = maxId + 1
+        maxId += graphSize
+        // add new entry
+        startPoints(key) = id
+        todo.push((key, id))
+        id
+    }
   }
+
+  /** calculates which protocol instances should be started depending on the current active states */
+  private def activeToStart(active: Set[String]): Seq[(String, Int)] = {
+    // TODO: maybe add caching
+    // first we find a non-active instance for every protocol
+    val activeInstances = getActiveInstances(active)
+    protos.map { p =>
+      val iActive = activeInstances.getOrElse(p.name, Set())
+      // select the lowest available id
+      val id = Iterator.from(0).find(i => !iActive(i)).get
+      p.name -> id
+    }
+  }
+
+  private def getActiveInstances(active: Set[String]): Map[String, Set[Int]] =
+    active.groupBy(_.split('$').head).mapValues(_.map(_.split('$').last.toInt))
 
   private def onNode(n : UNode): UNode = {
     val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }
@@ -509,7 +523,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     val active = signals.map(_._1).filter(_.startsWith("A:")).map(_.drop(2)).toSet
 
     // check if we already know a state which we can fork to
-    val to = getStart(active)
+    val to = getStart(activeToStart(active))
 
     // new edge
     val forkEdge = UEdge(to = to, isSync = false, forkGuards)
