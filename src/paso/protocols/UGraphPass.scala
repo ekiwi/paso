@@ -476,7 +476,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     plot(deterministic, s"C_dfa", count)
     plot(dfa, s"D_dfa_simple", count)
 
-    toDFA.foldLeft(graph)((in, pass) => pass.run(in))
+    dfa
   }
 
   private def plot(g: UGraph, name: String, count: Int): Unit = if(graphDir.nonEmpty) {
