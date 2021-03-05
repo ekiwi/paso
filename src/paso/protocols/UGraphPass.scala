@@ -486,11 +486,12 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
   private def addNewStarts(merged: UGraph, graph: UGraph): UGraph = {
     var nodes = graph.nodes
-    while(todo.nonEmpty) {
-      val (active, id) = todo.pop()
-      assert(id == nodes.size)
+    val smallerToLargerId = todo.toList.sortBy(_._2)
+    smallerToLargerId.foreach { case (active, id) =>
+      assert(id == nodes.size, s"$smallerToLargerId")
       nodes = nodes ++ replaceProtocolInstances(merged, active, id)
     }
+    todo.clear()
     UGraph(merged.name, nodes)
   }
 
