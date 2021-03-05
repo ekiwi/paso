@@ -96,7 +96,11 @@ object ProtocolVisualization {
     ff.write(src)
     ff.close()
   }
-  def saveDot(g: UGraph, includeInfo: Boolean, fileName: String): Unit = saveDot(toDot(g, includeInfo), fileName)
+  def saveDot(g: UGraph, includeInfo: Boolean, fileName: String, maxNodes: Int = 20): Unit ={
+    if(g.nodes.size <= maxNodes) {
+      saveDot(toDot(g, includeInfo), fileName)
+    }
+  }
 
   def showDot(src: String, fileName: String = "test.dot"): Unit = {
     saveDot(src, fileName)
