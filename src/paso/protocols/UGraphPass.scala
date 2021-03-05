@@ -214,6 +214,43 @@ object RemoveForwardingStates extends UGraphPass {
   }
 }
 
+/** Removes all states that have:
+ *  - no actions
+ *  - no outgoing edges
+ * */
+object RemoveEmptyLeafStates extends UGraphPass {
+  override def name: String = "RemoveEmptyLeafStates"
+  override def run(g: UGraph): UGraph = {
+    val remove = getAllEmptyLeaves(g.nodes)
+    if(remove.isEmpty) { g } else {
+      val removedEdges = g.copy(nodes = g.nodes.map(removeEdges(_, remove)))
+      RemoveUnreachable.run(removedEdges)
+    }
+  }
+
+  private def getAllEmptyLeaves(nodes: IndexedSeq[UNode]): Set[Int] = {
+    var remove = Set[Int]()
+    var done = false
+    while(!done) {
+      val remaining = nodes.zipWithIndex.filterNot{ case (_, i) => remove(i) }
+      val newRemove = remaining.filter { case (n, _) => isEmptyLeaf(n, remove) }.map(_._2).toSet
+      done = newRemove.isEmpty
+      remove ++= newRemove
+    }
+    remove
+  }
+
+  private def isEmptyLeaf(n: UNode, removed: Set[Int]): Boolean = {
+    val noNext = n.next.forall(e => removed(e.to))
+    noNext && n.actions.isEmpty
+  }
+
+  private def removeEdges(e: UNode, removed: Set[Int]): UNode = {
+    val next = e.next.filterNot(n => removed(n.to))
+    e.copy(next = next)
+  }
+}
+
 /** Ensures that all outgoing edges are mutually exclusive.
  *  - uses a solver to filter out infeasible edges
  *  - could lead to exponential blowup

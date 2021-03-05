@@ -129,7 +129,7 @@ object VerificationProblem {
 
   private def makePasoAutomaton(info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
     val taggedProtocols = protocols.zip(info).map { case(p, i) =>
-      TagInternalNodes.run(p, "A:" + i.name + "$0")
+      RemoveEmptyLeafStates.run(TagInternalNodes.run(p, "A:" + i.name + "$0"))
     }
 
     // trying to make a paso automaton out of u graphs
