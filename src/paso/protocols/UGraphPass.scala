@@ -277,17 +277,28 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
     // merge edges until there aren't any left
     while(remainingEdges.nonEmpty) {
       val newEdge = remainingEdges.pop()
-      val feasible = finalEdges.flatMap { case (oldGuard, oldNext) =>
-        // TODO: better guard simplification
-        List(
-          (smt.BVAnd(smt.BVNot(oldGuard), newEdge.guard), Set(newEdge.to)),
-          (smt.BVAnd(oldGuard, smt.BVNot(newEdge.guard)), oldNext),
-          (smt.BVAnd(oldGuard, newEdge.guard), oldNext ++ Set(newEdge.to)),
-        )
+      val finalGuards = finalEdges.map(_._1)
+
+      // we only take the new edge iff the new edge guard and no other guards are true
+      val onlyNewEdge = (smt.BVAnd(finalGuards.map(smt.BVNot) :+ newEdge.guard), Set(newEdge.to))
+
+      // we take only the old edges iff the old ege guard and not the new edge guard is true
+      val onlyOldEdge = finalEdges.map { case (g, n) => (smt.BVAnd(g, smt.BVNot(newEdge.guard)), n) }
+
+      // we take the combination of an old edge and the new edge, when both are true and all other old edges are false
+      // note: that we cannot take more than one old edge at a time since we maintain the invariant that all
+      //       "finalEdges" are mutually exclusive
+
+      val combinedEdges = finalEdges.zipWithIndex.map { case ((g, n), ii) =>
+        val guard: List[smt.BVExpr] =
+          finalGuards.take(ii).map(smt.BVNot) ++ List(g) ++ finalGuards.drop(ii + 1).map(smt.BVNot) ++ List(newEdge.guard)
+        (smt.BVAnd(guard), Set(newEdge.to) ++ n)
+      }
+
+      val feasible = (onlyNewEdge +: onlyOldEdge ++: combinedEdges)
         // simplify guards and filter out infeasible edges
           .map { case (guard, next) => (solver.simplify(guard), next) }
           .filter { case (guard, _) => solver.isSat(guard) }
-      }
 
       // merge edges with same target
       val merged = feasible.groupBy(_._2).toList.map { case (next, guards) =>
