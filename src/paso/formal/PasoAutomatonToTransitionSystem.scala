@@ -300,7 +300,7 @@ object UntimedModelCopy {
         mc.Signal(rename(s.name, method, suffix), replace(s.e, subs), s.lbl)
       }
       // we need to possible duplicate any random inputs
-      val inputs = sys.inputs.filter(_.name.contains("RANDOM"))
+      val inputs = sys.inputs.filter(i => i.name.contains("RANDOM") || i.name.contains("rand_data")) // TODO: more robust way to find the random inputs
         .filter(i => signalsToCopy(i.name) && !alreadyCopied(i.name + suffix))
         .map(i => i.rename(i.name + suffix))
       // remember which copied signals we have already created
