@@ -12,9 +12,7 @@ import maltese.{smt => m}
 
 /** converts between firrtl's internal SMT expr library and the maltese expression library */
 object ExpressionConverter {
-  private case class Context() extends TranslationContext {
-    override def getRandom(width: Int): BVExpr = BVSymbol("Random", width)
-  }
+  private case class Context() extends TranslationContext
   def toMaltese(e: ir.Expression, width: Int, allowNarrow: Boolean): m.BVExpr = {
     implicit val ctx: TranslationContext = Context()
     val firSmt = FirrtlExpressionSemantics.toSMT(e, width, allowNarrow)
