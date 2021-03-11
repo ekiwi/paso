@@ -571,5 +571,106 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
     n.copy(next = n.next :+ forkEdge, actions = nonForkActions)
   }
+}
 
+
+/** Takes in the output of [[ProtocolToSyncUGraph]] and adds
+ *  a "Commit" signals for states in which the protocol needs to commit.
+ *  It also checks whether:
+ *  - the protocol accesses any return arguments after it has committed
+ *  - the protocol maps all inputs before committing
+ *  These properties are helpful in deciding how to attach the functional model
+ *  to the protocol graph.
+ */
+class CommitAnalysis(rets: Map[String, Int]) {
+  def name = "CommitAnalysis"
+
+  case class Result(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean)
+
+  def run(g: UGraph): (UGraph, Result) = {
+    val (result, commits) = analyze(g)
+    assert(commits.nonEmpty, "Found no commits!")
+
+    // add commit signals
+    val nodes = g.nodes.zipWithIndex.map { case (n, id) => commits.get(id) match {
+      case Some(guard) =>
+        val a = UAction(ASignal("Commit"), ir.NoInfo, guard)
+        n.copy(actions = a +: n.actions)
+      case None => n
+    }}
+
+    (g.copy(nodes=nodes), result)
+  }
+
+  private def analyze(g: UGraph): (Result, Map[Int, smt.BVExpr]) = {
+    // we initially assume that we do not read after a commit
+    var readAfterCommit = false
+    // we initially assume that we will map all inputs before committing
+    var mapInputsBeforeCommit = true
+
+    val visited = mutable.HashSet[Int]()
+    val todo = mutable.Stack[(Int, Boolean)]()
+    val commits = mutable.HashMap[Int, smt.BVExpr]()
+
+    visited.add(0)
+    todo.push((0, false))
+
+    while(todo.nonEmpty) {
+      val (nid, hasCommitted) = todo.pop()
+      val node = g.nodes(nid)
+
+      // check conditions
+      if(hasCommitted && readsRets(node)) {
+        readAfterCommit = true
+      }
+      if(hasCommitted && mapsAll(node)) {
+        mapInputsBeforeCommit = false
+      }
+
+      // we want to assume that forks do not have non-trivial guards
+      // this is reasonable since they always happen directly after a step
+      getForks(node).foreach(a => assert(a.guard == smt.True(), s"$a"))
+
+      // check to see if this node commits (and under which conditions)
+      val next = node.next.map(n => (n.guard, g.nodes(n.to)))
+      val nextForks = next.flatMap{ case (g, n) => if(getForks(n).nonEmpty) Some(g) else None }
+      if(nextForks.nonEmpty) {
+        commits(nid) = smt.BVOr(nextForks)
+      }
+
+      node.next.map(_.to).filterNot(visited).foreach { id =>
+        visited.add(id)
+        // a node will have committed if we committed previously or if it forks
+        val com = hasCommitted || getForks(g.nodes(id)).nonEmpty
+        todo.push((id, com))
+      }
+    }
+
+    (Result(readAfterCommit, mapInputsBeforeCommit), commits.toMap)
+  }
+
+  private def getForks(n: UNode): List[UAction] = {
+    n.actions.collect { case a @ UAction(ASignal("fork"), _, _) => a }
+  }
+
+  private def mapsAll(n: UNode): Boolean = {
+    n.actions.collect { case a @ UAction(ASignal("AllMapped"), _, guard) =>
+      assert(guard == smt.True(), s"AllMapped signal has non-trivial guard: $guard")
+      a
+    }.nonEmpty
+  }
+
+  private def readsRets(n: UNode): Boolean = n.actions.exists(readsRets)
+  private def readsRets(a: UAction): Boolean = readExprs(a).exists(readsRets)
+  private def readExprs(a: UAction): Iterable[smt.BVExpr] = List(a.guard) ++ (a.a match {
+    case ASet(_, rhs, _) => List(rhs)
+    case AAssert(cond) => List(cond)
+    case AAssume(cond) => List(cond)
+    case _ => List()
+  })
+  private def readsRets(e: smt.SMTExpr): Boolean = e match {
+    case smt.BVSymbol(name, _) if rets.contains(name) => true
+    case other if other.children.isEmpty => false
+    case other => other.children.exists(readsRets)
+  }
 }

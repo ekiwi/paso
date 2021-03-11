@@ -132,10 +132,16 @@ object VerificationProblem {
       RemoveEmptyLeafStates.run(new TagInternalNodes("A:" + i.name + "$0").run(p))
     }
 
+    val commits = taggedProtocols.zip(info).map { case (p, i) =>
+      new CommitAnalysis(i.rets).run(p)
+    }
+    val protocolsWithCommits = commits.map(_._1)
+    println(commits.map(_._2))
+
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start")
-    taggedProtocols.foreach { p =>
+    protocolsWithCommits.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
       b.addEdge(start, protoStart) // TODO: add method guard
     }
