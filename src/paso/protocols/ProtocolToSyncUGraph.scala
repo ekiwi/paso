@@ -150,12 +150,25 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     val asserts = ctx.asserts.map{ case (a,i) => UAction(a, i) }
     val inputs = processInputAssignments(ctx.prevMappings, ctx.inputs.values)
 
-    val signals = ctx.signals.map{ case (name, infos) =>
+    val signals = ctx.signals.map { case (name, infos) =>
       val info = if(infos.length > 1) ir.MultiInfo(infos) else infos.head
       UAction(ASignal(name), info)
     }
+
     val flowInfo = pathCtxToFlow(ctx)
-    Path(ctx.guard, to, flowInfo, inputs ++ signals ++ asserts)
+
+    // check to see if we have finally mapped all states
+    val mapSignal = if(!allMapped(ctx.prevMappings) && allMapped(flowInfo.mappings)) {
+      Some(UAction(ASignal("AllMapped"), ir.NoInfo))
+    } else { None }
+
+    Path(ctx.guard, to, flowInfo, inputs ++: mapSignal ++: signals ++: asserts)
+  }
+
+  private def allMapped(mappings: Map[String, BigInt]): Boolean = {
+    protocolInfo.args.forall { case (name, width) =>
+      BitMapping.toMask(width) == mappings(name)
+    }
   }
 
   /** process final input state into assumes, mappings and markers for the inputs that were assigned */
