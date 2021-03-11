@@ -300,7 +300,7 @@ object UntimedModelCopy {
         mc.Signal(rename(s.name, method, suffix), replace(s.e, subs), s.lbl)
       }
       // we need to possible duplicate any random inputs
-      val inputs = sys.inputs.filter(i => i.name.contains("RANDOM") || i.name.contains("rand_data")) // TODO: more robust way to find the random inputs
+      val inputs = sys.inputs.filter(isRandomInput(_))
         .filter(i => signalsToCopy(i.name) && !alreadyCopied(i.name + suffix))
         .map(i => i.rename(i.name + suffix))
       // remember which copied signals we have already created
@@ -377,5 +377,12 @@ object UntimedModelCopy {
   private def replace(e: smt.SMTExpr, subs: Map[String, smt.SMTExpr]): smt.SMTExpr = e match {
     case s : smt.SMTSymbol => subs.getOrElse(s.name, s)
     case other => other.mapExpr(replace(_, subs))
+  }
+}
+
+// TODO: make this more robust by analyzing the circuit and getting a list of DefRandom nodes.
+object isRandomInput {
+  def apply(i: smt.BVSymbol): Boolean = {
+    i.name.contains("rand_data") || i.name.contains("invalid")
   }
 }
