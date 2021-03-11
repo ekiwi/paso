@@ -355,7 +355,7 @@ class MakeDeterministic(solver: GuardSolver) extends UGraphPass {
 }
 
 /** Tries to reduce the number of individual actions per node by merging actions. */
-class MergeActionsAndEdges(solver: GuardSolver)  extends UGraphPass {
+class MergeActionsAndEdges(solver: GuardSolver) extends UGraphPass {
   override def name: String = "MergeActions"
   override def run(g: UGraph): UGraph = {
     val nodes = g.nodes.map(onNode)
@@ -384,13 +384,13 @@ class MergeActionsAndEdges(solver: GuardSolver)  extends UGraphPass {
   }
 }
 
-object TagInternalNodes {
-  def name: String = "TagInternalNodes"
-  def run(g: UGraph, signal: String): UGraph = {
-    val nodes = g.nodes.head +: g.nodes.drop(1).map(onNode(_, signal))
+class TagInternalNodes(signal: String) extends UGraphPass {
+  override def name: String = "TagInternalNodes"
+  override def run(g: UGraph): UGraph = {
+    val nodes = g.nodes.head +: g.nodes.drop(1).map(onNode)
     g.copy(nodes = nodes)
   }
-  private def onNode(n: UNode, signal: String): UNode = if(n.next.isEmpty) { n }  else {
+  private def onNode(n: UNode): UNode = if(n.next.isEmpty) { n }  else {
     n.copy(actions = n.actions :+ UAction(ASignal(signal), ir.NoInfo))
   }
 }
@@ -425,8 +425,8 @@ class Replace(signals: Map[String, String] = Map(), symbols: Map[String, smt.BVE
 
 
 /** Expands the graph by  */
-class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") {
-  def name: String = "ExpandForksPass"
+class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") extends UGraphPass {
+  override def name: String = "ExpandForksPass"
 
   private val startPoints = mutable.HashMap[Seq[(String,Int)], Int]()
   private val todo = mutable.Stack[(Seq[(String,Int)], Int)]()
@@ -435,7 +435,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
   private val toDFA = Seq(RemoveAsynchronousEdges, new MakeDeterministic(solver), new MergeActionsAndEdges(solver))
 
-  def run(merged: UGraph): UGraph = {
+  override def run(merged: UGraph): UGraph = {
     // we start with no active transactions
     startPoints.clear()
     startPoints(activeToStart(Set())) = 0
