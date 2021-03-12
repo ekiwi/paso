@@ -434,6 +434,18 @@ class PrefixSignals(prefix: String, ignoreSignals: Set[String] = Set()) extends 
   }
 }
 
+class RemoveSignalsEndingWith(suffixes: List[String]) extends UGraphPass {
+  override def name = "RemoveSignalsEndingWith"
+  override def run(g: UGraph): UGraph = g.copy(nodes = g.nodes.map(onNode))
+  private def onNode(n: UNode): UNode = n.copy(actions = n.actions.flatMap(onAction))
+  private def onAction(a: UAction): Option[UAction] = a.a match {
+    case ASignal(name) =>
+      val doRemove = suffixes.exists(s => name.endsWith(s))
+      if(doRemove) None else Some(a)
+    case _ => Some(a)
+  }
+}
+
 /** Expands the graph by  */
 class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") extends UGraphPass {
   override def name: String = "ExpandForksPass"

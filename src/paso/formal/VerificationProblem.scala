@@ -163,13 +163,15 @@ object VerificationProblem {
 
     val forksExpanded = new ExpandForksPass(info, gSolver, workingDir.toString).run(merged)
     ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
-    val simplified = guardsToAssumptions.run(forksExpanded)
+    // remove signals that are no longer needed:
+    val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
+    val simplified = removeSignals.run(guardsToAssumptions.run(forksExpanded))
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
 
     // TODO: add assumption that at least one edge can be taken
 
     // make automaton
-    val auto = new UGraphToTransitionSystem(simplified, gSolver).run(invert = false)
+    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false)
     println(auto.serialize)
   }
 

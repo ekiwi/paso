@@ -14,53 +14,50 @@ import firrtl.ir
 /** Encodes a UGraph into a transition system.
  *  This requires that all edges are synchronous and transitions should be deterministic!
  */
-class UGraphToTransitionSystem(g: UGraph, solver: GuardSolver) {
-
-  import PredicateEncoder.not
-
-  private val signalPrefix = g.name + ".automaton."
-  private val stateBits = log2Ceil(g.nodes.length + 1)
-  private val inState = g.nodes.indices.map(s => smt.BVSymbol(signalPrefix + s"stateIs$s", 1)).toArray
-  private val invalidState = smt.BVSymbol(signalPrefix + "stateIsInvalid", 1)
-
+class UGraphToTransitionSystem(solver: GuardSolver) {
   // global signals
   private val reset = smt.BVSymbol("reset", 1)
   private val notReset = smt.BVSymbol("notReset", 1)
 
   /** @param invert switches the role of asserts and assumes */
-  def run(invert: Boolean): mc.TransitionSystem = {
-    makeAuto(invert)
-  }
+  def run(g: UGraph, invert: Boolean): mc.TransitionSystem = {
+    val stateBits = log2Ceil(g.nodes.length + 1)
+    val inState = g.nodes.indices.map(s => smt.BVSymbol(s"stateIs$s", 1)).toArray
+    val invalidState = smt.BVSymbol("stateIsInvalid", 1)
 
-  private def makeAuto(invert: Boolean): mc.TransitionSystem = {
+    // inputs
+    val inputs = List(reset)
+    // TODO: make signals from functional model inputs (rets and guard outputs)
+    val notResetSignal = Seq(mc.Signal(notReset.name, smt.BVNot(reset)))
+
     // define inState signals
-    val state = smt.BVSymbol(signalPrefix + "state", stateBits)
+    val state = smt.BVSymbol("state", stateBits)
     val maxState = smt.BVLiteral(g.nodes.length - 1, stateBits)
     val stateSignals = inState.zip(g.nodes.indices).map { case (sym, nid) =>
       mc.Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(nid, stateBits)))
     } ++ Seq(
       mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false)),
-      mc.Signal(invalidState.name + "Check", not(smt.BVImplies(notReset, not(invalidState))), mc.IsBad)
+      mc.Signal(invalidState.name + "Check", smt.BVNot(smt.BVImplies(notReset, smt.BVNot(invalidState))), mc.IsBad)
     )
 
     // signal that can be used to constrain the state to be zero
-    val stateIsZero = List(mc.Signal(signalPrefix + "initState", inState(0), mc.IsOutput))
+    val stateIsZero = List(mc.Signal("initState", inState(0), mc.IsOutput))
 
     // encode actions
     val actions = getActionsInState(g.nodes)
     checkForUnsupportedActions(actions)
     val actionSignals = (
-      encodePredicates(asssertPreds(actions), notReset, signalPrefix + "bad", assumeDontAssert = invert) ++
-      encodePredicates(asssumePreds(actions), notReset, signalPrefix + "constraint", assumeDontAssert = !invert) ++
-      encodeSignals(actions)
+      encodePredicates(asssertPreds(actions, inState), notReset, "bad", assumeDontAssert = invert) ++
+      encodePredicates(asssumePreds(actions, inState), notReset, "constraint", assumeDontAssert = !invert) ++
+      encodeSignals(actions, inState)
     )
     // TODO: mappings!
 
     // encode edges
-    val stateState = encodeStateEdges(state, reset)
+    val stateState = encodeStateEdges(g, state, reset, inState)
 
-    val signals = stateSignals ++ stateIsZero ++ actionSignals
-    mc.TransitionSystem("PasoAutomaton", List(), List(stateState), signals.toList)
+    val signals = notResetSignal ++ stateSignals ++ stateIsZero ++ actionSignals
+    mc.TransitionSystem("PasoAutomaton", inputs, List(stateState), signals.toList)
   }
 
 
@@ -76,12 +73,13 @@ class UGraphToTransitionSystem(g: UGraph, solver: GuardSolver) {
     }}
   }
 
-  private def asssumePreds(a: Seq[ActionInState]): Seq[Pred] = {
+  private type InState = Int => smt.BVExpr
+  private def asssumePreds(a: Seq[ActionInState], inState: InState): Seq[Pred] = {
     a.collect { case ActionInState(UAction(AAssume(cond), info, guard), in) =>
       Pred(smt.BVAnd(inState(in), guard), cond, info)
     }
   }
-  private def asssertPreds(a: Seq[ActionInState]): Seq[Pred] = {
+  private def asssertPreds(a: Seq[ActionInState], inState: InState): Seq[Pred] = {
     a.collect { case ActionInState(UAction(AAssert(cond), info, guard), in) =>
       Pred(smt.BVAnd(inState(in), guard), cond, info)
     }
@@ -96,14 +94,16 @@ class UGraphToTransitionSystem(g: UGraph, solver: GuardSolver) {
     groups.zipWithIndex.map { case ((_, ps), i) =>
       val guard = smt.BVOr(ps.map(_.guard))
       val expr = smt.BVImplies(smt.BVAnd(notReset, guard), ps.head.pred)
-      val negatedExpr = if(negate) not(expr) else expr
+      val negatedExpr = if(negate) smt.BVNot(expr) else expr
       val simplifiedExpr = solver.simplify(negatedExpr)
       mc.Signal(s"${prefix}_$i", simplifiedExpr, lbl)
     }
   }
 
   private case class Edge(to: Int, guard: smt.BVExpr)
-  private def encodeStateEdges(state: smt.BVSymbol, reset: smt.BVExpr): mc.State = {
+  private def encodeStateEdges(g: UGraph, state: smt.BVSymbol, reset: smt.BVExpr, inState: InState): mc.State = {
+    val stateBits = state.width
+
     // we first collect all the edges
     val edges = g.nodes.zipWithIndex.flatMap { case (node, from) =>
       node.next.map { e => assert(e.isSync) ; Edge(e.to, smt.BVAnd(inState(from), e.guard)) }
@@ -121,13 +121,13 @@ class UGraphToTransitionSystem(g: UGraph, solver: GuardSolver) {
   }
 
   private case class Signal(name: String, guard: smt.BVExpr, info: ir.Info)
-  private def encodeSignals(actions: Seq[ActionInState]): Seq[mc.Signal] = {
+  private def encodeSignals(actions: Seq[ActionInState], inState: InState): Seq[mc.Signal] = {
     val signals = actions.collect{ case ActionInState(UAction(ASignal(name), info, guard), in) =>
       Signal(name, smt.BVAnd(inState(in), guard), info)
     }
     signals.groupBy(_.name).map { case (name, signals) =>
       val simplified = solver.simplify(smt.BVOr(signals.map(_.guard)))
-      mc.Signal(name, simplified)
+      mc.Signal(name, simplified, mc.IsOutput)
     }.toSeq
   }
 
