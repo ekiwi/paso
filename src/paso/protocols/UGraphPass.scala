@@ -499,7 +499,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     // replace symbols and signals for all new instances
     val replacements = newIds.zip(protos).map { case ((n, id), p) =>
       assert(n == p.name)
-      val replaceSignal = if(id == 0) List() else List(s"A:${p.name}$$0" -> s"A:${p.name}$$$id")
+      val replaceSignal = if(id == 0) List() else List(s"${p.name}$$0_Active" -> s"${p.name}$$${id}_Active")
       val replaceSyms = if(id == 0) List() else {
         val suffix = "$" + id
         p.args.flatMap { case(name, width) =>
@@ -558,7 +558,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     val forkGuards = forks.map(_._2).reduce(smt.BVOr(_, _))
 
     // we are over approximating here, assuming that all could be active at the same time
-    val active = signals.map(_._1).filter(_.startsWith("A:")).map(_.drop(2)).toSet
+    val active = signals.map(_._1).filter(_.endsWith("_Active")).map(_.dropRight(7)).toSet
 
     // check if we already know a state which we can fork to
     val to = getStart(activeToStart(active))

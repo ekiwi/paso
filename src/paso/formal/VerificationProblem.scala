@@ -136,7 +136,7 @@ object VerificationProblem {
     println(commitInfo)
 
     val taggedProtocols = commits.map(_._1).zip(info).map { case(p, i) =>
-      RemoveEmptyLeafStates.run(new TagInternalNodes("A:" + i.name + "$0").run(p))
+      RemoveEmptyLeafStates.run(new TagInternalNodes(i.name + "$0" + "_Active").run(p))
     }
 
     // trying to make a paso automaton out of u graphs
