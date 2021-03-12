@@ -135,14 +135,18 @@ object VerificationProblem {
     val commitInfo = commits.map(_._2)
     println(commitInfo)
 
-    val taggedProtocols = commits.map(_._1).zip(info).map { case(p, i) =>
-      RemoveEmptyLeafStates.run(new TagInternalNodes(i.name + "$0" + "_Active").run(p))
+    val taggedProtocols = commits.map(_._1).map { p =>
+      RemoveEmptyLeafStates.run(new TagInternalNodes("Active").run(p))
+    }
+
+    val prefixedProtocols = taggedProtocols.zip(info).map { case(p, i) =>
+      new PrefixSignals(i.name + "$0_", Set("fork")).run(p)
     }
 
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start")
-    taggedProtocols.foreach { p =>
+    prefixedProtocols.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
       b.addEdge(start, protoStart) // TODO: add method guard
     }

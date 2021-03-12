@@ -423,6 +423,16 @@ class Replace(signals: Map[String, String] = Map(), symbols: Map[String, smt.BVE
   }
 }
 
+class PrefixSignals(prefix: String, ignoreSignals: Set[String] = Set()) extends UGraphPass {
+  override def name = "PrefixSignals"
+  override def run(g: UGraph): UGraph = g.copy(nodes = g.nodes.map(onNode))
+  private def onNode(n: UNode): UNode = n.copy(actions = n.actions.map(onAction))
+  private def onAction(a: UAction): UAction = a.a match {
+    case ASignal(name) if !ignoreSignals(name) =>
+      a.copy(a = ASignal(prefix + name))
+    case _ => a
+  }
+}
 
 /** Expands the graph by  */
 class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") extends UGraphPass {
@@ -495,11 +505,14 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     UGraph(merged.name, nodes)
   }
 
+  private def signalNames = List("Active", "Commit", "AllMapped")
   private def replaceProtocolInstances(merged: UGraph, newIds: Seq[(String, Int)], shift: Int): IndexedSeq[UNode] = {
     // replace symbols and signals for all new instances
     val replacements = newIds.zip(protos).map { case ((n, id), p) =>
       assert(n == p.name)
-      val replaceSignal = if(id == 0) List() else List(s"${p.name}$$0_Active" -> s"${p.name}$$${id}_Active")
+      val replaceSignal = if(id == 0) List() else {
+        signalNames.map(s => s"${p.name}$$0_$s" -> s"${p.name}$$${id}_$s")
+      }
       val replaceSyms = if(id == 0) List() else {
         val suffix = "$" + id
         p.args.flatMap { case(name, width) =>
