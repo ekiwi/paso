@@ -91,7 +91,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     //println()
     //println(withQuantifiers.serialize)
 
-    withQuantifiers
+    simplifyTransitionSystem(withQuantifiers)
   }
 
   private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (ProtocolGraph, UGraph, UGraph) = {
@@ -217,8 +217,8 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
   }
 
   private val simplificationPasses = PassManager(List(
-    Simplify, new Inline(), DeadCodeElimination,
-    Simplify, new Inline(), DeadCodeElimination,
+    Simplify, new Inline(), new DeadCodeElimination(true),
+    Simplify, new Inline(), new DeadCodeElimination(true),
     Simplify
   ))
 

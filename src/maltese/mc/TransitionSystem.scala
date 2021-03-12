@@ -81,10 +81,15 @@ object TransitionSystem {
 
   def connect(sys: TransitionSystem, cons: Map[String, BVExpr]): TransitionSystem = {
     // ensure that the ports exists
-    cons.foreach(i => assert(sys.inputs.exists(_.name == i._1), s"Cannot connect to non-existing port ${i._1}"))
+    val missingInputs = cons.keys.filterNot(n => sys.inputs.exists(_.name == n)).toSet
+    // we can through an error for non-existing inputs, but for now we just ignore them
+    missingInputs.foreach { i =>
+      // println(s"WARN: could not connect $i := ${cons(i)}")
+    }
+    // cons.foreach(i => assert(sys.inputs.exists(_.name == i._1), s"Cannot connect to non-existing port ${i._1}"))
     // filter out inputs
     val inputs = sys.inputs.filterNot(i => cons.contains(i.name))
-    val connections = cons.map(c => mc.Signal(c._1, c._2)).toList
+    val connections = cons.filterNot(c => missingInputs.contains(c._1)).map(c => mc.Signal(c._1, c._2)).toList
     sys.copy(inputs = inputs, signals = connections ++ sys.signals)
   }
 

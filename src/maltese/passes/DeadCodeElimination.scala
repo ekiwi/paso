@@ -9,7 +9,7 @@ import maltese.mc.TransitionSystem
 import maltese.mc
 
 /** Removed all signals that are not used. */
-object DeadCodeElimination extends Pass {
+class DeadCodeElimination(removeUnusedInputs: Boolean = false) extends Pass {
   override def name: String = "DeadCodeElimination"
 
   override def run(sys: TransitionSystem): TransitionSystem = {
@@ -22,8 +22,10 @@ object DeadCodeElimination extends Pass {
         eliminatedStates.contains(state)
       case _ => false
     }}
-    // filter out RANDOM inputs that are never used
-    val inputs = sys.inputs.filterNot { i => i.name.contains("RANDOM") && useCount(i.name) == 0 }
+    // filter out inputs that are never used
+    val inputs = if(removeUnusedInputs) {
+      sys.inputs.filterNot { i => useCount(i.name) == 0 }
+    } else { sys.inputs}
     val states = sys.states.filterNot(s => eliminatedStates.contains(s.sym.name))
     sys.copy(inputs = inputs, signals = signals, states = states)
   }

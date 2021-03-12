@@ -20,7 +20,8 @@ object AddForallQuantifiers {
     // E.g. `node x : bv<1> = forall(i : bv<2>, eq(i, i))` is ok,
     // `node y : bv<1> = eq(i,i) ; node x : bv<1> = forall(i : bv<2>, y)` is not.
     // For simplicity's sake we just inline all nodes
-    val inlinedSys = DeadCodeElimination.run(new Inline(inlineEverything = true).run(sys))
+    val eliminate = new DeadCodeElimination()
+    val inlinedSys = eliminate.run(new Inline(inlineEverything = true).run(sys))
 
     // we remove all inputs that are actually quantified variables
     val inputs = inlinedSys.inputs.filterNot(variables.contains)
