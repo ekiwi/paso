@@ -42,7 +42,8 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
     // connect untimed system inputs (reset, method enabled and method args)
     val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys,
-      connectMethodEnabled(auto.commits, untimedInputs.enabled).toMap ++
+      Map(s"${untimedSys.name}.reset" -> reset) ++
+      connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
       connectMethodEnd(auto.edges, untimedInputs.ending) ++
       connectMethodArgs(auto.mappings, untimedInputs.args)
     )
