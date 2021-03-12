@@ -42,8 +42,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
 
     // connect untimed system inputs (reset, method enabled and method args)
     val connectedUntimedSys = mc.TransitionSystem.connect(untimedSys,
-      Map(s"${untimedSys.name}.reset" -> reset) ++
-      connectMethodEnabled(auto.commits, untimedInputs.enabled) ++
+      connectMethodEnabled(auto.commits, untimedInputs.enabled).toMap ++
       connectMethodEnd(auto.edges, untimedInputs.ending) ++
       connectMethodArgs(auto.mappings, untimedInputs.args)
     )
@@ -343,7 +342,8 @@ object UntimedModelCopy {
         val committed = smt.BVSymbol(method.fullIoName + s"_committed$$$i", 1)
         val enabled = smt.BVSymbol(method.fullIoName + s"_enabled$$$i", 1)
         val end = smt.BVSymbol(method.fullIoName + s"_end$$$i", 1)
-        val reset = smt.BVSymbol(sys.name + ".reset", 1)
+        //val reset = smt.BVSymbol(sys.name + ".reset", 1)
+        val reset = smt.BVSymbol("reset", 1)
         val next = smt.BVIte(smt.BVOr(end, reset), smt.False(), smt.BVIte(enabled, smt.True(), committed))
         mc.State(committed, init=None, next=Some(next))
       }
