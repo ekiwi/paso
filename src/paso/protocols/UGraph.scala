@@ -16,7 +16,7 @@ import scala.collection.mutable
 case class UGraph(name: String, nodes: IndexedSeq[UNode]) {
   def size: Int = nodes.size
 }
-case class UAction(a: Action, info: ir.Info, guard: smt.BVExpr = smt.True())
+case class UAction(a: Action, info: ir.Info = ir.NoInfo, guard: smt.BVExpr = smt.True())
 case class UEdge(to: Int, isSync: Boolean, guard: smt.BVExpr = smt.True())
 case class UNode(name: String, actions: List[UAction] = List(), next: List[UEdge] = List())
 

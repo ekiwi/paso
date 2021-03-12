@@ -145,7 +145,7 @@ object VerificationProblem {
 
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
-    val start = b.addNode("start")
+    val start = b.addNode("start", List(UAction(ASignal("Start"))))
     prefixedProtocols.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
       b.addEdge(start, protoStart) // TODO: add method guard
@@ -165,6 +165,12 @@ object VerificationProblem {
     ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
     val simplified = guardsToAssumptions.run(forksExpanded)
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
+
+    // TODO: add assumption that at least one edge can be taken
+
+    // make automaton
+    val auto = new UGraphToTransitionSystem(simplified, gSolver).run(invert = false)
+    println(auto.serialize)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
