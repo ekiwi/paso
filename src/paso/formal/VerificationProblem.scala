@@ -128,20 +128,21 @@ object VerificationProblem {
   }
 
   private def makePasoAutomaton(info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
-    val taggedProtocols = protocols.zip(info).map { case(p, i) =>
-      RemoveEmptyLeafStates.run(new TagInternalNodes("A:" + i.name + "$0").run(p))
-    }
-
-    val commits = taggedProtocols.zip(info).map { case (p, i) =>
+    // first we check to see when the protocols commit
+    val commits = protocols.zip(info).map { case (p, i) =>
       new CommitAnalysis(i.rets).run(p)
     }
-    val protocolsWithCommits = commits.map(_._1)
-    println(commits.map(_._2))
+    val commitInfo = commits.map(_._2)
+    println(commitInfo)
+
+    val taggedProtocols = commits.map(_._1).zip(info).map { case(p, i) =>
+      RemoveEmptyLeafStates.run(new TagInternalNodes("A:" + i.name + "$0").run(p))
+    }
 
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start")
-    protocolsWithCommits.foreach { p =>
+    taggedProtocols.foreach { p =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
       b.addEdge(start, protoStart) // TODO: add method guard
     }
