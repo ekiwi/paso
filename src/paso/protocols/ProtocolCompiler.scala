@@ -23,10 +23,20 @@ object ProtocolCompiler {
     Dependency(StepOrderPass))
   private val compiler = new TransformManager(passes)
 
-  def run(state: CircuitState, ioPrefix: String, specPrefix: String, methodName: String): CircuitState = {
+  def run(state: CircuitState, ioPrefix: String, specPrefix: String, methodName: String, doTrace: Boolean): CircuitState = {
+    if(doTrace) {
+      println("Before Protocol Compilation")
+      println(state.circuit.serialize)
+      println()
+    }
     val annos = Set(ProtocolPrefixAndNameAnnotation(ioPrefix, specPrefix, methodName))
     val st = state.copy(annotations = state.annotations ++ annos)
-    compiler.runTransform(st)
+    val r = compiler.runTransform(st)
+    if(doTrace) {
+      println("After Protocol Compilation")
+      println(r.circuit.serialize)
+    }
+    r
   }
 }
 

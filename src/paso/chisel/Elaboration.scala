@@ -101,7 +101,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
       override def desiredName: String = circuitName
       proto.generate(clock)
     })
-    val normalized = ProtocolCompiler.run(state, ioPrefix = ioPrefix, specPrefix = specPrefix, methodName = proto.methodName)
+    val normalized = ProtocolCompiler.run(state, ioPrefix = ioPrefix, specPrefix = specPrefix, methodName = proto.methodName, doTrace = dbg.traceProtocolElaboration)
     val solver = Yices2()
     val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, solver).run()
     val graph = ProtocolGraph.encode(paths)
