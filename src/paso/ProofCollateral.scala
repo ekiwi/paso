@@ -25,16 +25,19 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
     chisel3.experimental.verification.assert(cond)
   }
 
-  implicit class comparableMem[T <: UInt](x: Mem[T]) {
-    def ===(y: Mem[T]): Bool = {
+  implicit class comparableMem[T <: UInt](x: MemBase[T]) {
+    def ===(y: MemBase[T]): Bool = {
       require(x.length > 0)
       require(x.length == y.length)
-      val w = Wire(Bool()).suggestName(s"eq($x, $y)")
-      dontTouch(w)
-      val depth = x.length
-      val width = x.t.getWidth
-      annotate(new ChiselAnnotation { override def toFirrtl = MemEqualAnnotation(w.toTarget, x.toTarget, y.toTarget, depth, width) })
-      w
+
+      // create a new universally quantified variable (we essentially instantiate the definition of extensiality)
+      // TODO: encoding array equality directly might be preferable for some backends!
+      val bits = log2Ceil(x.length)
+      val range = Range(0, x.length.toInt-1)
+      val ii = IO(Input(UInt(bits.W))).suggestName(getUniqueForallIOName(range))
+      annotate(new ChiselAnnotation { override def toFirrtl = ForallAnnotation(ii.toTarget, bits, range.start, range.end) })
+
+      x.read(ii) === y.read(ii)
     }
   }
 
@@ -66,14 +69,6 @@ abstract class ProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec
 }
 
 case class NoProofCollateral[I <: RawModule, S <: UntimedModule](impl: I, spec: S) extends ProofCollateral(impl, spec)
-
-case class MemToVecAnnotation(target: ReferenceTarget, mem: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
-
-case class MemEqualAnnotation(target: ReferenceTarget, mem0: ReferenceTarget, mem1: ReferenceTarget, depth: BigInt, width: Int) extends SingleTargetAnnotation[ReferenceTarget] {
-  def duplicate(n: ReferenceTarget) = this.copy(n)
-}
 
 case class ForallAnnotation(target: ReferenceTarget, width: Int, start: Int, end: Int) extends SingleTargetAnnotation[ReferenceTarget] {
   def duplicate(n: ReferenceTarget) = this.copy(n)

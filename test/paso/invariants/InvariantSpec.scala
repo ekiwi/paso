@@ -85,6 +85,12 @@ class MemProof(impl: ChiselMem, spec: UntimedMem) extends ProofCollateral(impl, 
   }
 }
 
+class MemProofWithExtensionality(impl: ChiselMem, spec: UntimedMem) extends ProofCollateral(impl, spec) {
+  mapping { (impl, spec) =>
+    assert(impl.mem === spec.mem)
+  }
+}
+
 class MemWrapperProof(impl: ChiselMemWrapper, spec: UntimedMem) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
     forall(0 until 32) { ii =>
@@ -100,6 +106,10 @@ class InvariantSpec extends AnyFlatSpec with PasoTester {
   // small sanity check
   it should "work for bmc ...." in { test(new ChiselMem)(new MemProtocol(_)).bmc(5) }
   it should "work for random ...." in { test(new ChiselMem)(new MemProtocol(_)).randomTest(5) }
+
+  it should "be able to use memory equality" in {
+    test(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProofWithExtensionality(_, _))
+  }
 
   it should "be able to refer to a memory" in {
     test(new ChiselMem)(new MemProtocol(_)).proof(Paso.MCZ3, new MemProof(_, _))
