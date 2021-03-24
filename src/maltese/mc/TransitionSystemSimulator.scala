@@ -90,7 +90,17 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     }
   }
 
-  private def eval(expr: smt.BVExpr): BigInt = smt.SMTExprEval.eval(expr)(evalCtx)
+  private val CheckWidths = true
+  private def eval(expr: smt.BVExpr): BigInt = {
+    val value = smt.SMTExprEval.eval(expr)(evalCtx)
+    if(CheckWidths) {
+      val mask = (BigInt(1) << expr.width) - 1
+      if((value & mask) != value) {
+        throw new RuntimeException(s"Failed to evaluate ${expr}!\nvalue $value does not fit into ${expr.width} bits!")
+      }
+    }
+    value
+  }
   private def evalArray(expr: smt.ArrayExpr): Memory = smt.SMTExprEval.evalArray(expr)(evalCtx).asInstanceOf[Memory]
 
   private def arrayDepth(indexWidth: Int): Int = (BigInt(1) << indexWidth).toInt
