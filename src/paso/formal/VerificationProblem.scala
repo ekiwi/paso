@@ -71,7 +71,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // TODO trying out a new thing
-    makePasoAutomaton(problem.spec.protocols.map(_.info), problem.spec.ugraphs, solver, workingDir)
+    // makePasoAutomaton(problem.spec.protocols.map(_.info), problem.spec.ugraphs, solver, workingDir)
 
     // turn spec into a monitoring automaton
     val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
