@@ -58,12 +58,10 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
     }
   }
   private def randomBits(bits: Int): BigInt = BigInt(bits, scala.util.Random)
-  private def randomSeq(depth: Int): Seq[BigInt] = {
-    val r = scala.util.Random
-    (0 to depth).map( _ => BigInt(r.nextLong()))
-  }
-  private def writesToMemory(depth: Int, writes: Iterable[(Option[BigInt], BigInt)]): Memory =
-    writes.foldLeft(Memory(randomSeq(depth))){ case(mem, (index, value)) => mem.write(index, value)}
+  private def randomSeq(depth: Int, bits: Int): Seq[BigInt] = (0 to depth).map( _ => randomBits(bits))
+
+  private def writesToMemory(depth: Int, bits: Int,  writes: Iterable[(Option[BigInt], BigInt)]): Memory =
+    writes.foldLeft(Memory(randomSeq(depth, bits))){ case(mem, (index, value)) => mem.write(index, value)}
 
   private val evalCtx = new smt.SMTEvalCtx {
     override def getBVSymbol(name: String): BigInt = {
@@ -133,12 +131,14 @@ class TransitionSystemSimulator(sys: TransitionSystem, val maxMemVcdSize: Int = 
         val value = state.init match {
           case Some(init) => evalArray(init.asInstanceOf[smt.ArrayExpr])
           case None =>
-            val depth = arrayDepth(state.sym.asInstanceOf[smt.ArraySymbol].indexWidth)
+            val sym = state.sym.asInstanceOf[smt.ArraySymbol]
+            val depth = arrayDepth(sym.indexWidth)
+            val bits = sym.dataWidth
             if(memInit.contains(ii)) {
-              writesToMemory(depth, memInit(ii))
+              writesToMemory(depth, bits, memInit(ii))
             } else {
               println(s"WARN: Initial value for ${state.sym} ($ii) is missing!")
-              Memory(randomSeq(depth))
+              Memory(randomSeq(depth, bits))
             }
         }
         memories(arrayNameToIndex(state.name)) = value
