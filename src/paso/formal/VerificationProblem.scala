@@ -151,17 +151,20 @@ object VerificationProblem {
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start", List(UAction(ASignal("Start"))))
     prefixedProtocols.zip(info).foreach { case (p, i) =>
-      val protoStart = b.addGraph(AssumptionsToGuards.run(p))
+      val protoStart = b.addGraph(p)
       val guard = smt.BVSymbol(i.methodPrefix + "guard", 1)
       b.addEdge(start, protoStart, guard)
     }
     val combined = b.get
     ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
 
+    val combinedWithAssumptionGuards = AssumptionsToGuards.run(combined)
+    ProtocolVisualization.saveDot(combinedWithAssumptionGuards, false, s"$workingDir/combined.guards.dot")
+
     val gSolver = new GuardSolver(solver)
     val makeDet = new MakeDeterministic(gSolver)
     val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActionsAndEdges(gSolver))
-    val merged = passes.foldLeft(combined)((in, pass) => pass.run(in))
+    val merged = passes.foldLeft(combinedWithAssumptionGuards)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
     val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
