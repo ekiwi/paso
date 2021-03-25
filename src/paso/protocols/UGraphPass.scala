@@ -218,7 +218,7 @@ object RemoveForwardingStates extends UGraphPass {
  *  - no actions
  *  - no outgoing edges
  * */
-object RemoveEmptyLeafStates extends UGraphPass {
+class RemoveEmptyLeafStates(ignoreSignals: Set[String] = Set()) extends UGraphPass {
   override def name: String = "RemoveEmptyLeafStates"
   override def run(g: UGraph): UGraph = {
     val remove = getAllEmptyLeaves(g.nodes)
@@ -242,7 +242,16 @@ object RemoveEmptyLeafStates extends UGraphPass {
 
   private def isEmptyLeaf(n: UNode, removed: Set[Int]): Boolean = {
     val noNext = n.next.forall(e => removed(e.to))
-    noNext && n.actions.isEmpty
+    noNext && getRelevantActions(n).isEmpty
+  }
+
+  /** filters out any signals that are ok to ignore */
+  private def getRelevantActions(n: UNode): List[UAction] = {
+    if(ignoreSignals.isEmpty) return n.actions
+    n.actions.filterNot {
+      case UAction(ASignal(name), _, _) if ignoreSignals.contains(name) => true
+      case _ => false
+    }
   }
 
   private def removeEdges(e: UNode, removed: Set[Int]): UNode = {
@@ -628,7 +637,8 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
 
 /** Takes in the output of [[ProtocolToSyncUGraph]] and adds
- *  a "Commit" signals for states in which the protocol needs to commit.
+ *  a "Commit" signals for states in which the protocol needs to commit
+ *  as well as a "HasCommitted" for any subsequent states that are not the final state.
  *  It also checks whether:
  *  - the protocol accesses any return arguments after it has committed
  *  - the protocol maps all inputs before committing
@@ -641,21 +651,25 @@ class CommitAnalysis(rets: Map[String, Int]) {
   case class Result(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean)
 
   def run(g: UGraph): (UGraph, Result) = {
-    val (result, commits) = analyze(g)
+    val (result, commits, hasCommitted) = analyze(g)
     assert(commits.nonEmpty, "Found no commits!")
 
     // add commit signals
-    val nodes = g.nodes.zipWithIndex.map { case (n, id) => commits.get(id) match {
-      case Some(guard) =>
-        val a = UAction(ASignal("Commit"), ir.NoInfo, guard)
-        n.copy(actions = a +: n.actions)
-      case None => n
-    }}
+    val nodes = g.nodes.zipWithIndex.map { case (n, id) =>
+      val hc = hasCommitted(id) && n.next.nonEmpty
+      val signals = {
+        commits.get(id).map(guard => UAction(ASignal("Commit"), ir.NoInfo, guard)) ++
+          (if(hc) Some(UAction(ASignal("HasCommitted"))) else None)
+      }
+      if(signals.isEmpty) { n } else {
+        n.copy(actions = signals ++: n.actions)
+      }
+    }
 
     (g.copy(nodes=nodes), result)
   }
 
-  private def analyze(g: UGraph): (Result, Map[Int, smt.BVExpr]) = {
+  private def analyze(g: UGraph): (Result, Map[Int, smt.BVExpr], Set[Int]) = {
     // we initially assume that we do not read after a commit
     var readAfterCommit = false
     // we initially assume that we will map all inputs before committing
@@ -664,6 +678,7 @@ class CommitAnalysis(rets: Map[String, Int]) {
     val visited = mutable.HashSet[Int]()
     val todo = mutable.Stack[(Int, Boolean)]()
     val commits = mutable.HashMap[Int, smt.BVExpr]()
+    val hasCommittedStates = mutable.ArrayBuffer[Int]()
 
     visited.add(0)
     todo.push((0, false))
@@ -671,6 +686,7 @@ class CommitAnalysis(rets: Map[String, Int]) {
     while(todo.nonEmpty) {
       val (nid, hasCommitted) = todo.pop()
       val node = g.nodes(nid)
+      if(hasCommitted) { hasCommittedStates.append(nid) }
 
       // check conditions
       if(hasCommitted && readsRets(node)) {
@@ -699,7 +715,7 @@ class CommitAnalysis(rets: Map[String, Int]) {
       }
     }
 
-    (Result(readAfterCommit, mapInputsBeforeCommit), commits.toMap)
+    (Result(readAfterCommit, mapInputsBeforeCommit), commits.toMap, hasCommittedStates.toSet)
   }
 
   private def getForks(n: UNode): List[UAction] = {

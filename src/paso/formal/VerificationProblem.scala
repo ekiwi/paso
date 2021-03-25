@@ -140,7 +140,8 @@ object VerificationProblem {
     val commitInfo = commits.map(_._2)
     println("CommitInfo: " + commitInfo.toString)
 
-    val tagPasses = Seq(new TagInternalNodes("Active"), new TagStartNode("Start"), RemoveEmptyLeafStates)
+    val tagPasses = Seq(new TagInternalNodes("Active"), new TagStartNode("Start"),
+      new RemoveEmptyLeafStates(Set("HasCommitted")))
     val taggedProtocols = commits.map(_._1).map { p => tagPasses.foldLeft(p)((old, pass) => pass.run(old)) }
 
     val prefixedProtocols = taggedProtocols.zip(info).map { case(p, i) =>
