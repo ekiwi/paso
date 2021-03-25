@@ -153,7 +153,12 @@ class GuardSolver(solver: smt.Solver) {
     if(guard == smt.True()) return guard
     val norm = Guards.simplify(guard)
     val bdd = conv.smtToBdd(norm)
-    conv.bddToSmt(bdd)
+    val simple = conv.bddToSmt(bdd)
+    if(simple.toString.length > norm.toString.length) {
+      //println("WARN: simplified expression is bigger!")
+      // TODO: why does this sometimes explode? Is there a better way to simplify formulas?
+      norm
+    } else { simple }
   }
 
 }
@@ -177,9 +182,9 @@ class UGraphBuilder(name: String) {
     shift
   }
 
-  def addEdge(from: Int, to: Int): Unit = {
+  def addEdge(from: Int, to: Int, guard: smt.BVExpr = smt.True()): Unit = {
     assert(to >= 0 && to < size)
-    addEdge(from, UEdge(to, isSync = false))
+    addEdge(from, UEdge(to, isSync = false, guard=guard))
   }
 
   def addSyncEdge(from: Int, to: Int): Unit = {
