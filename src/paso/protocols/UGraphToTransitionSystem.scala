@@ -44,16 +44,17 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
     val actionSignals = (
       encodePredicates(asssertPreds(actions, inState), notReset, prefix + "bad", assumeDontAssert = invert) ++
       encodePredicates(asssumePreds(actions, inState), notReset, prefix + "constraint", assumeDontAssert = !invert) ++
-      encodeSignals(actions, inState)
+      encodeSignals(actions, inState) ++
+      encodeMappings(actions, inState)
     )
-    // TODO: mappings!
+    val mappingStates = encodeMappingStates(actions)
 
     // encode edges
     val stateState = encodeStateEdges(g, state, reset, inState)
 
     val signals = stateSignals ++ stateIsZero ++ actionSignals
     val inputs = List()
-    mc.TransitionSystem("PasoAutomaton", inputs, List(stateState), signals.toList)
+    mc.TransitionSystem("PasoAutomaton", inputs, List(stateState) ++ mappingStates, signals.toList)
   }
 
 
@@ -125,6 +126,32 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
       val simplified = solver.simplify(smt.BVOr(signals.map(_.guard)))
       mc.Signal(name, simplified, mc.IsOutput)
     }.toSeq
+  }
+
+  private case class Mapping(arg: smt.BVSymbol, update: smt.BVExpr, guard: smt.BVExpr, info: ir.Info)
+  private def encodeMappings(actions: Seq[ActionInState], inState: InState): Seq[mc.Signal] = {
+    val mappings = actions.collect { case ActionInState(UAction(m : AMapping, info, guard), in) =>
+      Mapping(m.arg, m.update, smt.BVAnd(inState(in), guard), info)
+    }
+
+    val byArg = mappings.groupBy(_.arg)
+    byArg.toSeq.map { case (arg, ms) =>
+      val updates = ms.groupBy(_.update).map { case (update, us) =>
+        val guard = solver.simplify(smt.BVOr(us.map(_.guard)))
+        (guard, update)
+      }
+      val prev = arg.rename(arg.name + "$prev")
+      val e = updates.foldLeft[smt.BVExpr](prev) { case (prev, (guard, update)) =>
+        smt.BVIte(guard, update, prev)
+      }
+      mc.Signal(arg.name, e)
+    }
+  }
+  private def encodeMappingStates(actions: Seq[ActionInState]): Seq[mc.State] = {
+    val args = actions.collect{ case ActionInState(UAction(m: AMapping, _, _), _) => m.arg }.distinct
+    args.map { arg =>
+      mc.State(arg.rename(arg.name + "$prev"), next=Some(arg), init=None)
+    }
   }
 
   private case class ActionInState(a: UAction, in: Int)
