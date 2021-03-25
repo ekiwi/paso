@@ -20,18 +20,13 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
   private val notReset = smt.BVSymbol("notReset", 1)
 
   /** @param invert switches the role of asserts and assumes */
-  def run(g: UGraph, invert: Boolean): mc.TransitionSystem = {
+  def run(g: UGraph, prefix: String, invert: Boolean): mc.TransitionSystem = {
     val stateBits = log2Ceil(g.nodes.length + 1)
-    val inState = g.nodes.indices.map(s => smt.BVSymbol(s"stateIs$s", 1)).toArray
-    val invalidState = smt.BVSymbol("stateIsInvalid", 1)
-
-    // inputs
-    val inputs = List(reset)
-    // TODO: make signals from functional model inputs (rets and guard outputs)
-    val notResetSignal = Seq(mc.Signal(notReset.name, smt.BVNot(reset)))
+    val inState = g.nodes.indices.map(s => smt.BVSymbol(prefix + s"stateIs$s", 1)).toArray
+    val invalidState = smt.BVSymbol(prefix + "stateIsInvalid", 1)
 
     // define inState signals
-    val state = smt.BVSymbol("state", stateBits)
+    val state = smt.BVSymbol(prefix + "state", stateBits)
     val maxState = smt.BVLiteral(g.nodes.length - 1, stateBits)
     val stateSignals = inState.zip(g.nodes.indices).map { case (sym, nid) =>
       mc.Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(nid, stateBits)))
@@ -41,14 +36,14 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
     )
 
     // signal that can be used to constrain the state to be zero
-    val stateIsZero = List(mc.Signal("initState", inState(0), mc.IsOutput))
+    val stateIsZero = List(mc.Signal(prefix + "initState", inState(0), mc.IsOutput))
 
     // encode actions
     val actions = getActionsInState(g.nodes)
     checkForUnsupportedActions(actions)
     val actionSignals = (
-      encodePredicates(asssertPreds(actions, inState), notReset, "bad", assumeDontAssert = invert) ++
-      encodePredicates(asssumePreds(actions, inState), notReset, "constraint", assumeDontAssert = !invert) ++
+      encodePredicates(asssertPreds(actions, inState), notReset, prefix + "bad", assumeDontAssert = invert) ++
+      encodePredicates(asssumePreds(actions, inState), notReset, prefix + "constraint", assumeDontAssert = !invert) ++
       encodeSignals(actions, inState)
     )
     // TODO: mappings!
@@ -56,7 +51,8 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
     // encode edges
     val stateState = encodeStateEdges(g, state, reset, inState)
 
-    val signals = notResetSignal ++ stateSignals ++ stateIsZero ++ actionSignals
+    val signals = stateSignals ++ stateIsZero ++ actionSignals
+    val inputs = List()
     mc.TransitionSystem("PasoAutomaton", inputs, List(stateState), signals.toList)
   }
 

@@ -387,11 +387,39 @@ class MergeActionsAndEdges(solver: GuardSolver) extends UGraphPass {
 class TagInternalNodes(signal: String) extends UGraphPass {
   override def name: String = "TagInternalNodes"
   override def run(g: UGraph): UGraph = {
+    if(g.nodes.isEmpty) return g
     val nodes = g.nodes.head +: g.nodes.drop(1).map(onNode)
     g.copy(nodes = nodes)
   }
   private def onNode(n: UNode): UNode = if(n.next.isEmpty) { n }  else {
     n.copy(actions = n.actions :+ UAction(ASignal(signal), ir.NoInfo))
+  }
+}
+
+class TagStartNode(signal: String) extends UGraphPass {
+  override def name: String = "TagStartNode"
+  override def run(g: UGraph): UGraph = {
+    if(g.nodes.isEmpty) return g
+    val sig = UAction(ASignal(signal), ir.NoInfo)
+    val startNode = g.nodes.head
+    val newStart = startNode.copy(actions = sig +: startNode.actions)
+    val nodes = newStart +: g.nodes.drop(1)
+    g.copy(nodes = nodes)
+  }
+}
+
+/** Makes the assumption that (at least) one edge is always enabled explicit. */
+object AddOneEdgeTakenAssumption extends UGraphPass {
+  override def name: String = "AddOneEdgeTakenAssumption"
+  override def run(g: UGraph): UGraph = {
+    val nodes = g.nodes.map(onNode)
+    g.copy(nodes=nodes)
+  }
+  private def onNode(n: UNode): UNode = {
+    if(n.next.isEmpty) return n
+    val anyTaken = smt.BVOr(n.next.map(_.guard))
+    val assumption = UAction(AAssume(anyTaken))
+    n.copy(actions = assumption +: n.actions)
   }
 }
 

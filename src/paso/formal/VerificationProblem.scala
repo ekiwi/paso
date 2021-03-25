@@ -36,7 +36,7 @@ object VerificationProblem {
     // turn spec into a monitoring automaton
     val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
     // TODO trying out a new thing
-    makePasoAutomaton(problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir)
+    makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -124,20 +124,24 @@ object VerificationProblem {
     val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
     val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
     val longestPath = automaton.longestPath
+//    println("==============")
+//    println("Old Automaton:")
+//    println("==============")
+//    println(sys.serialize)
+//    println()
     (sys, longestPath)
   }
 
-  private def makePasoAutomaton(info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
+  private def makePasoAutomaton(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
     // first we check to see when the protocols commit
     val commits = protocols.zip(info).map { case (p, i) =>
       new CommitAnalysis(i.rets).run(p)
     }
     val commitInfo = commits.map(_._2)
-    println(commitInfo)
+    println("CommitInfo: " + commitInfo.toString)
 
-    val taggedProtocols = commits.map(_._1).map { p =>
-      RemoveEmptyLeafStates.run(new TagInternalNodes("Active").run(p))
-    }
+    val tagPasses = Seq(new TagInternalNodes("Active"), new TagStartNode("Start"), RemoveEmptyLeafStates)
+    val taggedProtocols = commits.map(_._1).map { p => tagPasses.foldLeft(p)((old, pass) => pass.run(old)) }
 
     val prefixedProtocols = taggedProtocols.zip(info).map { case(p, i) =>
       new PrefixSignals(i.name + "$0_", Set("fork")).run(p)
@@ -146,9 +150,10 @@ object VerificationProblem {
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
     val start = b.addNode("start", List(UAction(ASignal("Start"))))
-    prefixedProtocols.foreach { p =>
+    prefixedProtocols.zip(info).foreach { case (p, i) =>
       val protoStart = b.addGraph(AssumptionsToGuards.run(p))
-      b.addEdge(start, protoStart) // TODO: add method guard
+      val guard = smt.BVSymbol(i.methodPrefix + "guard", 1)
+      b.addEdge(start, protoStart, guard)
     }
     val combined = b.get
     ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
@@ -168,11 +173,14 @@ object VerificationProblem {
     val simplified = removeSignals.run(guardsToAssumptions.run(forksExpanded))
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
 
-    // TODO: add assumption that at least one edge can be taken
-
     // make automaton
-    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false)
-    println(auto.serialize)
+    val prefix = untimed.sys.name + ".automaton."
+    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false, prefix=prefix)
+//    println("==============")
+//    println("New Automaton:")
+//    println("==============")
+//    println(auto.serialize)
+//    println()
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
