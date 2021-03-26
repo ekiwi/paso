@@ -554,7 +554,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     UGraph(merged.name, nodes)
   }
 
-  private def signalNames = List("Active", "Commit", "AllMapped")
+  private def signalNames = List("Active", "Commit", "AllMapped", "Start", "HasCommitted")
   private def replaceProtocolInstances(merged: UGraph, newIds: Seq[(String, Int)], shift: Int): IndexedSeq[UNode] = {
     // replace symbols and signals for all new instances
     val replacements = newIds.zip(protos).map { case ((n, id), p) =>
