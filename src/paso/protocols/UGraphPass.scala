@@ -449,7 +449,8 @@ class Replace(signals: Map[String, String] = Map(), symbols: Map[String, smt.BVE
         case i : AInputAssign => i
         case other => throw new RuntimeException(s"Unexpected action $other")
       }
-      action.copy(a = a)
+      val guard = replace(action.guard)
+      action.copy(a = a, guard = guard)
     }
     n.copy(actions = actions)
   }
@@ -469,6 +470,20 @@ class PrefixSignals(prefix: String, ignoreSignals: Set[String] = Set()) extends 
       a.copy(a = ASignal(prefix + name))
     case _ => a
   }
+}
+
+class PrefixArgs(protos: Seq[ProtocolInfo]) extends UGraphPass {
+  override def name = "PrefixSignals"
+  override def run(g: UGraph): UGraph ={
+    new Replace(Map(), replaceSymbols).run(g)
+  }
+
+  private lazy val replaceSymbols = protos.flatMap { p =>
+    p.args.flatMap { case(name, width) =>
+      List(name -> smt.BVSymbol(name + "$0", width),
+        (name + "$prev") -> smt.BVSymbol(name + "$0" + "$prev", width))
+    } ++ p.rets.map{ case (name, width) => name -> smt.BVSymbol(name + "$0", width) }
+  }.toMap
 }
 
 class RemoveSignalsEndingWith(suffixes: List[String]) extends UGraphPass {
@@ -572,10 +587,12 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
         signalNames.map(s => s"${p.name}$$0_$s" -> s"${p.name}$$${id}_$s")
       }
       val replaceSyms = if(id == 0) List() else {
-        val suffix = "$" + id
+        val suffixOld = "$0"
+        val suffixNew = "$" + id
         p.args.flatMap { case(name, width) =>
-          List(name -> smt.BVSymbol(name + suffix, width), (name + "$prev") -> smt.BVSymbol(name + suffix + "$prev", width))
-        } ++ p.rets.map{ case (name, width) => name -> smt.BVSymbol(name + suffix, width) }
+          List(name + suffixOld -> smt.BVSymbol(name + suffixNew, width),
+            (name + suffixOld + "$prev") -> smt.BVSymbol(name + suffixNew + "$prev", width))
+        } ++ p.rets.map{ case (name, width) => name + suffixOld -> smt.BVSymbol(name + suffixNew, width) }
       }
       (replaceSignal, replaceSyms)
     }
