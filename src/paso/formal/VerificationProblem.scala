@@ -174,9 +174,9 @@ object VerificationProblem {
       Signal(s"initState$ii", smt.BVImplies(isInit, smt.BVSymbol(name + ".automaton.initState", 1)), mc.IsConstraint)
     }
     // if the main spec is in a start state, we require all subspecs to also be in a start state
-    val mainStartState = smt.BVSymbol(specName + ".automaton.startState", 1)
+    val mainStartState = smt.BVSymbol(specName + ".automaton.StartState", 1)
     val assertions = subspecNames.zipWithIndex.map { case (subName, ii) =>
-      val subStartState = smt.BVSymbol(subName + ".automaton.startState", 1)
+      val subStartState = smt.BVSymbol(subName + ".automaton.StartState", 1)
       val assertion = smt.BVImplies(smt.BVAnd(notReset, mainStartState), subStartState)
       Signal(s"startState$ii", smt.BVNot(assertion), mc.IsBad)
     }
@@ -206,7 +206,7 @@ object VerificationProblem {
     TransitionSystem.connect(sys, Map(sys.name + ".reset" ->  reset))
 
   private def encodeInvariants(specName: String, invariants: TransitionSystem): TransitionSystem = {
-    val startState = smt.BVSymbol(specName + ".automaton.startState", 1)
+    val startState = smt.BVSymbol(specName + ".automaton.StartState", 1)
     val invertAssert = smt.BVSymbol("invertAssert", 1)
     val sys = TransitionSystem.connect(invariants, Map(
       invariants.name + ".reset" -> reset,

@@ -53,7 +53,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
     // trying to make a paso automaton out of u graphs
     val b = new UGraphBuilder("combined")
-    val start = b.addNode("start", List(UAction(ASignal("Start"))))
+    val start = b.addNode("start", List(UAction(ASignal(prefix + "StartState"))))
     prefixedProtocols.zip(info).foreach { case (p, i) =>
       val protoStart = b.addGraph(p)
       val guard = smt.BVSymbol(i.methodPrefix + "guard", 1)

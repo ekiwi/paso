@@ -77,7 +77,7 @@ class PasoAutomatonToTransitionSystem(auto: PasoAutomaton) {
     // since we assume that everytime a transactions _can_ be started, a transaction _will_ be started, we just need
     // to check which state we are in
     val startTransactionStates = auto.states.filter(_.isStart).map(_.id).map(inState)
-    val startAnyTransaction = List(mc.Signal(signalPrefix + "startState", smt.BVOr(startTransactionStates), mc.IsOutput))
+    val startAnyTransaction = List(mc.Signal(signalPrefix + "StartState", smt.BVOr(startTransactionStates), mc.IsOutput))
 
     // signal that can be used to constrain the state to be zero
     val stateIsZero = List(mc.Signal(signalPrefix + "initState", inState(0), mc.IsOutput))
