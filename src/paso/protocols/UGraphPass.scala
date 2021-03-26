@@ -554,7 +554,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     UGraph(merged.name, nodes)
   }
 
-  private def signalNames = List("Active", "Commit", "AllMapped", "Start", "HasCommitted")
+  private def signalNames = List("Active", "Commit", "AllMapped", "Start", "HasCommitted", "HasNotCommitted")
   private def replaceProtocolInstances(merged: UGraph, newIds: Seq[(String, Int)], shift: Int): IndexedSeq[UNode] = {
     // replace symbols and signals for all new instances
     val replacements = newIds.zip(protos).map { case ((n, id), p) =>
@@ -656,11 +656,11 @@ class CommitAnalysis(rets: Map[String, Int]) {
 
     // add commit signals
     val nodes = g.nodes.zipWithIndex.map { case (n, id) =>
-      val hc = hasCommitted(id) && n.next.nonEmpty
-      val signals = {
-        commits.get(id).map(guard => UAction(ASignal("Commit"), ir.NoInfo, guard)) ++
-          (if(hc) Some(UAction(ASignal("HasCommitted"))) else None)
-      }
+
+      val committed = if(n.next.isEmpty) { None }
+      else if(hasCommitted(id)) { Some(UAction(ASignal("HasCommitted"))) }
+      else { Some(UAction(ASignal("HasNotCommitted"))) }
+      val signals = commits.get(id).map(guard => UAction(ASignal("Commit"), ir.NoInfo, guard)) ++ committed
       if(signals.isEmpty) { n } else {
         n.copy(actions = signals ++: n.actions)
       }

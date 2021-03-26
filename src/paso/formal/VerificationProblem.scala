@@ -133,58 +133,7 @@ object VerificationProblem {
   }
 
   private def makePasoAutomaton(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
-    // first we check to see when the protocols commit
-    val commits = protocols.zip(info).map { case (p, i) =>
-      new CommitAnalysis(i.rets).run(p)
-    }
-    val commitInfo = commits.map(_._2)
-    println("CommitInfo: " + commitInfo.toString)
-
-    val tagPasses = Seq(new TagInternalNodes("Active"), new TagStartNode("Start"),
-      new RemoveEmptyLeafStates(Set("HasCommitted")))
-    val taggedProtocols = commits.map(_._1).map { p => tagPasses.foldLeft(p)((old, pass) => pass.run(old)) }
-
-    val prefixedProtocols = taggedProtocols.zip(info).map { case(p, i) =>
-      new PrefixSignals(i.name + "$0_", Set("fork")).run(p)
-    }
-
-    // trying to make a paso automaton out of u graphs
-    val b = new UGraphBuilder("combined")
-    val start = b.addNode("start", List(UAction(ASignal("Start"))))
-    prefixedProtocols.zip(info).foreach { case (p, i) =>
-      val protoStart = b.addGraph(p)
-      val guard = smt.BVSymbol(i.methodPrefix + "guard", 1)
-      b.addEdge(start, protoStart, guard)
-    }
-    val combined = b.get
-    ProtocolVisualization.saveDot(combined, false, s"$workingDir/combined.dot")
-
-    val combinedWithAssumptionGuards = AssumptionsToGuards.run(combined)
-    ProtocolVisualization.saveDot(combinedWithAssumptionGuards, false, s"$workingDir/combined.guards.dot")
-
-    val gSolver = new GuardSolver(solver)
-    val makeDet = new MakeDeterministic(gSolver)
-    val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActionsAndEdges(gSolver))
-    val merged = passes.foldLeft(combinedWithAssumptionGuards)((in, pass) => pass.run(in))
-    ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
-    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
-    ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
-
-    val forksExpanded = new ExpandForksPass(info, gSolver, workingDir.toString).run(merged)
-    ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
-    // remove signals that are no longer needed:
-    val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
-    val simplified = removeSignals.run(guardsToAssumptions.run(forksExpanded))
-    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
-
-    // make automaton
-    val prefix = untimed.sys.name + ".automaton."
-    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false, prefix=prefix)
-//    println("==============")
-//    println("New Automaton:")
-//    println("==============")
-//    println(auto.serialize)
-//    println()
+    new AutomatonBuilder(solver, workingDir).run(untimed, info, protocols)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
