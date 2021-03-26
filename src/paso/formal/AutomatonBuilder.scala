@@ -13,10 +13,11 @@ import java.nio.file.Path
 
 class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
-  def run(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph]): mc.TransitionSystem = {
-    val prefix = untimed.sys.name + ".automaton."
-    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, info, protocols)
+  def run(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], invert: Boolean): (mc.TransitionSystem, Int) = {
+    val longest = longestPath(protocols)
 
+    val prefix = untimed.sys.name + ".automaton."
+    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, info, protocols, invert)
 
     //println("==============")
     //println("New Automaton:")
@@ -28,10 +29,12 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
     // combine control flow automaton and modified untimed spec
     val combined = mc.TransitionSystem.combine(utAuto.name, List(cfgAuto, utAuto))
-    TopologicalSort.run(combined)
+    (TopologicalSort.run(combined), longest)
   }
 
-  private def buildControlAutomaton(prefix: String, info: Seq[ProtocolInfo], protocols: Iterable[UGraph]):
+  private def longestPath(protocols: Iterable[UGraph]): Int = protocols.map(FindLongestPath.run).max
+
+  private def buildControlAutomaton(prefix: String, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], invert: Boolean):
   (mc.TransitionSystem, Seq[ProtoGraphInfo]) = {
     // first we check to see when the protocols commit
     val commits = protocols.zip(info).map { case (p, i) =>
@@ -80,7 +83,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
 
     // make automaton
-    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false, prefix=prefix)
+    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert=invert, prefix=prefix)
 
     //println("Protocols:  " + info.map(_.name).mkString(", "))
     //println("CommitInfo: " + commitInfo.toString)

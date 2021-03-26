@@ -498,6 +498,21 @@ class RemoveSignalsEndingWith(suffixes: List[String]) extends UGraphPass {
   }
 }
 
+/** Only works if the graph is cycle free! */
+object FindLongestPath {
+  def name = "FindLongestPath"
+  def run(g: UGraph): Int = {
+    if(g.nodes.isEmpty) return 0
+    onNode(g, 0)
+  }
+  private def onNode(g: UGraph, nid: Int): Int = {
+    val node = g.nodes(nid)
+    if(node.next.isEmpty) { 1 } else {
+      1 + node.next.map(_.to).map(onNode(g, _)).max
+    }
+  }
+}
+
 /** Expands the graph by  */
 class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: String = "") extends UGraphPass {
   override def name: String = "ExpandForksPass"

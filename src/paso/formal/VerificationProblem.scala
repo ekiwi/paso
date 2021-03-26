@@ -34,9 +34,9 @@ object VerificationProblem {
     val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols, solver, true)._1)
 
     // turn spec into a monitoring automaton
-    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
-    // TODO trying out a new thing
-    makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir)
+    val (spec, longestPath) =
+      //makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
+      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -132,8 +132,8 @@ object VerificationProblem {
     (sys, longestPath)
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path): Unit = {
-    new AutomatonBuilder(solver, workingDir).run(untimed, info, protocols)
+  private def makePasoAutomaton(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path, invert: Boolean): (TransitionSystem, Int) = {
+    new AutomatonBuilder(solver, workingDir).run(untimed, info, protocols, invert)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
