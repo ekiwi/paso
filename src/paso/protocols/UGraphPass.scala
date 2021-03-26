@@ -494,6 +494,11 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
 
   private val toDFA = Seq(RemoveAsynchronousEdges, new MakeDeterministic(solver), new MergeActionsAndEdges(solver))
 
+  private var _instances: Option[Seq[Seq[Int]]] = None
+  def getProtocolInstances: Seq[Seq[Int]] = _instances.getOrElse{
+    throw new RuntimeException("You need to first run this pass!")
+  }
+
   override def run(merged: UGraph): UGraph = {
     // we start with no active transactions
     startPoints.clear()
@@ -534,6 +539,10 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     plot(noAsyncEdges, s"B_no_async", count)
     plot(deterministic, s"C_dfa", count)
     plot(dfa, s"D_dfa_simple", count)
+
+    // remember how often each protocol was instantiated
+    val protoToInstance = startPoints.keys.toSeq.flatten.groupBy(_._1).mapValues(_.map(_._2).distinct.sorted)
+    _instances = Some(protos.map(_.name).map(protoToInstance))
 
     dfa
   }

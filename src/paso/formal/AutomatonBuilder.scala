@@ -14,7 +14,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
   def run(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph]): Unit = {
     val prefix = untimed.sys.name + ".automaton."
-    val auto = buildControlAutomaton(prefix, info, protocols)
+    val (auto, graphInfo) = buildControlAutomaton(prefix, info, protocols)
 
 
     println("==============")
@@ -23,16 +23,16 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     println(auto.serialize)
     println()
 
-    connectUntimed(untimed)
+    connectUntimed(untimed, graphInfo)
   }
 
-  private def buildControlAutomaton(prefix: String, info: Seq[ProtocolInfo], protocols: Iterable[UGraph]): mc.TransitionSystem = {
+  private def buildControlAutomaton(prefix: String, info: Seq[ProtocolInfo], protocols: Iterable[UGraph]):
+  (mc.TransitionSystem, Seq[ProtoGraphInfo]) = {
     // first we check to see when the protocols commit
     val commits = protocols.zip(info).map { case (p, i) =>
       new CommitAnalysis(i.rets).run(p)
     }
     val commitInfo = commits.map(_._2)
-    println("CommitInfo: " + commitInfo.toString)
 
     val tagPasses = Seq(new TagInternalNodes("Active"), new TagStartNode("Start"),
       new RemoveEmptyLeafStates(Set("HasCommitted")))
@@ -64,7 +64,9 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
 
-    val forksExpanded = new ExpandForksPass(info, gSolver, workingDir.toString).run(merged)
+    val forkPass = new ExpandForksPass(info, gSolver, workingDir.toString)
+    val forksExpanded = forkPass.run(merged)
+    val protocolInstances = forkPass.getProtocolInstances
     ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
     // remove signals that are no longer needed:
     val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
@@ -74,11 +76,20 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     // make automaton
     val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert = false, prefix=prefix)
 
+    //println("Protocols:  " + info.map(_.name).mkString(", "))
+    //println("CommitInfo: " + commitInfo.toString)
+    //println("Instances:  " + protocolInstances)
+    val graphInfo = commitInfo.zip(protocolInstances).map { case (c, i) =>
+      ProtoGraphInfo(c.readAfterCommit, c.mapInputsBeforeCommit, i)
+    }.toSeq
+
     // many signals end up being the same expression:
-    ReplaceExpressionsWithSignals.run(auto)
+    (ReplaceExpressionsWithSignals.run(auto), graphInfo)
   }
 
-  private def connectUntimed(untimed: UntimedModel): mc.TransitionSystem = {
+  private case class ProtoGraphInfo(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
+
+  private def connectUntimed(untimed: UntimedModel, graphInfo: Seq[ProtoGraphInfo]): mc.TransitionSystem = {
 
     println()
     println("Untimed")
