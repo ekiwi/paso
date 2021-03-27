@@ -31,12 +31,14 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn subspecs into monitoring automatons
-    val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols, solver, true)._1)
+    val subspecs =
+      problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols.map(_.info), s.ugraphs, solver, workingDir, true)._1)
+      // problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols, solver, true)._1)
 
     // turn spec into a monitoring automaton
     val (spec, longestPath) =
-      //makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
-      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
+      //makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -47,7 +49,9 @@ object VerificationProblem {
     val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys)
 
     // for the induction we start the automaton in its initial state and assume
-    val startStates = List(startInInitState(spec.name, subspecs.map(_.name)), nonCommittedInInitState(spec.name, subspecs.map(_.name)))
+    val startStates = List(startInInitState(spec.name, subspecs.map(_.name)),
+      // nonCommittedInInitState(spec.name, subspecs.map(_.name))
+    )
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
@@ -70,11 +74,10 @@ object VerificationProblem {
     // connect the implementation to the global reset
     val impl = connectToReset(problem.impl)
 
-    // TODO trying out a new thing
-    // makePasoAutomaton(problem.spec.protocols.map(_.info), problem.spec.ugraphs, solver, workingDir)
-
     // turn spec into a monitoring automaton
-    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+    val (spec, _) =
+      // makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -183,6 +186,7 @@ object VerificationProblem {
     mc.TransitionSystem("StartInInitState", List(), List(), assumptions ++ assertions)
   }
 
+  // only needed for the legacy automaton
   private def nonCommittedInInitState(specName: String, subspecNames: Iterable[String]): TransitionSystem = {
     val isInit = smt.BVSymbol("isInit", 1)
     // when a paso automaton is in its init state, there is no active transaction and thus $nonCommitted must be true
