@@ -64,7 +64,7 @@ class SerialAluProtocols(impl: SerialAlu) extends ProtocolSpec[AluModel] {
 class SerialAluSpec extends AnyFlatSpec with PasoTester  {
   behavior of "SerialAlu"
 
-  it should "pass some cycles of BMC" ignore {
+  it should "pass some cycles of BMC" in {
     test(new SerialAlu)(new SerialAluProtocols(_)).bmc(40)
   }
 
@@ -141,7 +141,7 @@ class SerialAlu extends Module {
   val plus1 = io.count.count0
   val negativeBCarry = Reg(UInt(1.W))
   val negativeBCarryAndResult = ~operandB +& plus1 + negativeBCarry
-  negativeBCarry := negativeBCarryAndResult(1)
+  negativeBCarry := io.count.enabled & negativeBCarryAndResult(1)
   val negativeB = negativeBCarryAndResult(0)
 
 
