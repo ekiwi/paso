@@ -30,6 +30,7 @@ class BDDToSMTConverter(
         case BVOp(Op.And, a, b) => return smtToBdd(a).and(smtToBdd(b))
         case BVOp(Op.Or, a, b) => return smtToBdd(a).or(smtToBdd(b))
         case BVOp(Op.Xor, a, b) => return smtToBdd(a).xor(smtToBdd(b))
+        case BVImplies(a, b) => return smtToBdd(a).imp(smtToBdd(b))
         case BVEqual(a, b) if a.width == 1 => return smtToBdd(a).biimp(smtToBdd(b))
         case _ => None
       }
