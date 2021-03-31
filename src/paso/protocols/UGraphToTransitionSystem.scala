@@ -8,7 +8,6 @@ package paso.protocols
 import Chisel.log2Ceil
 import maltese.mc
 import maltese.smt
-import paso.formal.PredicateEncoder
 import firrtl.ir
 
 /** Encodes a UGraph into a transition system.
