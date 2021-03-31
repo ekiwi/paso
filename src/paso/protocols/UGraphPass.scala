@@ -549,6 +549,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
       val dfa = toDFA(2).run(deterministic)
       //val dfa = toDFA.foldLeft(withStarts)((in, pass) => pass.run(in))
       // scan for new forks
+      rediscoverStartingNodes(dfa)
       maxId = dfa.size - 1
       val resolvedFork = UGraph(dfa.name, dfa.nodes.map(onNode))
       // this is out new graph
@@ -593,6 +594,26 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     UGraph(merged.name, nodes)
   }
 
+  /** Updates the starting node ids after the DFA + sync edge conversions which might change node ids. */
+  private def rediscoverStartingNodes(g: UGraph): Unit = {
+    val points = startPoints.keys.toSeq
+    val signalNameToActive = points.map(p => activeToString(p) -> p).toMap
+    g.nodes.zipWithIndex.foreach { case (node, nid) =>
+      val signals = node.actions.collect{ case UAction(ASignal(name), _, smt.True()) => name }
+      signals.find(signalNameToActive.contains) match {
+        case Some(name) =>
+          val active = signalNameToActive(name)
+          startPoints(active) = nid
+        case None =>
+      }
+    }
+  }
+
+  private def activeToString(active: Seq[(String, Int)]): String = {
+    "Starting: " + active.sortBy(_._1).map(a => s"${a._1}$$${a._2}").mkString(":")
+  }
+
+
   private def signalNames = List("Active", "Commit", "AllMapped", "Start", "StartState", "HasCommitted", "HasNotCommitted")
   private def replaceProtocolInstances(merged: UGraph, newIds: Seq[(String, Int)], shift: Int): IndexedSeq[UNode] = {
     // replace symbols and signals for all new instances
@@ -613,7 +634,9 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
     }
     val signals = replacements.flatMap(_._1).toMap
     val syms = replacements.flatMap(_._2).toMap
-    val replaced = new Replace(signals, syms).run(merged)
+    val startTag = activeToString(newIds)
+    val tagged = new TagStartNode(startTag).run(merged)
+    val replaced = new Replace(signals, syms).run(tagged)
 
     // shift edge targets since we are appending the nodes
     val shifted = replaced.nodes.map { n =>
