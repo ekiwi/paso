@@ -20,7 +20,6 @@ import maltese.{mc, smt}
 import maltese.smt.solvers.Yices2
 import paso.{DebugOptions, ForallAnnotation, IsSubmodule, ProofCollateral, SubSpecs, UntimedModule, untimed}
 import paso.formal._
-import paso.protocols.old._
 import paso.protocols._
 import paso.random._
 import paso.untimed._
@@ -94,7 +93,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     simplifyTransitionSystem(withQuantifiers)
   }
 
-  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (ProtocolGraph, UGraph, UGraph) = {
+  private def compileProtocol(proto: Protocol, ioPrefix: String, specPrefix: String, combPaths: Seq[(String, Seq[String])]): (Proto, Proto) = {
     //println(s"Protocol for: ${p.methodName}")
     val (state, _) = elaborate(() => new Module() {
       override def circuitName: String = proto.methodName + "Protocol"
@@ -103,17 +102,14 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     })
     val normalized = ProtocolCompiler.run(state, ioPrefix = ioPrefix, specPrefix = specPrefix, methodName = proto.methodName, doTrace = dbg.traceProtocolElaboration)
     val solver = Yices2()
-    val paths = new SymbolicProtocolInterpreter(normalized, proto.stickyInputs, solver).run()
-    val graph = ProtocolGraph.encode(paths)
-
     val basicUGraph = new UGraphConverter(normalized, proto.stickyInputs).run(proto.methodName)
     // TODO: cleanup
-    val syncUGraph = new MergeActionsAndEdges(new GuardSolver(solver)).run(new ProtocolToSyncUGraph(solver, basicUGraph, paths.info, combPaths).run())
+    val syncUGraph = new MergeActionsAndEdges(new GuardSolver(solver)).run(new ProtocolToSyncUGraph(solver, basicUGraph, combPaths).run())
 
-    ProtocolVisualization.saveDot(basicUGraph, false, s"$workingDir/${proto.methodName}.basic.dot")
+    ProtocolVisualization.saveDot(basicUGraph.graph, false, s"$workingDir/${proto.methodName}.basic.dot")
     ProtocolVisualization.saveDot(syncUGraph, false, s"$workingDir/${proto.methodName}.sync.dot")
 
-    (graph, basicUGraph, syncUGraph)
+    (basicUGraph, basicUGraph.copy(graph=syncUGraph))
   }
 
   private def compileImpl(impl: ChiselImpl[_], subspecs: Seq[IsSubmodule], externalRefs: Iterable[ExternalReference]): FormalSys = {
@@ -232,8 +228,8 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val ut = compileUntimed(spec, externalRefs, prefix = prefix, abstracted = abstracted)
     val ioPrefix = f"$implName.io"
     val specPrefix = f"${ut.model.name}."
-    val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix, combPaths))
-    val sp = Spec(ut.model, pt.map(_._1), pt.map(_._3))
+    val pt = ut.protocols.map(compileProtocol(_, ioPrefix, specPrefix, combPaths)._2)
+    val sp = Spec(ut.model, pt)
     (sp, ut.exposedSignals)
   }
 
@@ -330,9 +326,7 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val implState = firrtl.CircuitState(implChisel.circuit, implChisel.annos)
     val (tester, io, combPaths) = toTester(implState, recordWaveform)
     val protos = specChisel.protos
-      .map(compileProtocol(_, "io", "", combPaths))
-      .map(p => ProtocolDesc(p._1.info, p._2))
-      .toVector
+      .map(compileProtocol(_, "io", "", combPaths)._1).toVector
 
 
     TestingProblem(untimed = specChisel.untimed, protocols = protos, impl = tester, io = io)

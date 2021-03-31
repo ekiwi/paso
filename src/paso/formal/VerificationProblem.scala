@@ -7,7 +7,6 @@ package paso.formal
 import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
-import paso.protocols.old.{PasoAutomatonEncoder, ProtocolGraph}
 import paso.protocols._
 import paso.{DebugOptions, untimed}
 
@@ -17,7 +16,7 @@ case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInf
   def name: String = sys.name
   def addPrefix(prefix: String): UntimedModel = copy(sys = sys.copy(name = prefix + name))
 }
-case class Spec(untimed: UntimedModel, protocols: Seq[ProtocolGraph], ugraphs: Seq[UGraph])
+case class Spec(untimed: UntimedModel, ugraphs: Seq[Proto])
 case class VerificationProblem(impl: TransitionSystem, spec: Spec, subspecs: Seq[Spec], invariants: TransitionSystem)
 
 object VerificationProblem {
@@ -31,14 +30,10 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn subspecs into monitoring automatons
-    val subspecs =
-      problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols.map(_.info), s.ugraphs, solver, workingDir, true)._1)
-      // problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.protocols, solver, true)._1)
+    val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.ugraphs, solver, workingDir, true)._1)
 
     // turn spec into a monitoring automaton
-    val (spec, longestPath) =
-      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
-      //makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
+    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert=false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -49,9 +44,7 @@ object VerificationProblem {
     val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys)
 
     // for the induction we start the automaton in its initial state and assume
-    val startStates = List(startInInitState(spec.name, subspecs.map(_.name)),
-      // nonCommittedInInitState(spec.name, subspecs.map(_.name))
-    )
+    val startStates = List(startInInitState(spec.name, subspecs.map(_.name)))
     val inductionStep = mc.TransitionSystem.combine("induction",
       List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
     val inductionLength = longestPath
@@ -75,9 +68,7 @@ object VerificationProblem {
     val impl = connectToReset(problem.impl)
 
     // turn spec into a monitoring automaton
-    val (spec, _) =
-      // makePasoAutomaton(problem.spec.untimed, problem.spec.protocols, solver, false)
-      makePasoAutomaton(problem.spec.untimed, problem.spec.protocols.map(_.info),  problem.spec.ugraphs, solver, workingDir, invert=false)
+    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert=false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -122,21 +113,9 @@ object VerificationProblem {
     }
   }
 
-  private def makePasoAutomaton(untimed: UntimedModel, protocols: Iterable[ProtocolGraph], solver: smt.Solver, invert: Boolean): (TransitionSystem, Int) = {
-    solver.setLogic(smt.SMTFeature.BitVector + smt.SMTFeature.UninterpretedFunctions + smt.SMTFeature.QuantifierFree)
-    val automaton = new PasoAutomatonEncoder(untimed, protocols, solver).run()
-    val sys = new PasoAutomatonToTransitionSystem(automaton).run(invert)
-    val longestPath = automaton.longestPath
-//    println("==============")
-//    println("Old Automaton:")
-//    println("==============")
-//    println(sys.serialize)
-//    println()
-    (sys, longestPath)
-  }
 
-  private def makePasoAutomaton(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], solver: smt.Solver, workingDir: Path, invert: Boolean): (TransitionSystem, Int) = {
-    new AutomatonBuilder(solver, workingDir).run(untimed, info, protocols, invert)
+  private def makePasoAutomaton(untimed: UntimedModel, protos: Seq[Proto], solver: smt.Solver, workingDir: Path, invert: Boolean): (TransitionSystem, Int) = {
+    new AutomatonBuilder(solver, workingDir).run(untimed, protos, invert)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {
@@ -186,26 +165,6 @@ object VerificationProblem {
     mc.TransitionSystem("StartInInitState", List(), List(), assumptions ++ assertions)
   }
 
-  // only needed for the legacy automaton
-  private def nonCommittedInInitState(specName: String, subspecNames: Iterable[String]): TransitionSystem = {
-    val isInit = smt.BVSymbol("isInit", 1)
-    // when a paso automaton is in its init state, there is no active transaction and thus $nonCommitted must be true
-    val implications = (List(specName) ++ subspecNames).map { name =>
-      val init = smt.BVSymbol(name + ".automaton.initState", 1)
-      val nonCommitted = smt.BVSymbol(name + ".$nonCommitted", 1)
-      smt.BVImplies(init, nonCommitted)
-    }
-    // assume in state 0
-    val assumptions = implications.zipWithIndex.map { case (impl, ii) =>
-      Signal(s"assumeNonCommitted$ii", smt.BVImplies(isInit, impl), mc.IsConstraint)
-    }
-    // assert otherwise
-    val assertions = implications.zipWithIndex.map { case (impl, ii) =>
-      Signal(s"assertNonCommitted$ii", smt.BVNot(smt.BVImplies(smt.BVAnd(notReset, isInit), impl)), mc.IsBad)
-    }
-    mc.TransitionSystem("NonCommittedInInitState", List(), List(), assumptions ++ assertions)
-  }
-
   private def connectToReset(sys: TransitionSystem): TransitionSystem =
     TransitionSystem.connect(sys, Map(sys.name + ".reset" ->  reset))
 
@@ -233,4 +192,10 @@ object VerificationProblem {
 
   private val reset = smt.BVSymbol("reset", 1)
   private val notReset = smt.BVSymbol("notReset", 1)
+}
+
+private object isRandomInput {
+  def apply(i: smt.BVSymbol): Boolean = {
+    i.name.contains("rand_data") || i.name.contains("invalid")
+  }
 }

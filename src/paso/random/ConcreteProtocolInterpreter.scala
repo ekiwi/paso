@@ -14,19 +14,13 @@ import scala.collection.mutable
 
 
 trait TestGuide {
-  def chooseTransaction(enabled: IndexedSeq[ProtocolDesc]): ProtocolDesc
+  def chooseTransaction(enabled: IndexedSeq[Proto]): Proto
   def chooseArg(name: String, bits: Int): BigInt
   def chooseInput(name: String, bits: Int): BigInt
 }
 
 
-// TODO: merge with ProtocolGraph
-case class ProtocolDesc(info: ProtocolInfo, graph: UGraph) {
-  def name: String = info.name
-  def stickyInputs: Boolean = info.stickyInputs
-}
-
-class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[ProtocolDesc], impl: TreadleTester, guide: TestGuide, inputs: Seq[(String, Int)]) {
+class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[Proto], impl: TreadleTester, guide: TestGuide, inputs: Seq[(String, Int)]) {
   require(protocols.map(_.name).toSet.size == protocols.size)
   private val stickyInputs = protocols.head.info.stickyInputs
   assert(protocols.forall(_.stickyInputs == stickyInputs))

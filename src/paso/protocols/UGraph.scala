@@ -52,7 +52,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
 
   private val nodes = mutable.ArrayBuffer[UNode]()
 
-  def run(name: String): UGraph = {
+  def run(name: String): Proto = {
     // start with no nodes
     nodes.clear()
 
@@ -72,7 +72,8 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
       case other => throw new RuntimeException(s"Expecting exactly one final node! $other")
     }
 
-    UGraph(name, nodes)
+    val graph = UGraph(name, nodes)
+    Proto(getInfo, graph)
   }
 
   private def convertBlock(id: Int): Int = {

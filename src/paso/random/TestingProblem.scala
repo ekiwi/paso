@@ -2,11 +2,11 @@ package paso.random
 
 
 import firrtl.ir
-import paso.protocols.ProtocolVisualization
+import paso.protocols.{Proto, ProtocolVisualization}
 import paso.{DebugOptions, UntimedModule}
 import treadle.TreadleTester
 
-case class TestingProblem(untimed: UntimedModule, protocols: IndexedSeq[ProtocolDesc], impl: TreadleTester, io: Seq[ir.Port])
+case class TestingProblem(untimed: UntimedModule, protocols: IndexedSeq[Proto], impl: TreadleTester, io: Seq[ir.Port])
 
 
 object TestingProblem {
@@ -68,7 +68,7 @@ object TestingProblem {
 
 class RandomGuide(seed: Long) extends TestGuide {
   private val rand = new scala.util.Random(seed)
-  override def chooseTransaction(enabled: IndexedSeq[ProtocolDesc]): ProtocolDesc = {
+  override def chooseTransaction(enabled: IndexedSeq[Proto]): Proto = {
     val index = rand.nextInt(enabled.size)
     enabled(index)
   }

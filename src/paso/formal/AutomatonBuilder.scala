@@ -13,11 +13,11 @@ import java.nio.file.Path
 
 class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
-  def run(untimed: UntimedModel, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], invert: Boolean): (mc.TransitionSystem, Int) = {
-    val longest = longestPath(protocols)
+  def run(untimed: UntimedModel, protos: Seq[Proto], invert: Boolean): (mc.TransitionSystem, Int) = {
+    val longest = longestPath(protos.map(_.graph))
 
     val prefix = untimed.sys.name + ".automaton."
-    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, info, protocols, invert)
+    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, protos, invert)
 
     //println("==============")
     //println("New Automaton:")
@@ -34,10 +34,12 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
   private def longestPath(protocols: Iterable[UGraph]): Int = protocols.map(FindLongestPath.run).max
 
-  private def buildControlAutomaton(prefix: String, info: Seq[ProtocolInfo], protocols: Iterable[UGraph], invert: Boolean):
+  private def buildControlAutomaton(prefix: String, protos: Seq[Proto], invert: Boolean):
   (mc.TransitionSystem, Seq[ProtoGraphInfo]) = {
+    val info = protos.map(_.info)
+
     // first we check to see when the protocols commit
-    val commits = protocols.zip(info).map { case (p, i) =>
+    val commits = protos.map { case Proto(i, p) =>
       new CommitAnalysis(i.rets).run(p)
     }
     val commitInfo = commits.map(_._2)

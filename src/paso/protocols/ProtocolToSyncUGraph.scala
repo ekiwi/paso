@@ -14,14 +14,14 @@ import scala.collection.mutable
  *  - Ensure that either all paths to the final node fork, or none do.
  *  - Ensure that sticky input values do not depend on the path taken.
  */
-class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: ProtocolInfo, combPaths: Seq[(String, Seq[String])]) {
+class ProtocolToSyncUGraph(solver: smt.Solver, protocol: Proto, combPaths: Seq[(String, Seq[String])]) {
 
   private val guardSolver = new GuardSolver(solver)
   private def isFeasible(ctx: PathCtx): Boolean = guardSolver.isSat(ctx.guard)
 
   private def fixPrefix(name: String): String = {
     assert(name.startsWith("io"))
-    protocolInfo.ioPrefix + name.drop(2)
+    protocol.info.ioPrefix + name.drop(2)
   }
   private val inputToOutputs: Map[String, Seq[String]] = combPaths
     .flatMap{ case (sink, sources) => sources.map(s => s -> sink)}
@@ -34,7 +34,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     val nodeIds = mutable.HashMap[(Int, DataFlowInfo), Int]()
 
     // find all paths
-    val startMappings = protocolInfo.args.keys.map(_ -> BigInt(0)).toMap
+    val startMappings = protocol.info.args.keys.map(_ -> BigInt(0)).toMap
     val start = (0, DataFlowInfo(startMappings, false, Seq()))
     nodeIds(start) = 0
     var visited = Set(start)
@@ -55,7 +55,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
     }
 
     val nodes = newNodes.sortBy(_._1).map(_._2).toIndexedSeq
-    UGraph(g.name, nodes)
+    UGraph(protocol.graph.name, nodes)
   }
 
   private def pathsToNode(flowIn: DataFlowInfo, paths: List[Path], getId: ((Int, DataFlowInfo)) => Int): UNode = {
@@ -72,7 +72,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
   }
 
   private def executeSingleStepPath(nodeId: Int, ctx: PathCtx): List[Path] = {
-    val node = g.nodes(nodeId)
+    val node = protocol.graph.nodes(nodeId)
 
     // in this form actions should not have guards!
     node.actions.foreach(a => assert(a.guard == smt.True()))
@@ -166,7 +166,7 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
   }
 
   private def allMapped(mappings: Map[String, BigInt]): Boolean = {
-    protocolInfo.args.forall { case (name, width) =>
+    protocol.info.args.forall { case (name, width) =>
       BitMapping.toMask(width) == mappings(name)
     }
   }
@@ -245,10 +245,10 @@ class ProtocolToSyncUGraph(solver: smt.Solver, g: UGraph, protocolInfo: Protocol
    */
   private def analyzeRValue(e: smt.BVExpr, ctx: PathCtx, info: ir.Info = ir.NoInfo, isSet: Boolean = false): (Seq[OutputRead], smt.BVExpr) = {
     val syms = Analysis.findSymbols(e).map(_.asInstanceOf[smt.BVSymbol])
-    val args = syms.filter(s => protocolInfo.args.contains(s.name))
-    val rets = syms.filter(s => protocolInfo.rets.contains(s.name))
-    val inputs = syms.filter(s => protocolInfo.inputs.contains(s.name))
-    val outputs = syms.filter(s => protocolInfo.outputs.contains(s.name))
+    val args = syms.filter(s => protocol.info.args.contains(s.name))
+    val rets = syms.filter(s => protocol.info.rets.contains(s.name))
+    val inputs = syms.filter(s => protocol.info.inputs.contains(s.name))
+    val outputs = syms.filter(s => protocol.info.outputs.contains(s.name))
     val unknown = syms.toSet -- (args ++ rets ++ inputs ++ outputs).toSet
     if(unknown.nonEmpty) {
       throw new RuntimeException(s"Unknown symbol $unknown in $e ${info.serialize}")

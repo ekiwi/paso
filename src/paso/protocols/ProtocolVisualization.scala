@@ -5,7 +5,6 @@
 package paso.protocols
 
 import maltese.smt
-import paso.protocols.old.{Guarded, GuardedMapping, ProtocolGraph}
 
 import java.io._
 import scala.sys.process._
@@ -21,43 +20,6 @@ object ProtocolVisualization {
 
   private def implies(guard: smt.BVExpr, rhs: String): String = {
     if(guard == smt.True()) { rhs } else { guard + " => " + rhs }
-  }
-
-  def serialize(a: Guarded): String = implies(a.guard, a.pred.toString)
-
-  def serialize(m: GuardedMapping): String = {
-    val allBits = ((BigInt(1) << m.arg.width) - 1) == m.bits
-    val variable = if(allBits) m.arg.name else m.arg.name + "[" + m.bits.toString(2) + "]"
-    implies(m.guard, s"($variable <-> ${m.update})")
-  }
-
-
-  def toDot(g: ProtocolGraph): String = {
-    val nodes = g.transitions.zipWithIndex.map { case (t, i) =>
-      val lines = List(t.name) ++
-        t.assumptions.map(serialize).map("Assume(" + _ + ")") ++
-        t.mappings.map(serialize) ++
-        t.assertions.map(serialize).map("Assert(" + _ + ")")
-      val label = lines.filter(_.nonEmpty).mkString("\\n")
-      s"""  $i [shape=$DefaultNodeShape,label="$label"]"""
-    }
-    val edges = g.transitions.zipWithIndex.flatMap { case (t, i) =>
-      t.next.map { n =>
-        val guard = if(n.guard.isEmpty) "" else smt.BVAnd(n.guard).toString
-        val attributes = n.commit.map(_.name) ++
-          (if(n.fork) Some("fork") else None) ++
-          (if(n.isFinal) Some("final") else None)
-        val lbl = guard + attributes.mkString("(", " + ", ")")
-        s"""  $i -> ${n.cycleId} [label="$lbl"]"""
-      }
-    }
-
-    s"""digraph "${g.name}" {
-      |  rankdir="LR";
-      |${nodes.map(_ + ";").mkString("\n")}
-      |${edges.map(_ + ";").mkString("\n")}
-      |}
-      |""".stripMargin
   }
 
   private def serialize(a: UAction, includeInfo: Boolean): String = {
@@ -109,6 +71,5 @@ object ProtocolVisualization {
     cmd.!!
   }
 
-  def showDot(graph: ProtocolGraph): Unit = showDot(toDot(graph))
   def showDot(graph: UGraph): Unit = showDot(toDot(graph))
 }
