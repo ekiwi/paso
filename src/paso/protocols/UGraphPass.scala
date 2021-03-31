@@ -657,22 +657,23 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
   private def onNode(n : UNode): UNode = {
     val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }
     val forks = signals.filter(_._1 == "fork")
-    if(forks.isEmpty) return n
-    val forkGuards = forks.map(_._2).reduce(smt.BVOr(_, _))
+    if(forks.isEmpty) { n } else {
+      val forkGuards = forks.map(_._2).reduce(smt.BVOr(_, _))
 
-    // we are over approximating here, assuming that all could be active at the same time
-    val active = signals.map(_._1).filter(_.endsWith("_Active")).map(_.dropRight(7)).toSet
+      // we are over approximating here, assuming that all could be active at the same time
+      val active = signals.map(_._1).filter(_.endsWith("_Active")).map(_.dropRight(7)).toSet
 
-    // check if we already know a state which we can fork to
-    val to = getStart(activeToStart(active))
+      // check if we already know a state which we can fork to
+      val to = getStart(activeToStart(active))
 
-    // new edge
-    val forkEdge = UEdge(to = to, isSync = false, forkGuards)
+      // new edge
+      val forkEdge = UEdge(to = to, isSync = false, forkGuards)
 
-    // remove forks
-    val nonForkActions = n.actions.filter{ case UAction(ASignal("fork"), _, _) => false case _ => true}
+      // remove forks
+      val nonForkActions = n.actions.filter { case UAction(ASignal("fork"), _, _) => false case _ => true }
 
-    n.copy(next = n.next :+ forkEdge, actions = nonForkActions)
+      n.copy(next = n.next :+ forkEdge, actions = nonForkActions)
+    }
   }
 }
 
