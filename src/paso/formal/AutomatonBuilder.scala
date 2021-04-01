@@ -80,9 +80,11 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
       val instances = protos.map(_ => List(0))
       (merged, instances)
     }
-    // remove signals that are no longer needed:
+
+    // turn guards back into assumptions and remove signals that are no longer needed:
+    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
-    val simplified = removeSignals.run(forked)
+    val simplified = removeSignals.run(guardsToAssumptions.run(forked))
 
     // make automaton
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/final_control.dot")
@@ -102,14 +104,11 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
   }
 
   private def resolveForks(gSolver: GuardSolver, info: Seq[ProtocolInfo], merged: UGraph): (UGraph, Seq[Seq[Int]]) = {
-    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     val forkPass = new ExpandForksPass(info, gSolver, workingDir.toString)
     val forksExpanded = forkPass.run(merged)
     val protocolInstances = forkPass.getProtocolInstances
     ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
-    val simplified = guardsToAssumptions.run(forksExpanded)
-    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
-    (simplified, protocolInstances)
+    (forksExpanded, protocolInstances)
   }
 
   private case class ProtoGraphInfo(name: String, readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
