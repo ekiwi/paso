@@ -85,7 +85,9 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     val simplified = removeSignals.run(forked)
 
     // make automaton
-    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert=invert, prefix=prefix)
+    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/final_control.dot")
+    val enableAssertions = smt.BVNot(smt.BVOr(reset, finalStep))
+    val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert=invert, prefix=prefix, enableAssertions=enableAssertions)
 
     //println("Protocols:  " + info.map(_.name).mkString(", "))
     //println("CommitInfo: " + commitInfo.toString)
@@ -112,6 +114,10 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
   private case class ProtoGraphInfo(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
 
+  private val reset = smt.BVSymbol("reset", 1)
+  // in the final step of an induction, we do not need to assert anything besides that the invariants hold
+  private val finalStep = smt.BVSymbol("finalStep", 1)
+
   private def connectUntimed(untimed: UntimedModel, graphInfo: Seq[ProtoGraphInfo]): mc.TransitionSystem = {
     require(graphInfo.length == untimed.methods.length)
 
@@ -126,7 +132,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     }
 
     // connect to global reset
-    val resetInput = List((untimed.name + ".reset") -> smt.BVSymbol("reset", 1))
+    val resetInput = List((untimed.name + ".reset") -> reset)
 
     val inputs = untimed.methods.zip(graphInfo).flatMap { case (method, info) =>
       // connect the enable (aka commit) signals, since we know that only one protocol can commit at a time,

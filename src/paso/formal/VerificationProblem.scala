@@ -40,26 +40,28 @@ object VerificationProblem {
 
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
-      List(generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
+      List(noFinalStep, generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
     val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys)
 
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)))
-    val inductionBase = mc.TransitionSystem.combine("induction base",
-      List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
+    val inductionBeforeSpec = List(generateInductionConditions(), removeInit(impl)) ++ subspecs
+    val inductionAfterSpec = List(invariants) ++ startStates
 
     val inductionSuccess = opt.strategy match {
       case ProofFullAutomaton =>
         // generate the full spec automaton
         val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert = false)
-        val inductionStep = mc.TransitionSystem.combine("induction", List(inductionBase, spec))
+        val inductionStep = mc.TransitionSystem.combine("induction",
+          List(noFinalStep) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
         check(checker, inductionStep, kMax = longestPath, workingDir = workingDir, printSys = dbg.printInductionSys)
       case ProofIsolatedMethods =>
         // generate a non forking automaton for each method + associated protocol
         problem.spec.ugraphs.map { proto =>
           val localDir = makeSubDir(workingDir, proto.name)
           val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false, doFork = false)
-          val inductionStep = mc.TransitionSystem.combine("induction", List(inductionBase, spec))
+          val inductionStep = mc.TransitionSystem.combine("induction",
+            List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
           check(checker, inductionStep, kMax = longestPath, workingDir = localDir, printSys = dbg.printInductionSys)
         }.reduce(_ && _)
     }
@@ -97,7 +99,7 @@ object VerificationProblem {
 
     // we do a reset in the beginning
     val bmcSys = mc.TransitionSystem.combine("bmc",
-      List(generateBmcConditions(resetLength), impl, spec, invariants))
+      List(noFinalStep, generateBmcConditions(resetLength), impl, spec, invariants))
 
     // call checker
     val success = check(checker, bmcSys, kMax + resetLength, workingDir, printSys = dbg.printBmcSys)
@@ -185,6 +187,21 @@ object VerificationProblem {
       Signal(s"startState$ii", smt.BVNot(assertion), mc.IsBad)
     }
     mc.TransitionSystem("StartInInitState", List(), List(), assumptions ++ assertions)
+  }
+
+  // for induction we want to know when it is the last cycle
+  private def finalStep(kMax: Int): TransitionSystem = {
+    val cycle = kMax - 1
+    val bits = 8
+    require(cycle < (BigInt(1) << bits))
+    val stepCount = smt.BVSymbol("stepCount", bits)
+    val st = mc.State(stepCount, init = Some(smt.BVLiteral(0, bits)), next = Some(smt.BVOp(smt.Op.Add, stepCount, smt.BVLiteral(1, bits))))
+    val sig = mc.Signal("finalStep", smt.BVEqual(stepCount, smt.BVLiteral(cycle, bits)))
+    mc.TransitionSystem("FinalStep", List(), List(st), List(sig))
+  }
+
+  private def noFinalStep: TransitionSystem = {
+    mc.TransitionSystem("FinalStep", List(), List(), List(mc.Signal("finalStep", smt.False())))
   }
 
   private def connectToReset(sys: TransitionSystem): TransitionSystem =

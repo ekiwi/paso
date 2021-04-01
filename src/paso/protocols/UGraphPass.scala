@@ -507,7 +507,7 @@ object FindLongestPath {
   }
   private def onNode(g: UGraph, nid: Int): Int = {
     val node = g.nodes(nid)
-    if(node.next.isEmpty) { 1 } else {
+    if(node.next.isEmpty) { 0 } else {
       1 + node.next.map(_.to).map(onNode(g, _)).max
     }
   }

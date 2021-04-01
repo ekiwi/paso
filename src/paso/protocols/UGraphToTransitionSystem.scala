@@ -16,10 +16,9 @@ import firrtl.ir
 class UGraphToTransitionSystem(solver: GuardSolver) {
   // global signals
   private val reset = smt.BVSymbol("reset", 1)
-  private val notReset = smt.BVSymbol("notReset", 1)
 
   /** @param invert switches the role of asserts and assumes */
-  def run(g: UGraph, prefix: String, invert: Boolean): mc.TransitionSystem = {
+  def run(g: UGraph, prefix: String, invert: Boolean, enableAssertions: smt.BVExpr): mc.TransitionSystem = {
     val stateBits = log2Ceil(g.nodes.length + 1)
     val inState = g.nodes.indices.map(s => smt.BVSymbol(prefix + s"stateIs$s", 1)).toArray
     val invalidState = smt.BVSymbol(prefix + "stateIsInvalid", 1)
@@ -27,11 +26,13 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
     // define inState signals
     val state = smt.BVSymbol(prefix + "state", stateBits)
     val maxState = smt.BVLiteral(g.nodes.length - 1, stateBits)
+    val enAssert = smt.BVSymbol(prefix + "enAssert", 1)
     val stateSignals = inState.zip(g.nodes.indices).map { case (sym, nid) =>
       mc.Signal(sym.name, smt.BVEqual(state, smt.BVLiteral(nid, stateBits)))
     } ++ Seq(
       mc.Signal(invalidState.name, smt.BVComparison(smt.Compare.Greater, state, maxState, signed=false)),
-      mc.Signal(invalidState.name + "Check", smt.BVNot(smt.BVImplies(notReset, smt.BVNot(invalidState))), mc.IsBad)
+      mc.Signal(enAssert.name, enableAssertions),
+      mc.Signal(invalidState.name + "Check", smt.BVNot(smt.BVImplies(enAssert, smt.BVNot(invalidState))), mc.IsBad)
     )
 
     // signal that can be used to constrain the state to be zero
@@ -41,8 +42,8 @@ class UGraphToTransitionSystem(solver: GuardSolver) {
     val actions = getActionsInState(g.nodes)
     checkForUnsupportedActions(actions)
     val actionSignals = (
-      encodePredicates(asssertPreds(actions, inState), notReset, prefix + "bad", assumeDontAssert = invert) ++
-      encodePredicates(asssumePreds(actions, inState), notReset, prefix + "constraint", assumeDontAssert = !invert) ++
+      encodePredicates(asssertPreds(actions, inState), enAssert, prefix + "bad", assumeDontAssert = invert) ++
+      encodePredicates(asssumePreds(actions, inState), enAssert, prefix + "constraint", assumeDontAssert = !invert) ++
       encodeSignals(actions, inState) ++
       encodeMappings(actions, inState)
     )
