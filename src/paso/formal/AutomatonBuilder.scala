@@ -93,8 +93,8 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     //println("CommitInfo: " + commitInfo.toString)
     //println("Instances:  " + protocolInstances)
     assert(commitInfo.size == protocolInstances.size)
-    val graphInfo = commitInfo.zip(protocolInstances).map { case (c, i) =>
-      ProtoGraphInfo(c.readAfterCommit, c.mapInputsBeforeCommit, i)
+    val graphInfo = commitInfo.zip(protocolInstances).zip(protos).map { case ((c, i), p) =>
+      ProtoGraphInfo(p.name, c.readAfterCommit, c.mapInputsBeforeCommit, i)
     }.toSeq
 
     // many signals end up being the same expression:
@@ -112,17 +112,20 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     (simplified, protocolInstances)
   }
 
-  private case class ProtoGraphInfo(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
+  private case class ProtoGraphInfo(name: String, readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
 
   private val reset = smt.BVSymbol("reset", 1)
   // in the final step of an induction, we do not need to assert anything besides that the invariants hold
   private val finalStep = smt.BVSymbol("finalStep", 1)
 
   private def connectUntimed(untimed: UntimedModel, graphInfo: Seq[ProtoGraphInfo]): mc.TransitionSystem = {
-    require(graphInfo.length == untimed.methods.length)
+    // the verification task might not make use of all of the untimed model's methods
+    val isUsed = graphInfo.map(_.name).toSet
+    val (usedMethods, ignoredMethods) = untimed.methods.partition(m => isUsed(m.fullName))
+    require(graphInfo.length == usedMethods.length, s"$graphInfo, $usedMethods")
 
     // for now we do not support protocols that don't map all their elements before forking
-    untimed.methods.zip(graphInfo).foreach { case (method, info) =>
+    usedMethods.zip(graphInfo).foreach { case (method, info) =>
       if(!info.mapInputsBeforeCommit && info.instances.size > 1) {
         // this can be fixed, but requires us to duplicate the state and the method implementation
         // for every instance of the protocol
@@ -134,7 +137,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     // connect to global reset
     val resetInput = List((untimed.name + ".reset") -> reset)
 
-    val inputs = untimed.methods.zip(graphInfo).flatMap { case (method, info) =>
+    val inputs = usedMethods.zip(graphInfo).flatMap { case (method, info) =>
       // connect the enable (aka commit) signals, since we know that only one protocol can commit at a time,
       // a simple disjunction is enough
       val enabled = (method.fullIoName + "_enabled") ->
@@ -149,6 +152,11 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
       }
 
       List(enabled) ++ args
+    } ++ ignoredMethods.flatMap { method =>
+      // for unused methods, we just tie off the inputs
+      val enabled = (method.fullIoName + "_enabled") -> smt.False()
+      val args = method.args.map { case (name, bits) =>  name -> smt.BVLiteral(0, bits) }
+      List(enabled) ++ args
     } ++ resetInput
 
     val connectedInputs = mc.TransitionSystem.connect(untimed.sys, inputs.toMap)
@@ -157,7 +165,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     // when other methods have already committed their state updates
     // the return values however might need to be cached if there is more than one instance
     // of the protocol and the return values are read after the protocol has committed
-    val outputs = untimed.methods.zip(graphInfo).flatMap { case (method, info) =>
+    val outputs = usedMethods.zip(graphInfo).flatMap { case (method, info) =>
       method.ret.flatMap { case (name, bits) =>
         val ret = smt.BVSymbol(name, bits)
         // trivial case
