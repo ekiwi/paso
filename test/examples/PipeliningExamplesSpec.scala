@@ -282,6 +282,11 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     test(new Register)(new RegisterProtocol(_)).proof()
   }
 
+  "A simple register" should "refine its spec (using the isolated method strategy)" in {
+    val opt = Paso.Default.copy(strategy = ProofIsolatedMethods)
+    test(new Register)(new RegisterProtocol(_)).proof(opt)
+  }
+
   "A simple register" should "pass random testing" in {
     test(new Register)(new RegisterProtocol(_)).randomTest(10)
   }
@@ -289,6 +294,14 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
   "A simple register with bug" should "fail" in {
     val fail = intercept[AssertionError] {
       test(new Register(withBug = true))(new RegisterProtocol(_)).proof()
+    }
+    assert(fail.getMessage.contains("Induction step failed"))
+  }
+
+  "A simple register with bug" should "fail (using the isolated method strategy)" in {
+    val opt = Paso.Default.copy(strategy = ProofIsolatedMethods)
+    val fail = intercept[AssertionError] {
+      test(new Register(withBug = true))(new RegisterProtocol(_)).proof(opt)
     }
     assert(fail.getMessage.contains("Induction step failed"))
   }
