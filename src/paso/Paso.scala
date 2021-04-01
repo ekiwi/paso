@@ -112,8 +112,14 @@ case object Uclid5 extends SolverName
 
 case class ProofOptions(
   modelChecker: SolverName,
-  oneMethodAtATime: Boolean = true,
+  strategy: ProofStrategy = ProofFullAutomaton,
   checkSimplifications: Boolean = false)
+
+sealed trait ProofStrategy
+/** Build the exact same automaton we use for BMC and a single model checking run. */
+case object ProofFullAutomaton extends ProofStrategy
+/** Proof one method at a time, ignoring all other methods. This is sound but potentially incomplete. */
+case object ProofIsolatedMethods extends ProofStrategy
 
 case class DebugOptions(
   // elaboration

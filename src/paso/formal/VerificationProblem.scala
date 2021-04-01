@@ -1,4 +1,4 @@
-// Copyright 2020 The Regents of the University of California
+// Copyright 2020-2021 The Regents of the University of California
 // released under BSD 3-Clause License
 // author: Kevin Laeufer <laeufer@cs.berkeley.edu>
 
@@ -8,9 +8,9 @@ import Chisel.log2Ceil
 import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, State, TransitionSystem, TransitionSystemSimulator}
 import maltese.{mc, smt}
 import paso.protocols._
-import paso.{DebugOptions, untimed}
+import paso.{DebugOptions, ProofFullAutomaton, ProofIsolatedMethods, untimed}
 
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, Paths}
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
@@ -33,7 +33,7 @@ object VerificationProblem {
     val subspecs = problem.subspecs.map(s => makePasoAutomaton(s.untimed, s.ugraphs, solver, workingDir, true)._1)
 
     // turn spec into a monitoring automaton
-    val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert=false)
+    val (spec, _) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert=false)
 
     // encode invariants (if any)
     val invariants = encodeInvariants(spec.name, problem.invariants)
@@ -45,17 +45,39 @@ object VerificationProblem {
 
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)))
-    val inductionStep = mc.TransitionSystem.combine("induction",
+    val inductionBase = mc.TransitionSystem.combine("induction base",
       List(generateInductionConditions(), removeInit(impl)) ++ subspecs ++ List(spec, invariants) ++ startStates)
-    val inductionLength = longestPath
-    val inductionSuccess = check(checker, inductionStep, kMax = inductionLength, workingDir = workingDir, printSys = dbg.printInductionSys)
+
+    val inductionSuccess = opt.strategy match {
+      case ProofFullAutomaton =>
+        // generate the full spec automaton
+        val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert = false)
+        val inductionStep = mc.TransitionSystem.combine("induction", List(inductionBase, spec))
+        check(checker, inductionStep, kMax = longestPath, workingDir = workingDir, printSys = dbg.printInductionSys)
+      case ProofIsolatedMethods =>
+        // generate a non forking automaton for each method + associated protocol
+        problem.spec.ugraphs.map { proto =>
+          val localDir = makeSubDir(workingDir, proto.name)
+          val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false, doFork = false)
+          val inductionStep = mc.TransitionSystem.combine("induction", List(inductionBase, spec))
+          check(checker, inductionStep, kMax = longestPath, workingDir = localDir, printSys = dbg.printInductionSys)
+        }.reduce(_ && _)
+    }
 
     // check results
     assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
-    assert(inductionSuccess, s"Induction step failed! Please consult ${inductionStep.name}.vcd")
+    assert(inductionSuccess, s"Induction step failed! Please consult induction.vcd")
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
+  }
+
+  private def makeSubDir(workingDir: Path, name: String): Path = {
+    val path = workingDir.resolve(name)
+    if(!Files.exists(path)) {
+      Files.createDirectory(path)
+    }
+    path
   }
 
   def bmc(problem: VerificationProblem, modelChecker: paso.SolverName, kMax: Int, dbg: DebugOptions, workingDir: Path): Unit = {
@@ -114,8 +136,8 @@ object VerificationProblem {
   }
 
 
-  private def makePasoAutomaton(untimed: UntimedModel, protos: Seq[Proto], solver: smt.Solver, workingDir: Path, invert: Boolean): (TransitionSystem, Int) = {
-    new AutomatonBuilder(solver, workingDir).run(untimed, protos, invert)
+  private def makePasoAutomaton(untimed: UntimedModel, protos: Seq[Proto], solver: smt.Solver, workingDir: Path, invert: Boolean, doFork: Boolean = true): (TransitionSystem, Int) = {
+    new AutomatonBuilder(solver, workingDir).run(untimed, protos, invert, doFork)
   }
 
   private def generateBmcConditions(resetLength: Int = 1): TransitionSystem = {

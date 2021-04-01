@@ -13,11 +13,11 @@ import java.nio.file.Path
 
 class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
-  def run(untimed: UntimedModel, protos: Seq[Proto], invert: Boolean): (mc.TransitionSystem, Int) = {
+  def run(untimed: UntimedModel, protos: Seq[Proto], invert: Boolean, doFork: Boolean): (mc.TransitionSystem, Int) = {
     val longest = longestPath(protos.map(_.graph))
 
     val prefix = untimed.sys.name + ".automaton."
-    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, protos, invert)
+    val (cfgAuto, graphInfo) = buildControlAutomaton(prefix, protos, invert, doFork)
 
     //println("==============")
     //println("New Automaton:")
@@ -34,7 +34,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
   private def longestPath(protocols: Iterable[UGraph]): Int = protocols.map(FindLongestPath.run).max
 
-  private def buildControlAutomaton(prefix: String, protos: Seq[Proto], invert: Boolean):
+  private def buildControlAutomaton(prefix: String, protos: Seq[Proto], invert: Boolean, doFork: Boolean):
   (mc.TransitionSystem, Seq[ProtoGraphInfo]) = {
     val info = protos.map(_.info)
 
@@ -72,17 +72,17 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     val passes = Seq(RemoveAsynchronousEdges, makeDet, new MergeActionsAndEdges(gSolver))
     val merged = passes.foldLeft(combinedWithAssumptionGuards)((in, pass) => pass.run(in))
     ProtocolVisualization.saveDot(merged, false, s"$workingDir/merged.dot")
-    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
-    ProtocolVisualization.saveDot(guardsToAssumptions.run(merged), false, s"$workingDir/merged.simpl.dot")
 
-    val forkPass = new ExpandForksPass(info, gSolver, workingDir.toString)
-    val forksExpanded = forkPass.run(merged)
-    val protocolInstances = forkPass.getProtocolInstances
-    ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
+    val (forked, protocolInstances) = if(doFork) {
+      resolveForks(gSolver, info, merged)
+    } else {
+      // only one instance per protocol
+      val instances = protos.map(_ => List(0))
+      (merged, instances)
+    }
     // remove signals that are no longer needed:
     val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
-    val simplified = removeSignals.run(guardsToAssumptions.run(forksExpanded))
-    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
+    val simplified = removeSignals.run(forked)
 
     // make automaton
     val auto = new UGraphToTransitionSystem(gSolver).run(simplified, invert=invert, prefix=prefix)
@@ -97,6 +97,17 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
     // many signals end up being the same expression:
     (ReplaceExpressionsWithSignals.run(auto), graphInfo)
+  }
+
+  private def resolveForks(gSolver: GuardSolver, info: Seq[ProtocolInfo], merged: UGraph): (UGraph, Seq[Seq[Int]]) = {
+    val guardsToAssumptions = new GuardsToAssumptions(gSolver)
+    val forkPass = new ExpandForksPass(info, gSolver, workingDir.toString)
+    val forksExpanded = forkPass.run(merged)
+    val protocolInstances = forkPass.getProtocolInstances
+    ProtocolVisualization.saveDot(forksExpanded, false, s"$workingDir/fork.dot")
+    val simplified = guardsToAssumptions.run(forksExpanded)
+    ProtocolVisualization.saveDot(simplified, false, s"$workingDir/fork.simpl.dot")
+    (simplified, protocolInstances)
   }
 
   private case class ProtoGraphInfo(readAfterCommit: Boolean, mapInputsBeforeCommit: Boolean, instances: Seq[Int])
