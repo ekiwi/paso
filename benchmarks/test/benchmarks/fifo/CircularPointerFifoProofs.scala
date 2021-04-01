@@ -75,4 +75,13 @@ class CircularPointerFifoProofs extends AnyFlatSpec with PasoTester {
 
     test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(Paso.MCBotr, new CircularProof(_, _))
   }
+
+  "CircularPointerFifo with readDelay=1" should "refine its spec (using the isolated method strategy)" in {
+    val depth = 8
+    val width = 8
+    val fixed = true
+
+    val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
+    test(new CircularPointerFifo(depth, width, 1, fixed))(new FifoProtocols(_)).proof(opt, new CircularProof(_, _))
+  }
 }
