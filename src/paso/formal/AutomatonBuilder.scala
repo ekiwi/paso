@@ -168,7 +168,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
       method.ret.flatMap { case (name, bits) =>
         val ret = smt.BVSymbol(name, bits)
         // trivial case
-        if(!info.readAfterCommit || info.instances.size == 1) {
+        if(!info.readAfterCommit) {
           List((mc.Signal(name + "$0", ret, mc.IsOutput), None))
         } else {
           assert(info.mapInputsBeforeCommit)
