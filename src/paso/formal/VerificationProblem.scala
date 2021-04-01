@@ -53,7 +53,7 @@ object VerificationProblem {
         // generate the full spec automaton
         val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert = false)
         val inductionStep = mc.TransitionSystem.combine("induction",
-          List(noFinalStep) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
+          List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
         check(checker, inductionStep, kMax = longestPath, workingDir = workingDir, printSys = dbg.printInductionSys)
       case ProofIsolatedMethods =>
         // generate a non forking automaton for each method + associated protocol
@@ -191,12 +191,11 @@ object VerificationProblem {
 
   // for induction we want to know when it is the last cycle
   private def finalStep(kMax: Int): TransitionSystem = {
-    val cycle = kMax - 1
     val bits = 8
-    require(cycle < (BigInt(1) << bits))
+    require(kMax < (BigInt(1) << bits))
     val stepCount = smt.BVSymbol("stepCount", bits)
     val st = mc.State(stepCount, init = Some(smt.BVLiteral(0, bits)), next = Some(smt.BVOp(smt.Op.Add, stepCount, smt.BVLiteral(1, bits))))
-    val sig = mc.Signal("finalStep", smt.BVEqual(stepCount, smt.BVLiteral(cycle, bits)))
+    val sig = mc.Signal("finalStep", smt.BVEqual(stepCount, smt.BVLiteral(kMax, bits)))
     mc.TransitionSystem("FinalStep", List(), List(st), List(sig))
   }
 
