@@ -104,9 +104,10 @@ object ProtocolPrefixingPass extends Transform with DependencyAPIMigration {
 
     val (ioPorts, notIOPorts) = m.ports.partition(_.name.startsWith("io_"))
     val methodPorts = notIOPorts.filterNot(p => p.name == "clock" || p.name == "reset")
-    methodPorts.foreach { p =>
-      assert(p.name.startsWith("arg") || p.name.startsWith("ret"), f"Unexpected port: ${p.serialize}")
-    }
+      .filter(p => p.name.startsWith("arg") || p.name.startsWith("ret"))
+    //methodPorts.foreach { p =>
+    //  assert(p.name.startsWith("arg") || p.name.startsWith("ret"), f"Unexpected port: ${p.serialize}")
+    //}
 
     val renames = (ioPorts.map(p => p.name -> (anno.ioPrefix + p.name.substring(2))) ++
       methodPorts.map(p => p.name -> (anno.methodPrefix + p.name))).toMap
