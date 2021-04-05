@@ -126,6 +126,7 @@ case class DebugOptions(
   traceInvariantElaboration: Boolean = false,
   traceImplElaboration: Boolean = false,
   traceProtocolElaboration: Boolean = false,
+  traceUntimedElaboration: Boolean = false,
   // verification
   printMCProgress: Boolean = false,
   printBaseSys: Boolean = false,

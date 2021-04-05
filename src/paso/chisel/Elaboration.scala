@@ -178,7 +178,8 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
     val initAnnos = Seq(RunFirrtlTransformAnnotation(Dependency(untimed.ResetToZeroPass)))
     // convert to formal
     val withAnnos = fixedCalls.copy(annotations = fixedCalls.annotations ++ initAnnos ++ noInlineAnnos)
-    val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = LogLevel.Error)
+    val ll = if(dbg.traceUntimedElaboration) LogLevel.Trace else LogLevel.Error
+    val formal = compileToFormal(withAnnos, externalRefs, prefix=prefix, ll = ll)
     val sys = formal.model
 
     // Extract information about all methods
