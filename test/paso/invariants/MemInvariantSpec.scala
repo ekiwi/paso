@@ -101,7 +101,7 @@ class MemWrapperProof(impl: ChiselMemWrapper, spec: UntimedMem) extends ProofCol
 
 
 class MemInvariantSpec extends AnyFlatSpec with PasoTester {
-  behavior of "Paso invariants"
+  behavior of "Paso invariants with memory"
 
   // small sanity check
   it should "work for bmc ...." in { test(new ChiselMem)(new MemProtocol(_)).bmc(5) }
