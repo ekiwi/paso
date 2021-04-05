@@ -18,9 +18,10 @@ class InternalCounter extends Module {
 }
 
 class UntimedCounter extends UntimedModule {
-  val count = RegInit(0.U(8.W))
+  // we are using a mem here because keeping mems around can be harder than keeping registers
+  val count = Mem(1, UInt(8.W))
   val inc = fun("inc") {
-    count := count + 1.U
+    count.write(0.U, count.read(0.U) + 1.U)
   }
 }
 
@@ -33,7 +34,7 @@ class InternalCounterProtocol(impl: InternalCounter) extends ProtocolSpec[Untime
 
 class InternalCounterProof(impl: InternalCounter, spec: UntimedCounter) extends ProofCollateral(impl, spec) {
   mapping { (impl, spec) =>
-    assert(impl.count === spec.count)
+    assert(impl.count === spec.count.read(0.U))
   }
 }
 

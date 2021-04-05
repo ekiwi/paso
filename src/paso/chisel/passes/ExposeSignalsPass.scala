@@ -9,6 +9,7 @@ import firrtl.ir.DefMemory
 import firrtl.options.Dependency
 import firrtl.passes.wiring.{SinkAnnotation, SourceAnnotation}
 import firrtl.stage.Forms
+import firrtl.transforms.DontTouchAnnotation
 import firrtl.{CircuitState, DependencyAPIMigration, Transform, ir}
 
 
@@ -52,7 +53,9 @@ object ExposeSignalsPass extends Transform with DependencyAPIMigration {
         if(info.isMemory) {
           // we cannot expose memories as ports, instead we track the state directly
           val exposed = ExposedSignalAnnotation(signal, name, true, info.depth, info.tpe)
-          (None, List(exposed))
+          // we also need to ensure that the memory is not going to be DCE'd
+          val keep = DontTouchAnnotation(signal)
+          (None, List(exposed, keep))
         } else {
           val field = ir.Field(name = name, flip = ir.Default, tpe = info.tpe)
           val src = SourceAnnotation(signal.pathlessTarget.toNamed, name)
