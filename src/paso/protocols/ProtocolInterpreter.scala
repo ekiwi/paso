@@ -5,7 +5,6 @@
 package paso.protocols
 
 import firrtl.annotations.CircuitTarget
-import firrtl.backends.experimental.smt.FirrtlToSMT
 import firrtl.ir
 
 object ProtocolInterpreter {
@@ -76,7 +75,7 @@ abstract class ProtocolInterpreter(protocol: firrtl.CircuitState, stickyInputs: 
     case other => throw new RuntimeException(f"Unexpected statement: ${other.serialize}")
   }
 
-  private def toWidth(tpe: ir.Type): Int = FirrtlToSMT.toWidth(tpe)
+  private def toWidth(tpe: ir.Type): Int = firrtl.bitWidth(tpe).toInt
 }
 
 sealed trait ProtocolResult
