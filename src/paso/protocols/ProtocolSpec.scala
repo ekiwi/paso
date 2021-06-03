@@ -66,7 +66,11 @@ abstract class ProtocolSpec[+S <: UntimedModule] {
   }
 
   // replace default chisel assert
-  private def assert(cond: => Bool)(implicit sourceInfo: SourceInfo): Unit = chisel3.experimental.verification.assert(cond)
+  private def assert(cond: => Bool)(implicit sourceInfo: SourceInfo): Unit = {
+    withReset(false.B) {
+      chisel3.experimental.verification.assert(cond)
+    }
+  }
 }
 
 trait Protocol {
