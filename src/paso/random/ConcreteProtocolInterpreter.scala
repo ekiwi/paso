@@ -130,7 +130,7 @@ class ConcreteProtocolInterpreter(untimed: TreadleTester, protocols: IndexedSeq[
           case AAssert(cond) =>
             val value = eval(cond)
             val failed = value != 1
-            assert(!failed, s"Failed assertion from $info: $failed")
+            assert(!failed, s"Failed assertion from $info: $cond")
           case _: AInputAssign =>
           case _: AMapping => throw new RuntimeException("Unexpected argument mapping! Not supported for concrete execution!")
         }
