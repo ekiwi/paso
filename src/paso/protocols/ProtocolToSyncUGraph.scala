@@ -251,7 +251,11 @@ class ProtocolToSyncUGraph(solver: smt.Solver, protocol: Proto, combPaths: Seq[(
     val outputs = syms.filter(s => protocol.info.outputs.contains(s.name))
     val unknown = syms.toSet -- (args ++ rets ++ inputs ++ outputs).toSet
     if(unknown.nonEmpty) {
-      throw new RuntimeException(s"Unknown symbol $unknown in $e ${info.serialize}")
+      throw new RuntimeException(s"Unknown symbol $unknown in $e ${info.serialize}\n" +
+        "args:    " + protocol.info.args.mkString(", ") + "\n" +
+        "rets:    " + protocol.info.rets.mkString(", ") + "\n" +
+        "inputs:  " + protocol.info.inputs.mkString(", ") + "\n" +
+        "outputs: " + protocol.info.outputs.mkString(", "))
     }
 
     // args
