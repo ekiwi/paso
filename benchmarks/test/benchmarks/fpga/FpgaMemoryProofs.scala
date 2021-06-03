@@ -29,6 +29,14 @@ class FpgaMemoryProofs extends AnyFlatSpec with PasoTester {
     test(makeLVTMem(data))(new Mem2W4RProtocol(_)).proof(Paso.MCZ3, new LaForest2W4RInductive(_, _))
   }
 
+  "Charles Eric LaForest LVT 2W4R memory" should "pass bmc" in {
+    val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
+    type ImplMem = LVTMemory[ParallelWriteMem[SimulationMem], SimulationMem]
+    def makeBanked(data: MemData) = new ParallelWriteMem(data, new SimulationMem(_))
+    def makeLVTMem(data: MemData) = new LVTMemory(data, makeBanked, new SimulationMem(_))
+    test(makeLVTMem(data))(new Mem2W4RProtocol(_)).bmc(Paso.MCZ3, 10)
+  }
+
   // TODO: while we believe that the memory should be correct, we are missing the correct invariant
   "Charles Eric LaForest XOR 2W4R memory" should "refine its spec" ignore {
     val data = MemData(MemSize(UInt(32.W), 32), 4, 2)
