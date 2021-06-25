@@ -89,8 +89,8 @@ class FixNamings(val topLevelModules: Set[String], namespace: Namespace) {
     case ConnectInit(info, loc, exp) => ConnectInit(info, onNode(loc), onArg(exp))
     case p : DefMemPort[_] =>
       p.copy(source = onNode(p.source), index = onArg(p.index), clock = onArg(p.clock))
-    case Verification(op, sourceInfo, clock, predicate, message) =>
-      Verification(op, sourceInfo, clock, onArg(predicate), message)
+    case v : Verification[_] =>
+      v.copy(predicate = onArg(v.predicate))
     case other => other
   }
 
