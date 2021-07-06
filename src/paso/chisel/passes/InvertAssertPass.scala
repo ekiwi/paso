@@ -4,7 +4,7 @@
 
 package paso.chisel.passes
 
-import firrtl.{CircuitState, DependencyAPIMigration, Namespace, Transform, ir}
+import firrtl._
 import firrtl.stage.Forms
 
 object InvertAssertPass extends Transform with DependencyAPIMigration {
@@ -28,7 +28,7 @@ object InvertAssertPass extends Transform with DependencyAPIMigration {
     val doAssumeNode = ir.DefNode(ir.NoInfo, namespace.newName("doAssume"),
       ir.Reference(portName, Bool, firrtl.PortKind, firrtl.SourceFlow))
     val doAssume = ir.Reference(doAssumeNode)
-    val doAssertNode = ir.DefNode(ir.NoInfo, namespace.newName("doAssert"), not(doAssume))
+    val doAssertNode = ir.DefNode(ir.NoInfo, namespace.newName("doAssert"), Utils.not(doAssume))
     val doAssert = ir.Reference(doAssertNode)
     val b = Seq(doAssumeNode, doAssertNode) :+ mod.body.mapStmt(onStmt(doAssume, doAssert, namespace))
     val p = mod.ports :+ port
@@ -41,14 +41,13 @@ object InvertAssertPass extends Transform with DependencyAPIMigration {
       val predRef = ir.Reference(predNode)
       val enNode = ir.DefNode(info, namespace.newName("_GEN_assert_en"), en)
       val enRef = ir.Reference(enNode)
-      ir.Block(List(predNode, enNode,
-        a.copy(pred=predRef, en=and(doAssert, enRef)),
-        a.copy(op=ir.Formal.Assume, pred=predRef, en=and(doAssume, enRef))
-      ))
+      val assertion = ir.Verification(ir.Formal.Assume, a.info, a.clk,
+        pred=predRef, en=Utils.and(doAssert, enRef), msg=a.msg, name=a.name)
+      val assumption = ir.Verification(ir.Formal.Assume, a.info, a.clk,
+        pred=predRef, en=Utils.and(doAssume, enRef), msg=a.msg,
+        name=namespace.newName(a.name + "_assume"))
+      ir.Block(List(predNode, enNode, assertion, assumption))
     case other => other.mapStmt(onStmt(doAssume, doAssert, namespace))
   }
 
-  private def and(a: ir.Expression, b: ir.Expression): ir.Expression =
-    ir.DoPrim(firrtl.PrimOps.And, List(a, b), List(), Bool)
-  private def not(a: ir.Expression): ir.Expression = ir.DoPrim(firrtl.PrimOps.Not, List(a), List(), Bool)
 }
