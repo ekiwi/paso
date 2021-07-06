@@ -64,11 +64,11 @@ class SerialAluProtocols(impl: SerialAlu) extends ProtocolSpec[AluModel] {
 class SerialAluSpec extends AnyFlatSpec with PasoTester  {
   behavior of "SerialAlu"
 
-  it should "pass some cycles of BMC" in {
+  it should "pass some cycles of BMC" ignore {
     test(new SerialAlu)(new SerialAluProtocols(_)).bmc(40)
   }
 
-  it should "pass some cycles of random testing" in {
+  it should "pass some cycles of random testing" ignore {
     test(new SerialAlu)(new SerialAluProtocols(_)).randomTest(40 * 1000)
   }
 }
