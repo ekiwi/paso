@@ -68,6 +68,10 @@ class SerialAluSpec extends AnyFlatSpec with PasoTester  {
     test(new SerialAlu)(new SerialAluProtocols(_)).bmc(40)
   }
 
+  it should "implement its spec" in {
+    test(new SerialAlu)(new SerialAluProtocols(_)).proof()
+  }
+
   it should "pass some cycles of random testing" in {
     test(new SerialAlu)(new SerialAluProtocols(_)).randomTest(40 * 1000)
   }
@@ -75,6 +79,12 @@ class SerialAluSpec extends AnyFlatSpec with PasoTester  {
   it should "faile BMC w/ bug #1" in {
     assertThrows[AssertionError] {
       test(new SerialAlu(enableBug = 1))(new SerialAluProtocols(_)).bmc(40)
+    }
+  }
+
+  it should "not implement its spec w/ bug #1" in {
+    assertThrows[AssertionError] {
+      test(new SerialAlu(enableBug = 1))(new SerialAluProtocols(_)).proof()
     }
   }
 
