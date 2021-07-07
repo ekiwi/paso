@@ -4,9 +4,9 @@
 
 package paso.protocols
 
-import firrtl.annotations.{CircuitTarget, NoTargetAnnotation, SingleTargetAnnotation}
+import firrtl.annotations._
 import firrtl.graph.DiGraph
-import firrtl.{AnnotationSeq, CircuitState, DependencyAPIMigration, Namespace, Transform, ir}
+import firrtl._
 import firrtl.options.Dependency
 import firrtl.passes.PassException
 import firrtl.stage.{Forms, TransformManager}
@@ -60,17 +60,26 @@ object InlineNodesPass extends Transform with DependencyAPIMigration {
 
   }
 
-  private def onStmt(nodes: mutable.HashMap[String, ir.Expression])(s: ir.Statement): ir.Statement = s.mapExpr(onExpr(nodes.get)) match {
+  private def onStmt(nodes: mutable.HashMap[String, ir.Expression])(s: ir.Statement): ir.Statement =
+    s.mapStmt(onStmt(nodes)).mapExpr(onExpr(nodes.get)) match {
     case ir.DefNode(_, name, value) => nodes(name) = value ; ir.EmptyStmt
-    case other => other.mapStmt(onStmt(nodes))
+    // remove trivially true or false conditionals
+    case ir.Conditionally(_, Utils.True(), conseq, _) => conseq
+    case ir.Conditionally(_, Utils.False(), _, alt) => alt
+    case other => other
   }
 
-  private def onExpr(nodes: String => Option[ir.Expression])(expr: ir.Expression): ir.Expression = expr match {
+  private def onExpr(nodes: String => Option[ir.Expression])(expr: ir.Expression): ir.Expression = expr.mapExpr(onExpr(nodes)) match {
     case r @ ir.Reference(name, tpe, _, _) => nodes(name) match {
       case Some(e) => assert(e.tpe == tpe) ; e
       case None => r
     }
-    case other => other.mapExpr(onExpr(nodes))
+    // limited constant prop for boolean expressions
+    case ir.DoPrim(PrimOps.Not, Seq(e), Seq(), Utils.BoolType) => Utils.not(e)
+    case ir.DoPrim(PrimOps.And, Seq(a, b), Seq(), Utils.BoolType) => Utils.and(a, b)
+    case ir.DoPrim(PrimOps.Or, Seq(a, b), Seq(), Utils.BoolType) => Utils.or(a, b)
+    case ir.DoPrim(PrimOps.Eq, Seq(a, b), Seq(), Utils.BoolType) if a.serialize == b.serialize => Utils.True()
+    case other => other
   }
 }
 
