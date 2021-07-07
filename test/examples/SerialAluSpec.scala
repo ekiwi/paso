@@ -88,6 +88,13 @@ class SerialAluSpec extends AnyFlatSpec with PasoTester  {
     }
   }
 
+  it should "not implement its spec (even with a different proof strategy) w/ bug #1" in {
+    val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
+    assertThrows[AssertionError] {
+      test(new SerialAlu(enableBug = 1))(new SerialAluProtocols(_)).proof(opt)
+    }
+  }
+
   it should "fail random testing w/ bug #1" in {
     assertThrows[AssertionError] {
       (0 until 40).foreach { seed =>
