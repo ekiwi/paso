@@ -146,7 +146,7 @@ class ConstLatencyIO extends Bundle {
 trait IsConstLatency extends Module { val io : ConstLatencyIO ; val latency : Int }
 
 // this module employs two buffers to save the results from the two variable latency units
-class VariableLatencyToConst extends Module with IsConstLatency {
+class VariableLatencyToConst(enableBug: Int = 0) extends Module with IsConstLatency {
   val io = IO(new ConstLatencyIO)
   val latency = 4
 
@@ -169,6 +169,10 @@ class VariableLatencyToConst extends Module with IsConstLatency {
   val latestMsb = Mux(msb.io.done, msb.io.dataOut, msbBuffer)
 
   io.dataOut := latestMsb ## latestLsb
+
+  if(enableBug == 1) {
+    io.dataOut := msb.io.dataOut ## latestLsb
+  }
 }
 
 // this module does not need any memory since it relies on its sub modules to keep their last output constant
@@ -290,11 +294,43 @@ class VariableLatencyExamplesSpec extends AnyFlatSpec with PasoTester {
     })
   }
 
+  "VariableLatencyToConst with full RTL" should "fail w/ bug #1" in {
+    assertThrows[AssertionError] {
+      test(new VariableLatencyToConst(enableBug = 1))(new ConstantLatencyProtocols(_)).proof(new ProofCollateral(_, _) {
+        invariants { dut =>
+          assert(!dut.lsb.running)
+          assert(!dut.msb.running)
+        }
+      })
+    }
+  }
+
+  "VariableLatencyToConst with full RTL " should "fail ProofIsolatedMethods w/ bug #1" in {
+    val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
+    assertThrows[AssertionError] {
+      test(new VariableLatencyToConst(enableBug = 1))(new ConstantLatencyProtocols(_)).proof(opt, new ProofCollateral(_, _) {
+        invariants { dut =>
+          assert(!dut.lsb.running)
+          assert(!dut.msb.running)
+        }
+      })
+    }
+  }
+
   "VariableLatencyToConst with abstracted RTL" should "refine its spec" in {
     test(new VariableLatencyToConst)(new ConstantLatencyProtocols(_))(new SubSpecs(_,_) {
       replace(impl.lsb)(new RandomLatencyProtocols(_))
       replace(impl.msb)(new RandomLatencyProtocols(_))
     }).proof()
+  }
+
+  "VariableLatencyToConst with abstracted RTL" should "fail w/ bug #1" in {
+    assertThrows[AssertionError] {
+      test(new VariableLatencyToConst(enableBug = 1))(new ConstantLatencyProtocols(_))(new SubSpecs(_, _) {
+        replace(impl.lsb)(new RandomLatencyProtocols(_))
+        replace(impl.msb)(new RandomLatencyProtocols(_))
+      }).proof()
+    }
   }
 
   "VariableLatencyToConst with abstracted RTL and id bindings" should "refine its spec" in {
