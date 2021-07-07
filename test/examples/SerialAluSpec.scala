@@ -71,6 +71,20 @@ class SerialAluSpec extends AnyFlatSpec with PasoTester  {
   it should "pass some cycles of random testing" in {
     test(new SerialAlu)(new SerialAluProtocols(_)).randomTest(40 * 1000)
   }
+
+  it should "faile BMC w/ bug #1" in {
+    assertThrows[AssertionError] {
+      test(new SerialAlu(enableBug = 1))(new SerialAluProtocols(_)).bmc(40)
+    }
+  }
+
+  it should "fail random testing w/ bug #1" in {
+    assertThrows[AssertionError] {
+      (0 until 40).foreach { seed =>
+        test(new SerialAlu(enableBug = 1))(new SerialAluProtocols(_)).randomTest(k = 1000, seed = Some(seed))
+      }
+    }
+  }
 }
 
 
@@ -132,7 +146,7 @@ class AluIO extends Bundle {
 }
 
 /** based on the ALU from the serv processor */
-class SerialAlu extends Module {
+class SerialAlu(enableBug: Int = 0) extends Module {
   val io = IO(new AluIO)
 
   val operandB = Mux(io.decode.opBIsRS2, io.data.rs2, io.data.imm)
@@ -142,6 +156,9 @@ class SerialAlu extends Module {
   val negativeBCarry = Reg(UInt(1.W))
   val negativeBCarryAndResult = ~operandB +& plus1 + negativeBCarry
   negativeBCarry := io.count.enabled & negativeBCarryAndResult(1)
+  if(enableBug == 1) {
+    negativeBCarry := negativeBCarryAndResult(1)
+  }
   val negativeB = negativeBCarryAndResult(0)
 
 
