@@ -17,6 +17,19 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
   it should "pass some cycles of random testing" in {
     test(new ToyCpu)(new ToyCpuProtocols(_)).randomTest(1000)
   }
+
+  it should "pass an inductive proof" in {
+    test(new ToyCpu)(new ToyCpuProtocols(_)).proof(new ToyCpuInvariants(_, _))
+  }
+}
+
+class ToyCpuInvariants(impl: ToyCpu, spec: ToyCpuModel) extends ProofCollateral(impl, spec) {
+  mapping { (impl, spec) =>
+    assert(impl.regs === spec.regs)
+  }
+  invariants { impl =>
+    assert(!impl.secondReadCycle)
+  }
 }
 
 
