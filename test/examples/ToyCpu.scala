@@ -21,6 +21,26 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
   it should "pass an inductive proof" in {
     test(new ToyCpu)(new ToyCpuProtocols(_)).proof(new ToyCpuInvariants(_, _))
   }
+
+  it should "fail BMC with bug #1" in {
+    assertThrows[AssertionError] {
+      test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).bmc(4)
+    }
+  }
+
+  it should "fail random testing with bug #1" in {
+    assertThrows[AssertionError] {
+      test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).randomTest(1000)
+    }
+  }
+
+  it should "fail the inductive proof with bug #1" ignore {
+    // bug #1 should fail the inductiveness check for the `!impl.secondReadCycle` invariant
+    // after a LOAD instruction the processor won't reset the `secondReadCycle` register
+    assertThrows[AssertionError] {
+      test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).proof(new ToyCpuInvariants(_, _))
+    }
+  }
 }
 
 class ToyCpuInvariants(impl: ToyCpu, spec: ToyCpuModel) extends ProofCollateral(impl, spec) {
@@ -111,7 +131,7 @@ class ToyCpuIO extends Bundle {
   val doRead = Output(Bool())
 }
 
-class ToyCpu extends Module {
+class ToyCpu(enableBug: Int = 0) extends Module {
   val io = IO(new ToyCpuIO)
 
   // decode
@@ -145,7 +165,9 @@ class ToyCpu extends Module {
   when(secondReadCycle) {
     res := io.memDataIn
     doWrite := true.B
-    secondReadCycle := false.B
+    if(enableBug != 1) { // bug #1: we forgot to reset the state
+      secondReadCycle := false.B
+    }
   } .elsewhen(io.instruction.fire()) {
     switch(op) {
       is(0.U) { // ADD
