@@ -41,7 +41,7 @@ object InvertAssertPass extends Transform with DependencyAPIMigration {
       val predRef = ir.Reference(predNode)
       val enNode = ir.DefNode(info, namespace.newName("_GEN_assert_en"), en)
       val enRef = ir.Reference(enNode)
-      val assertion = ir.Verification(ir.Formal.Assume, a.info, a.clk,
+      val assertion = ir.Verification(ir.Formal.Assert, a.info, a.clk,
         pred=predRef, en=Utils.and(doAssert, enRef), msg=a.msg, name=a.name)
       val assumption = ir.Verification(ir.Formal.Assume, a.info, a.clk,
         pred=predRef, en=Utils.and(doAssume, enRef), msg=a.msg,

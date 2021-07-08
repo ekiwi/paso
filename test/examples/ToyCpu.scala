@@ -34,11 +34,18 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
     }
   }
 
-  it should "fail the inductive proof with bug #1" ignore {
+  it should "fail the inductive proof with bug #1" in {
     // bug #1 should fail the inductiveness check for the `!impl.secondReadCycle` invariant
     // after a LOAD instruction the processor won't reset the `secondReadCycle` register
     assertThrows[AssertionError] {
       test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).proof(new ToyCpuInvariants(_, _))
+    }
+  }
+
+  it should "fail the inductive proof with bug #1 when using the Isolated Method Proof strategy" ignore {
+    val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
+    assertThrows[AssertionError] {
+      test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).proof(opt, new ToyCpuInvariants(_, _))
     }
   }
 }
