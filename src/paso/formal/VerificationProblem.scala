@@ -59,7 +59,7 @@ object VerificationProblem {
         // generate a non forking automaton for each method + associated protocol
         problem.spec.ugraphs.map { proto =>
           val localDir = makeSubDir(workingDir, proto.name)
-          val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false, doFork = false)
+          val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false)
           val inductionStep = mc.TransitionSystem.combine("induction",
             List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
           check(checker, inductionStep, kMax = longestPath, workingDir = localDir, printSys = dbg.printInductionSys)

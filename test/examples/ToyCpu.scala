@@ -22,6 +22,11 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
     test(new ToyCpu)(new ToyCpuProtocols(_)).proof(new ToyCpuInvariants(_, _))
   }
 
+  it should "pass an inductive proof w/ Isolated Method proof strategy" in {
+    val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
+    test(new ToyCpu)(new ToyCpuProtocols(_)).proof(opt, new ToyCpuInvariants(_, _))
+  }
+
   it should "fail BMC with bug #1" in {
     assertThrows[AssertionError] {
       test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).bmc(4)
@@ -42,7 +47,7 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
     }
   }
 
-  it should "fail the inductive proof with bug #1 when using the Isolated Method Proof strategy" ignore {
+  it should "fail the inductive proof with bug #1 when using the Isolated Method Proof strategy" in {
     val opt = Paso.MCBotr.copy(strategy = ProofIsolatedMethods)
     assertThrows[AssertionError] {
       test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).proof(opt, new ToyCpuInvariants(_, _))
