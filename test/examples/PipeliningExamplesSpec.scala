@@ -295,7 +295,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new Register(withBug = true))(new RegisterProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof Register correct"))
   }
 
   "A simple register with bug" should "fail (using the isolated method strategy)" in {
@@ -303,7 +303,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new Register(withBug = true))(new RegisterProtocol(_)).proof(opt)
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof Register correct"))
   }
 
   "A pipelined 32-bit adder" should "refine its spec" in {
@@ -314,7 +314,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new PipelinedAdd2(withBug = true))(new PipelinedAdd2Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedAdd2 correct"))
   }
 
   "A pipelined 32-bit add3" should "refine its spec" in {
@@ -343,7 +343,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new PipelinedAdd3(withBug = true))(new PipelinedAdd3Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedAdd3 correct"))
   }
 
   "A pipelined 32-bit add3 with delay=2" should "refine its spec" in {
@@ -372,7 +372,7 @@ class PipeliningExamplesSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new PipelinedAdd3Delay2(withBug = true))(new PipelinedAdd3Delay2Protocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedAdd3Delay2 correct"))
   }
 }
 
@@ -386,7 +386,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new PipelinedMul(withBug = true))(new PipelinedMulProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedMul correct"))
   }
 
   "A pipelined 32-bit multiplier with bug" should "fail bmc" in {
@@ -404,7 +404,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec with PasoTester {
     val fail = intercept[AssertionError] {
       test(new PipelinedMac(withBug = true))(new PipelinedMacProtocol(_)).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedMac correct"))
   }
 
   "A pipelined 32-bit mac with abstract adder" should "refine its spec" in {
@@ -419,7 +419,7 @@ class PipeliningExamplesWithMulSpec extends AnyFlatSpec with PasoTester {
         replace(impl.mul)(new PipelinedMulProtocol(_))
       }).proof()
     }
-    assert(fail.getMessage.contains("Induction step failed"))
+    assert(fail.getMessage.contains("Failed to proof PipelinedMac correct"))
   }
 
   "A pipelined 32-bit mac with abstract adder and subspec" should "refine its spec" in {
