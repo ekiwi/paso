@@ -78,7 +78,9 @@ object VerificationProblem {
     }
 
     // run verification tasks
-    assert(TaskRunner.runParallel(baseCaseTask +: inductionTasks),
+    assert(TaskRunner.run(List(baseCaseTask)),
+      s"Failed to proof ${impl.name} correct. Please consult the base-case VCD file in $workingDir")
+    assert(TaskRunner.runParallel(inductionTasks),
       s"Failed to proof ${impl.name} correct. Please consult the VCD files in $workingDir")
 
     // check all our simplifications
