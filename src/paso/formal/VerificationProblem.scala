@@ -78,7 +78,8 @@ object VerificationProblem {
     }
 
     // run verification tasks
-    assert(TaskRunner.run(baseCaseTask +: inductionTasks), s"Failed to proof ${impl.name} correct. Please consult the VCD files in $workingDir")
+    assert(TaskRunner.runParallel(baseCaseTask +: inductionTasks),
+      s"Failed to proof ${impl.name} correct. Please consult the VCD files in $workingDir")
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
@@ -258,13 +259,17 @@ private object TaskRunner {
   private val Fail = "❌"
   private val Success = "✅"
   def run(tasks: Seq[VerificationTask]): Boolean = {
-    val r = tasks.map { t =>
-      val (success, times) = t.run()
-      val msg = (if(success) Success else Fail) + " " + t.name + " (" + timeStr(times) + ")"
-      println(msg)
-      success
-    }
-    r.reduce(_ && _)
+    tasks.map(runTask).reduce(_ && _)
+  }
+  def runParallel(tasks: Seq[VerificationTask]): Boolean = {
+    if(tasks.length < 2) return run(tasks)
+    tasks.par.map(runTask).reduce(_ && _)
+  }
+  private def runTask(t: VerificationTask): Boolean = {
+    val (success, times) = t.run()
+    val msg = (if(success) Success else Fail) + " " + t.name + " (" + timeStr(times) + ")"
+    println(msg)
+    success
   }
   private def timeStr(times: Seq[Long]): String = times match {
     case Nil => throw new RuntimeException("empty times!")
