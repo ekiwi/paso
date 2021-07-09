@@ -11,6 +11,7 @@ import paso.protocols._
 import paso.{DebugOptions, ProofFullAutomaton, ProofIsolatedMethods, untimed}
 
 import java.nio.file.{Files, Path, Paths}
+import scala.collection.mutable
 
 case class UntimedModel(sys: mc.TransitionSystem, methods: Seq[untimed.MethodInfo]) {
   def name: String = sys.name
@@ -41,34 +42,43 @@ object VerificationProblem {
     // for the base case we combine everything together with a reset
     val baseCaseSys = mc.TransitionSystem.combine("base",
       List(noFinalStep, generateBmcConditions(1), impl) ++ subspecs ++ List(spec, invariants))
-    val baseCaseSuccess = check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys)
+    val baseCaseTask = VerificationTask("base", {
+      val (s, t) = time(check(checker, baseCaseSys, kMax = 1, workingDir = workingDir, printSys = dbg.printBaseSys))
+      (s, List(t))
+    })
 
     // for the induction we start the automaton in its initial state and assume
     val startStates = List(startInInitState(spec.name, subspecs.map(_.name)))
     val inductionBeforeSpec = List(generateInductionConditions(), removeInit(impl)) ++ subspecs
     val inductionAfterSpec = List(invariants) ++ startStates
 
-    val inductionSuccess = opt.strategy match {
+    val inductionTasks = opt.strategy match {
       case ProofFullAutomaton =>
-        // generate the full spec automaton
-        val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert = false)
-        val inductionStep = mc.TransitionSystem.combine("induction",
-          List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
-        check(checker, inductionStep, kMax = longestPath, workingDir = workingDir, printSys = dbg.printInductionSys)
-      case ProofIsolatedMethods =>
-        // generate a non forking automaton for each method + associated protocol
-        problem.spec.ugraphs.map { proto =>
-          val localDir = makeSubDir(workingDir, proto.name)
-          val (spec, longestPath) = makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false)
+        List(VerificationTask("induction", {
+          val time = new Timer()
+          val (spec, longestPath) = time(makePasoAutomaton(problem.spec.untimed, problem.spec.ugraphs, solver, workingDir, invert = false))
           val inductionStep = mc.TransitionSystem.combine("induction",
             List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
-          check(checker, inductionStep, kMax = longestPath, workingDir = localDir, printSys = dbg.printInductionSys)
-        }.reduce(_ && _)
+          val s = time(check(checker, inductionStep, kMax = longestPath, workingDir = workingDir, printSys = dbg.printInductionSys))
+          (s, time.getTimes)
+        }))
+      case ProofIsolatedMethods =>
+        // generate a (for now) forking automaton for each method + associated protocol
+        problem.spec.ugraphs.map { proto =>
+          VerificationTask(s"induction ${proto.name}", {
+            val time = new Timer()
+            val localDir = makeSubDir(workingDir, proto.name)
+            val (spec, longestPath) = time(makePasoAutomaton(problem.spec.untimed, List(proto), solver, localDir, invert = false))
+            val inductionStep = mc.TransitionSystem.combine("induction",
+              List(finalStep(longestPath)) ++ inductionBeforeSpec ++ List(spec) ++ inductionAfterSpec)
+            val s = time(check(checker, inductionStep, kMax = longestPath, workingDir = localDir, printSys = dbg.printInductionSys))
+            (s, time.getTimes)
+          })
+        }
     }
 
-    // check results
-    assert(baseCaseSuccess, s"Some of your invariants are not true after reset! Please consult ${baseCaseSys.name}.vcd")
-    assert(inductionSuccess, s"Induction step failed! Please consult induction.vcd")
+    // run verification tasks
+    assert(TaskRunner.run(baseCaseTask +: inductionTasks), s"Failed to proof ${impl.name} correct. Please consult the VCD files in $workingDir")
 
     // check all our simplifications
     assert(!opt.checkSimplifications, "Cannot check simplifications! (not implement)")
@@ -235,5 +245,63 @@ object VerificationProblem {
 private object isRandomInput {
   def apply(i: smt.BVSymbol): Boolean = {
     i.name.contains("rand_data") || i.name.contains("invalid")
+  }
+}
+
+private class VerificationTask(val name: String, val run: () => (Boolean, List[Long]))
+private object VerificationTask {
+  def apply(name: String, run: => (Boolean, List[Long])): VerificationTask =
+    new VerificationTask(name, () => run)
+}
+
+private object TaskRunner {
+  private val Fail = "❌"
+  private val Success = "✅"
+  def run(tasks: Seq[VerificationTask]): Boolean = {
+    val r = tasks.map { t =>
+      val (success, times) = t.run()
+      val msg = (if(success) Success else Fail) + " " + t.name + " (" + timeStr(times) + ")"
+      println(msg)
+      success
+    }
+    r.reduce(_ && _)
+  }
+  private def timeStr(times: Seq[Long]): String = times match {
+    case Nil => throw new RuntimeException("empty times!")
+    case Seq(one) => timeWithUnits(one)
+    case multiple =>
+      val total: Long = multiple.sum
+      multiple.map(timeWithUnits).mkString(" + ") + " = " + timeWithUnits(total)
+  }
+  private val prefixes = List("n", "μ", "m", "", "k", "M")
+  private def timeWithUnits(nanos: Long): String = {
+    var num = nanos.toDouble
+    prefixes.foreach { p =>
+      if (num < 1000.0) {
+        return f"$num%1.2f${p}s"
+      }
+      num /= 1000.0
+    }
+    throw new RuntimeException(s"ran out of prefixes for : $nanos")
+  }
+}
+
+private class Timer() {
+  private val times = mutable.ListBuffer[Long]()
+  def apply[T](f: => T): T = {
+    val start = System.nanoTime()
+    val r = f
+    times.append(System.nanoTime() - start)
+    r
+  }
+  def getTimes: List[Long] = times.toList
+}
+
+private object time {
+  def apply[T](f: => T): (T, Long) = {
+    val start = System.nanoTime()
+    val r = f
+    val delta = System.nanoTime() - start
+    (r, delta)
   }
 }
