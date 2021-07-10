@@ -20,6 +20,6 @@ jobs:
         java-version: 11
 
     - name: Publish to Github Packages
-      run: sbt -mem 1500 publish
+      run: sbt -mem 1500 +publish
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
