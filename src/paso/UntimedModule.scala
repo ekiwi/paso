@@ -15,7 +15,7 @@ class UntimedModule extends Module with MethodParent with RequireSyncReset {
   override private[paso] def addMethod(m: Method): Unit = _methods.append(m)
   override def isElaborated: Boolean = _isElaborated
   private var _isElaborated = false
-  private val _methods = mutable.ArrayBuffer[Method]()
+  private val _methods = mutable.ListBuffer[Method]()
   private var _chirrtl: Option[firrtl.CircuitState] = None
   private lazy val _lowfir = UntimedCompiler.run(_chirrtl.get, Set())
   private lazy val _tester = UntimedCompiler.toTreadleTester(_chirrtl.get)
@@ -32,7 +32,7 @@ class UntimedModule extends Module with MethodParent with RequireSyncReset {
     assert(_isElaborated, "You need to elaborate the module using UntimedModule(new ...)!")
     _tester
   }
-  def methods: Seq[Method] = _methods // FIXME: this should not be part of the public API
+  def methods: Seq[Method] = _methods.toSeq // FIXME: this should not be part of the public API
   // TODO: automagically infer names like Chisel does for its native constructs
   def fun(name: String) = {
     require(!methodNames.contains(name), s"Method $name already exists")

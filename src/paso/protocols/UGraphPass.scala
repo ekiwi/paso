@@ -675,7 +675,7 @@ class ExpandForksPass(protos: Seq[ProtocolInfo], solver: GuardSolver, graphDir: 
   }
 
   private def getActiveInstances(active: Set[String]): Map[String, Set[Int]] =
-    active.groupBy(_.split('$').head).mapValues(_.map(_.split('$').last.toInt))
+    active.groupBy(_.split('$').head).map{ case (k,v) => k -> v.map(_.split('$').last.toInt)}
 
   private def onNode(n : UNode): UNode = {
     val signals = n.actions.collect { case UAction(ASignal(name), _ , guard) => (name, guard) }

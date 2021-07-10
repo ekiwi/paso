@@ -50,7 +50,7 @@ object Action {
 class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
   extends ProtocolInterpreter(protocol, stickyInputs) {
 
-  private val nodes = mutable.ArrayBuffer[UNode]()
+  private val nodes = mutable.ListBuffer[UNode]()
 
   def run(name: String): Proto = {
     // start with no nodes
@@ -72,7 +72,7 @@ class UGraphConverter(protocol: firrtl.CircuitState, stickyInputs: Boolean)
       case other => throw new RuntimeException(s"Expecting exactly one final node! $other")
     }
 
-    val graph = UGraph(name, nodes)
+    val graph = UGraph(name, nodes.toIndexedSeq)
     Proto(getInfo, graph)
   }
 

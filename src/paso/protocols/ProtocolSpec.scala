@@ -16,15 +16,16 @@ import scala.collection.mutable
 abstract class ProtocolSpec[+S <: UntimedModule] {
   val spec: S
   val stickyInputs: Boolean = true
-  val protos = new mutable.ArrayBuffer[Protocol]()
+  private val _protos = new mutable.ListBuffer[Protocol]()
+  def protos: Seq[Protocol] = _protos.toSeq
   def protocol[IO <: Data](meth: NMethod)(io: IO)(gen: (Clock, IO) => Unit): Unit =
-    protos.append(NProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
+    _protos.append(NProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[O <: Data, IO <: Data](meth: OMethod[O])(io: IO)(gen: (Clock, IO, O) => Unit): Unit =
-    protos.append(OProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
+    _protos.append(OProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[I <: Data, IO <: Data](meth: IMethod[I])(io: IO)(gen: (Clock, IO, I) => Unit): Unit =
-    protos.append(IProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
+    _protos.append(IProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
   def protocol[I <: Data, O <: Data, IO <: Data](meth: IOMethod[I, O])(io: IO)(gen: (Clock, IO, I,O) => Unit): Unit =
-    protos.append(IOProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
+    _protos.append(IOProtocol(chiselTypeOf(io), meth, gen, stickyInputs))
 
 
   // TODO: support more than just UInt

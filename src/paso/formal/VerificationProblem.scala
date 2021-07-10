@@ -9,6 +9,7 @@ import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, St
 import maltese.{mc, smt}
 import paso.protocols._
 import paso.{DebugOptions, ProofFullAutomaton, ProofIsolatedMethods, untimed}
+import scala.collection.parallel.CollectionConverters._
 
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable

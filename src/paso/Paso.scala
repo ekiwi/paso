@@ -30,12 +30,13 @@ abstract class SubSpecs[IM <: RawModule, SM <: UntimedModule](val impl: IM, val 
       binding = Some(ref)
     }
   }
-  val subspecs = mutable.ArrayBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
+  private val _subspecs = mutable.ListBuffer[IsSubmodule]() // modules that should be abstracted by replacing them with their spec
+  def subspecs: Seq[IsSubmodule] = _subspecs.toSeq
 
   /** marks a submodule to be replaced with its specification */
   def replace[I <: RawModule, S <: UntimedModule](module: I)(spec: I => ProtocolSpec[S]): Submodule[I,S] = {
     val sub = Submodule(module.toTarget, module, spec)
-    subspecs.append(sub)
+    _subspecs.append(sub)
     sub
   }
 }

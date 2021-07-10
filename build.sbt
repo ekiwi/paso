@@ -1,7 +1,8 @@
 val basicSettings = Seq(
   name := "paso",
   organization := "edu.berkeley.cs",
-  scalaVersion := "2.12.13",
+  scalaVersion := "2.13.5",
+  crossScalaVersions := Seq("2.12.13", "2.13.5")
 )
 
 val directoryLayout = Seq(
@@ -25,7 +26,7 @@ val versionSettings = Seq(
 val chiselSettings = Seq(
   resolvers ++= Seq(Resolver.sonatypeRepo("snapshots")),
   // for structural bundles
-  scalacOptions := Seq("-deprecation", "-unchecked", "-Xsource:2.11"),
+  scalacOptions := Seq("-deprecation", "-unchecked", "-language:reflectiveCalls", "-Xcheckinit"),
   libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.5-SNAPSHOT",
 )
 
@@ -41,6 +42,8 @@ val otherDependencySettings = Seq(
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
   // BDDs for protocol guards
   libraryDependencies += "com.github.com-github-javabdd" % "com.github.javabdd" % "1.0.1",
+  // parallel collections
+  libraryDependencies += "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.3",
 )
 
 val testDependencySettings = Seq(

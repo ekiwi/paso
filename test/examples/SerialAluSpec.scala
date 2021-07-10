@@ -26,7 +26,7 @@ class AluArgs extends Bundle {
 class SerialAluProtocols(impl: SerialAlu) extends ProtocolSpec[AluModel] {
   val spec = new AluModel
 
-  private def calculate(clock: Clock, io: AluIO, conf: DecodeToAluIO => Unit, rs1: UInt, rs2: UInt, rd: UInt) {
+  private def calculate(clock: Clock, io: AluIO, conf: DecodeToAluIO => Unit, rs1: UInt, rs2: UInt, rd: UInt): Unit = {
     io.count.count0.poke(false.B)
     io.count.enabled.poke(false.B)
     clock.step()
@@ -50,8 +50,8 @@ class SerialAluProtocols(impl: SerialAlu) extends ProtocolSpec[AluModel] {
   }
 
 
-  private def add(decode: DecodeToAluIO) { decode.doSubtract.poke(false.B) ; decode.rdSelect.poke(Result.Add) }
-  private def sub(decode: DecodeToAluIO) { decode.doSubtract.poke(true.B)  ; decode.rdSelect.poke(Result.Add) }
+  private def add(decode: DecodeToAluIO): Unit = { decode.doSubtract.poke(false.B) ; decode.rdSelect.poke(Result.Add) }
+  private def sub(decode: DecodeToAluIO): Unit = { decode.doSubtract.poke(true.B)  ; decode.rdSelect.poke(Result.Add) }
 
   protocol(spec.add)(impl.io) { (clock, io, in, rd) => calculate(clock, io, add, in.rs1, in.rs2, rd) }
   protocol(spec.sub)(impl.io) { (clock, io, in, rd) => calculate(clock, io, sub, in.rs1, in.rs2, rd) }
