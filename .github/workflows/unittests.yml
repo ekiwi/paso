@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        scala: [ 2.12.13, 2.13.5 ]
 
     steps:
     - uses: actions/checkout@v2
@@ -84,8 +87,8 @@ jobs:
         java-version: openjdk@1.11
 
     - name: Compile Paso
-      run: sbt compile
+      run: sbt ++${{ matrix.scala }} compile
 
     - name: Run Unittests
       timeout-minutes: 5
-      run: sbt test
+      run: sbt ++${{ matrix.scala }} test
