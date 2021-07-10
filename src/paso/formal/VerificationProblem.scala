@@ -9,7 +9,6 @@ import maltese.mc.{IsModelChecker, ModelCheckFail, ModelCheckSuccess, Signal, St
 import maltese.{mc, smt}
 import paso.protocols._
 import paso.{DebugOptions, ProofFullAutomaton, ProofIsolatedMethods, untimed}
-import scala.collection.parallel.CollectionConverters._
 
 import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable
@@ -81,7 +80,7 @@ object VerificationProblem {
     // run verification tasks
     assert(TaskRunner.run(List(baseCaseTask)),
       s"Failed to proof ${impl.name} correct. Please consult the base-case VCD file in $workingDir")
-    assert(TaskRunner.runParallel(inductionTasks),
+    assert(TaskRunner.run(inductionTasks),
       s"Failed to proof ${impl.name} correct. Please consult the VCD files in $workingDir")
 
     // check all our simplifications
@@ -263,10 +262,6 @@ private object TaskRunner {
   private val Success = "✅"
   def run(tasks: Seq[VerificationTask]): Boolean = {
     tasks.map(runTask).reduce(_ && _)
-  }
-  def runParallel(tasks: Seq[VerificationTask]): Boolean = {
-    if(tasks.length < 2) return run(tasks)
-    tasks.par.map(runTask).reduce(_ && _)
   }
   private def runTask(t: VerificationTask): Boolean = {
     val (success, times) = t.run()

@@ -50,11 +50,6 @@ val otherDependencySettings = Seq(
   libraryDependencies += "net.java.dev.jna" % "jna-platform" % "5.4.0",
   // BDDs for protocol guards
   libraryDependencies += "com.github.com-github-javabdd" % "com.github.javabdd" % "1.0.1",
-  // parallel collections
-  libraryDependencies ++= {
-    if (isAtLeastScala213.value) Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.3")
-    else Nil
-  },
 )
 
 val testDependencySettings = Seq(
