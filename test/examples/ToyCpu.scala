@@ -53,6 +53,16 @@ class ToyCpuSpec extends AnyFlatSpec with PasoTester {
       test(new ToyCpu(enableBug = 1))(new ToyCpuProtocols(_)).proof(opt, new ToyCpuInvariants(_, _))
     }
   }
+
+  it should "fail BMC with bug #2" in {
+    // this bug is interesting since it takes 3 instructions to expose:
+    // 1.) LOAD non-zero value into register file
+    // 2.) perform broken ADD
+    // 3.) STORE the result of the broken ADD
+    assertThrows[AssertionError] {
+      test(new ToyCpu(enableBug = 2))(new ToyCpuProtocols(_)).bmc(4)
+    }
+  }
 }
 
 class ToyCpuInvariants(impl: ToyCpu, spec: ToyCpuModel) extends ProofCollateral(impl, spec) {
@@ -184,7 +194,9 @@ class ToyCpu(enableBug: Int = 0) extends Module {
     switch(op) {
       is(0.U) { // ADD
         res := arg0 + arg1
-        doWrite := true.B
+        if(enableBug != 2) { // bug #2 we forgot to write the result of an ALU operation to the register file
+          doWrite := true.B
+        }
       }
       is(1.U) { // LOAD
         secondReadCycle := true.B
