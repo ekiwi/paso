@@ -1,8 +1,6 @@
 val basicSettings = Seq(
   name := "paso",
   organization := "edu.berkeley.cs",
-  scalaVersion := "2.13.5",
-  crossScalaVersions := Seq("2.12.13", "2.13.5")
 )
 
 val directoryLayout = Seq(
@@ -10,6 +8,12 @@ val directoryLayout = Seq(
   resourceDirectory in Compile := baseDirectory.value / "src" / "resources",
   scalaSource in Test := baseDirectory.value / "test",
   resourceDirectory in Test := baseDirectory.value / "test" / "resources",
+)
+
+val compilerSettings = Seq(
+  scalaVersion := "2.13.5",
+  crossScalaVersions := Seq("2.12.13", "2.13.5"),
+  scalacOptions := Seq("-deprecation", "-unchecked", "-language:reflectiveCalls", "-Xcheckinit"),
 )
 
 val versionSettings = Seq(
@@ -25,8 +29,6 @@ val versionSettings = Seq(
 
 val chiselSettings = Seq(
   resolvers ++= Seq(Resolver.sonatypeRepo("snapshots")),
-  // for structural bundles
-  scalacOptions := Seq("-deprecation", "-unchecked", "-language:reflectiveCalls", "-Xcheckinit"),
   libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.5-SNAPSHOT",
 )
 
@@ -82,6 +84,7 @@ lazy val pubSettings = Seq(
 
 lazy val paso = (project in file("."))
   .settings(basicSettings)
+  .settings(compilerSettings)
   .settings(directoryLayout)
   .settings(versionSettings)
   .settings(chiselSettings)
@@ -95,6 +98,7 @@ lazy val paso = (project in file("."))
 
 lazy val benchmarks = (project in file("benchmarks"))
   .dependsOn(paso)
+  .settings(compilerSettings)
   .settings(directoryLayout)
   .settings(chiselSettings)
   .settings(testDependencySettings)
