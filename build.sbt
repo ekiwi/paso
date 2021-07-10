@@ -3,6 +3,12 @@ val basicSettings = Seq(
   organization := "edu.berkeley.cs",
 )
 
+lazy val isAtLeastScala213 = Def.setting {
+  import Ordering.Implicits._
+  CrossVersion.partialVersion(scalaVersion.value).exists(_ >= (2, 13))
+}
+
+
 val directoryLayout = Seq(
   scalaSource in Compile := baseDirectory.value / "src",
   resourceDirectory in Compile := baseDirectory.value / "src" / "resources",
@@ -45,7 +51,10 @@ val otherDependencySettings = Seq(
   // BDDs for protocol guards
   libraryDependencies += "com.github.com-github-javabdd" % "com.github.javabdd" % "1.0.1",
   // parallel collections
-  libraryDependencies += "org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.3",
+  libraryDependencies ++= {
+    if (isAtLeastScala213.value) Seq("org.scala-lang.modules" %% "scala-parallel-collections" % "1.0.3")
+    else Nil
+  },
 )
 
 val testDependencySettings = Seq(
