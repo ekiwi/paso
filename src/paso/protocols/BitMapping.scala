@@ -8,7 +8,14 @@ import maltese.smt
 
 /** helper functions for mappings individual bits of bitvector expressions while trying to retain the word structure */
 object BitMapping {
+
   def analyze(mappedBits: Map[String, BigInt], lhs: smt.BVExpr, rhs: smt.BVExpr):
+  (List[smt.BVExpr], List[smt.BVExpr], Map[String, BigInt]) = {
+    val (constr, maps, newMappedBits) = analyzeRaw(mappedBits, lhs, rhs)
+    (constr, maps.filterNot(_ == smt.True()), newMappedBits)
+  }
+
+  private def analyzeRaw(mappedBits: Map[String, BigInt], lhs: smt.BVExpr, rhs: smt.BVExpr):
   (List[smt.BVExpr], List[smt.BVExpr], Map[String, BigInt]) = rhs match {
     case smt.BVConcat(a, b) =>
       val aRes = analyze(mappedBits, smt.BVSlice(lhs, lhs.width - 1, b.width), a)

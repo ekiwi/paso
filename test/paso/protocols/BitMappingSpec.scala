@@ -44,4 +44,21 @@ class BitMappingSpec extends AnyFlatSpec {
       assert(simplify(map) == smt.BVEqual(lhs, smt.BVSlice(arg, 10, 4)))
     }
   }
+
+  "analyze" should "only return mappings if they actually exist" in {
+    // this reproduces a bug, where the returned mapping would sometimes contain True elements
+    val (src, dst) = (smt.BVSymbol("src", 5), smt.BVSymbol("dst", 5))
+    val old = Map("src" -> BigInt(31), "dst" -> BigInt(31))
+    val dataSym = smt.BVSymbol("data", 16)
+    val assignment = Seq(smt.BVLiteral(3, 6), smt.BVSlice(src, 4, 4), dst, smt.BVSlice(src, 3, 0)).reduce(smt.BVConcat)
+
+    val (constr, maps, updatedMappings) = BitMapping.analyze(old, dataSym, assignment)
+    assert(maps.isEmpty, "All bits of src and dst are already mapped!")
+    assert(updatedMappings == old, "The mapping should not change!")
+    val c = constr.map(simplify)
+    assert(c.head.toString() == "eq(data[15:10], 6'b11)")
+    assert(c(1).toString() == "eq(data[9], src[4])")
+    assert(c(2).toString() == "eq(data[8:4], dst)")
+    assert(c(3).toString() == "eq(data[3:0], src[3:0])")
+  }
 }
