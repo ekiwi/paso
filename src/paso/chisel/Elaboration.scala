@@ -243,7 +243,18 @@ case class Elaboration(dbg: DebugOptions, workingDir: String) {
   private def chiselElaborationSpec[S <: UntimedModule](gen: () => ProtocolSpec[S]): ChiselSpec[S] = {
     var ip: Option[ProtocolSpec[S]] = None
     val elaborated = UntimedModule.elaborate { ip = Some(gen()) ; ip.get.spec }
-    ChiselSpec(elaborated, ip.get.protos)
+    val protos = sortAndCheckProtos(elaborated, ip.get.protos)
+    ChiselSpec(elaborated, protos)
+  }
+
+  /** ensures that every untimed method is associated with a protocol + puts protocols into the same order as methods */
+  private def sortAndCheckProtos(untimed: UntimedModule, protos: Seq[Protocol]): Seq[Protocol] = {
+    val nameToProto = protos.map(p => p.methodName -> p).toMap
+    untimed.methods.map { m => nameToProto.get(m.name) match {
+      case Some(p) => p
+      case None =>
+        throw new RuntimeException(s"[${untimed.name}] missing a protocol implementation for the ${m.name} method!")
+    }}
   }
 
   case class ChiselInvariants(state: firrtl.CircuitState, externalRefs: Seq[ExternalReference])

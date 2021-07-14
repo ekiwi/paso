@@ -235,6 +235,12 @@ class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean
   require(impl.io.dataIn.getWidth == 64)
   val spec = new IdentityWithSubId
 
+  // we intentionally declare the protocols in a different order than the methods since the order should not matter!
+  protocol(spec.idle)(impl.io) { (clock, dut) =>
+    dut.start.set(false.B)
+    clock.step()
+  }
+
   protocol(spec.id)(impl.io) { (clock, dut, in, out) =>
     dut.start.set(true.B)
     dut.dataIn.set(in)
@@ -248,10 +254,6 @@ class ConstantLatencyWithSubIdProtocols(impl: IsConstLatency, withSubId: Boolean
     }
 
     dut.dataOut.expect(out)
-    clock.step()
-  }
-  protocol(spec.idle)(impl.io) { (clock, dut) =>
-    dut.start.set(false.B)
     clock.step()
   }
 }
