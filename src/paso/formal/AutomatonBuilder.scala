@@ -125,6 +125,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
 
     // for now we do not support protocols that don't map all their elements before forking
     usedMethods.zip(graphInfo).foreach { case (method, info) =>
+      assert(method.fullName == info.name)
       if(!info.mapInputsBeforeCommit && info.instances.size > 1) {
         // this can be fixed, but requires us to duplicate the state and the method implementation
         // for every instance of the protocol
@@ -137,6 +138,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     val resetInput = List((untimed.name + ".reset") -> reset)
 
     val inputs = usedMethods.zip(graphInfo).flatMap { case (method, info) =>
+      assert(method.fullName == info.name)
       // connect the enable (aka commit) signals, since we know that only one protocol can commit at a time,
       // a simple disjunction is enough
       val enabled = (method.fullIoName + "_enabled") ->
@@ -165,6 +167,7 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     // the return values however might need to be cached if there is more than one instance
     // of the protocol and the return values are read after the protocol has committed
     val outputs = usedMethods.zip(graphInfo).flatMap { case (method, info) =>
+      assert(method.fullName == info.name)
       method.ret.flatMap { case (name, bits) =>
         val ret = smt.BVSymbol(name, bits)
         // trivial case
