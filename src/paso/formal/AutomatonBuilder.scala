@@ -84,7 +84,8 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
     // turn guards back into assumptions and remove signals that are no longer needed:
     val guardsToAssumptions = new GuardsToAssumptions(gSolver)
     val removeSignals = new RemoveSignalsEndingWith(List("Active", "AllMapped"))
-    val simplified = removeSignals.run(guardsToAssumptions.run(forked))
+    val removeSignals2 = new RemoveSignalsStartingWith(List("Starting: ")) // remove signals added by forking pass
+    val simplified = removeSignals2.run(removeSignals.run(guardsToAssumptions.run(forked)))
 
     // make automaton
     ProtocolVisualization.saveDot(simplified, false, s"$workingDir/final_control.dot")

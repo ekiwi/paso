@@ -486,16 +486,25 @@ class PrefixArgs(protos: Seq[ProtocolInfo]) extends UGraphPass {
   }.toMap
 }
 
-class RemoveSignalsEndingWith(suffixes: List[String]) extends UGraphPass {
+class RemoveSignals(filter: String => Boolean) extends UGraphPass {
   override def name = "RemoveSignalsEndingWith"
   override def run(g: UGraph): UGraph = g.copy(nodes = g.nodes.map(onNode))
   private def onNode(n: UNode): UNode = n.copy(actions = n.actions.flatMap(onAction))
   private def onAction(a: UAction): Option[UAction] = a.a match {
     case ASignal(name) =>
-      val doRemove = suffixes.exists(s => name.endsWith(s))
-      if(doRemove) None else Some(a)
+      if(filter(name)) Some(a) else None
     case _ => Some(a)
   }
+}
+
+class RemoveSignalsEndingWith(suffixes: List[String])
+  extends RemoveSignals(name => !suffixes.exists(s => name.endsWith(s))) {
+  override def name = "RemoveSignalsEndingWith"
+}
+
+class RemoveSignalsStartingWith(prefixes: List[String])
+  extends RemoveSignals(name => !prefixes.exists(s => name.startsWith(s))) {
+  override def name = "RemoveSignalsStartingWith"
 }
 
 /** Only works if the graph is cycle free! */
