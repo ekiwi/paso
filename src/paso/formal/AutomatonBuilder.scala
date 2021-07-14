@@ -172,7 +172,10 @@ class AutomatonBuilder(solver: smt.Solver, workingDir: Path) {
         val ret = smt.BVSymbol(name, bits)
         // trivial case
         if(!info.readAfterCommit) {
-          List((mc.Signal(name + "$0", ret, mc.IsOutput), None))
+          info.instances.map { i =>
+            // we can use the same return signal for any instance since none of them will be using it at the same time
+           (mc.Signal(name + "$" + i, ret, mc.IsOutput), None)
+          }
         } else {
           assert(info.mapInputsBeforeCommit)
           // since the inputs are available when we commit, we can save the output at that point in time
