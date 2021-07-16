@@ -106,6 +106,8 @@ class StoreOut extends Bundle {
 class ToyCpuProtocols(impl: ToyCpu) extends ProtocolSpec[ToyCpuModel] {
   val spec = new ToyCpuModel
 
+  override val stickyInputs: Boolean = false
+
   protocol(spec.add) (impl.io){ (clock, io, in) =>
     io.instruction.bits.poke(0.U(2.W) ## in.r0 ## in.r1 ## 0.U(2.W))
     io.instruction.valid.poke(true.B)
@@ -123,6 +125,9 @@ class ToyCpuProtocols(impl: ToyCpu) extends ProtocolSpec[ToyCpuModel] {
     io.doRead.expect(true.B)
     io.doWrite.expect(false.B)
     clock.step()
+    // keep instruction around
+    io.instruction.bits.poke(1.U(2.W) ## in.r0 ## in.r1 ## 0.U(2.W))
+    io.instruction.valid.poke(true.B)
     // data arrives after one cycle
     io.memDataIn.poke(in.data)
     io.instruction.ready.expect(false.B)
