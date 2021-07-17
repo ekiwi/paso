@@ -36,6 +36,7 @@ val versionSettings = Seq(
 val chiselSettings = Seq(
   resolvers ++= Seq(Resolver.sonatypeRepo("snapshots")),
   libraryDependencies += "edu.berkeley.cs" %% "chisel3" % "3.5-SNAPSHOT",
+  addCompilerPlugin("edu.berkeley.cs" % "chisel3-plugin" % "3.5-SNAPSHOT" cross CrossVersion.full),
 )
 
 val otherDependencySettings = Seq(

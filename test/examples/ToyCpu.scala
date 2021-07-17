@@ -75,14 +75,16 @@ class ToyCpuInvariants(impl: ToyCpu, spec: ToyCpuModel) extends ProofCollateral(
 }
 
 
-class ToyCpuModel extends UntimedModule {
+class ToyCpuModel(noLoad: Boolean = false) extends UntimedModule {
   val regs = Mem(4, UInt(8.W))
   val add = fun("add").in(new RegArgs) { in =>
     regs.write(in.r0, regs.read(in.r0) + regs.read(in.r1))
   }
-  val load = fun("load").in(new LoadArgs).out(UInt(8.W)) { (in, addr) =>
-    addr := regs.read(in.r1)
-    regs.write(in.r0, in.data)
+  val load = if(noLoad) None else Some {
+    fun("load").in(new LoadArgs).out(UInt(8.W)) { (in, addr) =>
+      addr := regs.read(in.r1)
+      regs.write(in.r0, in.data)
+    }
   }
   val store = fun("store").in(new RegArgs).out(new StoreOut) { (in, out) =>
     out.addr := regs.read(in.r1)
@@ -117,7 +119,7 @@ class ToyCpuProtocols(impl: ToyCpu) extends ProtocolSpec[ToyCpuModel] {
     clock.step()
   }
 
-  protocol(spec.load) (impl.io){ (clock, io, in, addr) =>
+  protocol(spec.load.get) (impl.io){ (clock, io, in, addr) =>
     io.instruction.bits.poke(1.U(2.W) ## in.r0 ## in.r1 ## 0.U(2.W))
     io.instruction.valid.poke(true.B)
     io.instruction.ready.expect(true.B)
