@@ -817,3 +817,81 @@ class CommitAnalysis(rets: Map[String, Int]) {
     case other => other.children.exists(readsRets)
   }
 }
+
+/** Analyzes a single protocol to determine when it forks.
+ *  It also verifies the assumption that the final state of a protocol is empty or just a fork
+ *  (since protocols must end in a step).
+ * */
+object ForkAnalysis {
+  def name: String = "ForkAnalysis"
+  case class Result(minCyclesToFork: Int, maxCyclesAfterFork: Int)
+
+  private case class S(hasForked: Boolean, cycles: Int)
+
+  def run(g: UGraph): Result = {
+    val visited = mutable.HashSet[Int]()
+    val todo = mutable.Stack[Int]()
+    val state = mutable.HashMap[Int, S]()
+
+    visited.add(0)
+    todo.push(0)
+    state(0) = S(false, 0)
+
+    while(todo.nonEmpty) {
+      val nid = todo.pop()
+      val node = g.nodes(nid)
+
+      checkNode(node)
+      val s = state(nid)
+      val forkState = getForks(node).nonEmpty
+      val hasForked = s.hasForked || forkState
+      val cycles = if(forkState) { 1 } else { s.cycles + 1 }
+
+      // update states
+      node.next.map(_.to).foreach { next =>
+        state(next) = state.get(next) match {
+          case Some(S(prevForked, prevCycles)) =>
+            assert(prevForked == hasForked, "Whether or not the protocol has forked should be independent of the path taken!")
+            val c = (if(hasForked) { List(cycles, prevCycles).max } else { List(cycles, prevCycles).min })
+            S(hasForked, c)
+          case None => S(hasForked, cycles)
+        }
+      }
+
+      // visit next
+      node.next.map(_.to).filterNot(visited).foreach { id =>
+        visited.add(id)
+        todo.push(id)
+      }
+    }
+
+    val forkStates = g.nodes.zipWithIndex.filter{ case (n, id) => getForks(n).nonEmpty}.map(_._2)
+
+    Result(
+      minCyclesToFork = forkStates.map(state).map(_.cycles).min,
+      maxCyclesAfterFork = (state.values.filter(_.hasForked).map(_.cycles) ++ List(0)).max,
+    )
+
+  }
+
+  // check our node assumptions
+  private def checkNode(node: UNode): Unit = {
+    // we want to assume that forks do not have non-trivial guards
+    // this is reasonable since they always happen directly after a step
+    getForks(node).foreach(a => assert(a.guard == smt.True(), s"$a"))
+
+    // if this is a final state, we need it to contain no actions besides forks
+    val isFinal = node.next.isEmpty
+    if(isFinal) {
+      assert(getNonForks(node).isEmpty, s"Final node shouldn't contain any actions besides a fork!: ${node}")
+    }
+  }
+
+  private def getForks(n: UNode): List[UAction] = {
+    n.actions.collect { case a @ UAction(ASignal("fork"), _, _) => a }
+  }
+
+  private def getNonForks(n: UNode): List[UAction] = {
+    n.actions.filterNot { case UAction(ASignal("fork"), _, _) => true ; case _ => false }
+  }
+}
